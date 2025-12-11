@@ -147,25 +147,44 @@ def generate_preview(args):
     new_string = args.get("new_string")
 
     if not path or old_string is None:
+        msg = []
+        if not path:
+            msg.append("- path is required")
+        if old_string is None:
+            msg.append("- old_string is required")
         return ToolPreview(
             tool="edit_file",
-            content="Missing required arguments",
+            content=f"Error: Missing required arguments:\n" + "\n".join(msg),
             can_approve=False,
         )
 
     try:
+        from aicoder.utils.file_utils import get_relative_path
+        relative_path = get_relative_path(path)
+        
         if not _check_sandbox(path):
-            raise Exception(f"Access denied: {path}")
+            return ToolPreview(
+                tool="edit_file",
+                content=f"Path: {relative_path}\nError: Access denied - path is outside allowed directory",
+                can_approve=False,
+            )
 
         if not file_exists(path):
-            raise Exception(f"File not found: {path}")
+            return ToolPreview(
+                tool="edit_file",
+                content=f"Path: {relative_path}\nError: File not found",
+                can_approve=False,
+            )
 
         content = read_file(path)
 
         if old_string not in content:
+            from aicoder.utils.file_utils import get_relative_path
+            relative_path = get_relative_path(path)
+            text_preview = old_string[:50] + ('...' if len(old_string) > 50 else '')
             return ToolPreview(
                 tool="edit_file",
-                content=f"Error: '{old_string[:50]}{'...' if len(old_string) > 50 else ''}' not found",
+                content=f"Path: {relative_path}\nError: '{text_preview}' not found in file",
                 can_approve=False,
             )
 
@@ -201,10 +220,24 @@ def generate_preview(args):
                 temp_old.name, temp_new.name
             )
             diff_content = diff_result.get("diff", "")
+            
+            # Colorize the diff and remove headers
+            from aicoder.utils.file_utils import get_relative_path
+            relative_path = get_relative_path(path)
+            if can_approve:
+                # Normal case: show colored diff with path before approval
+                from aicoder.utils.diff_utils import colorize_diff
+                colorized_diff = colorize_diff(diff_content)
+                
+                # Combine path and colored diff for preview
+                preview_content = f"Path: {relative_path}\n\n{colorized_diff}"
+            else:
+                # Safety violation: already contains path and warning
+                preview_content = safety_violation_content
 
             return ToolPreview(
                 tool="edit_file",
-                content=safety_violation_content or diff_content,
+                content=preview_content,
                 can_approve=can_approve,
             )
 
@@ -217,9 +250,12 @@ def generate_preview(args):
                 pass
 
     except Exception as e:
+        from aicoder.utils.file_utils import get_relative_path
+        path = args.get('path', 'unknown')
+        relative_path = get_relative_path(path) if path != 'unknown' else 'unknown'
         return ToolPreview(
             tool="edit_file",
-            content=f"Error: {str(e)}",
+            content=f"Path: {relative_path}\nError: {str(e)}",
             can_approve=False,
         )
 
