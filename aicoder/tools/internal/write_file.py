@@ -8,6 +8,7 @@ import tempfile
 from typing import Dict, Any
 from aicoder.core.tool_formatter import ToolOutput, ToolPreview
 from aicoder.core.config import Config
+from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, write_file as file_write
 from aicoder.utils.diff_utils import generate_unified_diff_with_status
 
@@ -22,6 +23,18 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
     if not Config.sandbox_disabled() and ".." in path:
         raise Exception("Directory traversal not allowed")
+
+    # Safety check: File must have been read first (tracked by FileAccessTracker)
+    if file_exists(path) and not FileAccessTracker.was_file_read(path):
+        return ToolOutput(
+            tool="write_file",
+            friendly=f"WARNING: Must read file '{path}' first before writing",
+            important={"path": path},
+            results={
+                "error": f"Must read file first. Use read_file('{path}') before writing to avoid accidental overwrites.",
+                "showWhenDetailOff": True,
+            },
+        )
 
     try:
         # Check if file exists
@@ -103,6 +116,11 @@ def generate_preview(args):
     try:
         # Check if file exists
         exists = file_exists(path)
+        
+        # Add warning if file exists but wasn't read first
+        warning = None
+        if exists and not FileAccessTracker.was_file_read(path):
+            warning = "File exists but was not read first - potential overwrite"
 
         # Create temporary files for diff
         temp_old = tempfile.NamedTemporaryFile(
@@ -135,8 +153,9 @@ def generate_preview(args):
                 tool="write_file",
                 summary=f"{'Modify existing file' if exists else 'Create new file'}: {path}",
                 content=diff_content,
-                can_approve=True,
+                can_approve=False if warning else True,  # Don't allow approval if warning exists
                 is_diff=True,
+                warning=warning,
             )
 
         finally:

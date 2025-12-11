@@ -7,6 +7,7 @@ import os
 from typing import Dict, Any
 from aicoder.core.tool_formatter import ToolOutput, ToolPreview
 from aicoder.core.config import Config
+from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file as file_read
 
 DEFAULT_READ_LIMIT = 2000
@@ -48,6 +49,10 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
     try:
         content = file_read(path)
+        
+        # Record that this file was read for safety tracking
+        FileAccessTracker.record_read(path)
+        
         lines = content.split("\n")
 
         # Apply offset and limit
