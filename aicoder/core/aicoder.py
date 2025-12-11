@@ -40,6 +40,13 @@ class AICoder:
         self.tool_manager = ToolManager(self.stats)
         self.streaming_client = StreamingClient(self.stats, self.tool_manager)
         self.context_bar = ContextBar()
+        self.input_handler = InputHandler(
+            self.context_bar, self.stats, self.message_history
+        )
+        self.compaction_service = CompactionService(None)
+        self.council_service = CouncilService()
+        
+        # Extracted components (need to be initialized after core services)
         self.tool_executor = ToolExecutor(self.tool_manager, self.message_history)
         self.stream_processor = StreamProcessor(self.streaming_client)
         self.session_manager = SessionManager(
@@ -51,11 +58,6 @@ class AICoder:
             self.stats,
             self.compaction_service
         )
-        self.input_handler = InputHandler(
-            self.context_bar, self.stats, self.message_history
-        )
-        self.compaction_service = CompactionService(None)
-        self.council_service = CouncilService()
 
         # Command system
         self.command_handler = CommandHandler(
