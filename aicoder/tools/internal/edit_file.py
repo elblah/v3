@@ -75,10 +75,12 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         content = read_file(path)
 
         if old_string not in content:
+            from aicoder.utils.file_utils import get_relative_path
+            relative_path = get_relative_path(path)
             return ToolResult(
                 tool="edit_file",
-                friendly=f"❌ Text not found in {path}: '{old_string[:50]}{'...' if len(old_string) > 50 else ''}'",
-                detailed=f"Text not found in {path}. Searched for: '{old_string[:100]}{'...' if len(old_string) > 100 else ''}'"
+                friendly=f"ERROR: Text not found in '{relative_path}' - check exact match including whitespace",
+                detailed=f"old_string not found in file. Use read_file('{relative_path}') to see current content and ensure exact match."
             )
 
         # Create temp files for diff preview
@@ -181,10 +183,9 @@ def generate_preview(args):
         if old_string not in content:
             from aicoder.utils.file_utils import get_relative_path
             relative_path = get_relative_path(path)
-            text_preview = old_string[:50] + ('...' if len(old_string) > 50 else '')
             return ToolPreview(
                 tool="edit_file",
-                content=f"Path: {relative_path}\nError: '{text_preview}' not found in file",
+                content=f"Path: {relative_path}\nError: old_string not found in file. Use read_file('{relative_path}') to see current content and ensure exact match.",
                 can_approve=False,
             )
 

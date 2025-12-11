@@ -1,0 +1,1 @@
+Testing relative path with write_file
