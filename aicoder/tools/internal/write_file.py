@@ -14,7 +14,7 @@ from aicoder.utils.file_utils import file_exists, write_file as file_write, get_
 from aicoder.utils.diff_utils import generate_unified_diff_with_status, colorize_diff
 
 
-def _check_sandbox(path: str) -> bool:
+def _check_sandbox(path: str, print_message: bool = True) -> bool:
     """Check if path is within allowed directory"""
     if Config.sandbox_disabled():
         return True
@@ -28,7 +28,8 @@ def _check_sandbox(path: str) -> bool:
     
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        print(f'[x] Sandbox: write_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        if print_message:
+            print(f'[x] Sandbox: write_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True

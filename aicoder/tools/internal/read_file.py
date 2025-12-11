@@ -14,7 +14,7 @@ DEFAULT_READ_LIMIT = 2000
 MAX_LINE_LENGTH = 2000
 
 
-def _check_sandbox(path: str) -> bool:
+def _check_sandbox(path: str, print_message: bool = True) -> bool:
     """Check if path is within allowed directory"""
     if Config.sandbox_disabled():
         return True
@@ -28,7 +28,8 @@ def _check_sandbox(path: str) -> bool:
     
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        print(f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        if print_message:
+            print(f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True
@@ -112,16 +113,17 @@ def generatePreview(args):
     """Generate preview with sandbox validation (executed BEFORE approval)"""
     path = args.get("path", "")
 
-    # Check sandbox first - this generates the nice warning message
-    if not _check_sandbox(path):
+    # Check sandbox first - don't print message since preview will show it
+    if not _check_sandbox(path, print_message=False):
         from aicoder.core.tool_formatter import ToolPreview
+        import os.path
         
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
         
         return ToolPreview(
             tool="read_file",
-            content=f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"',
+            content=f'Path: {path}\n[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"',
             can_approve=False,
         )
 
