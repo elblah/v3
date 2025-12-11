@@ -149,8 +149,7 @@ def generate_preview(args):
     if not path or old_string is None:
         return ToolPreview(
             tool="edit_file",
-            summary="Missing required arguments",
-            content="",
+            content="Missing required arguments",
             can_approve=False,
         )
 
@@ -166,10 +165,8 @@ def generate_preview(args):
         if old_string not in content:
             return ToolPreview(
                 tool="edit_file",
-                summary=f"Text not found in {path}",
                 content=f"Error: '{old_string[:50]}{'...' if len(old_string) > 50 else ''}' not found",
                 can_approve=False,
-                warning="Text to edit not found in file",
             )
 
         # Safety check for file reads
@@ -205,11 +202,8 @@ def generate_preview(args):
 
             return ToolPreview(
                 tool="edit_file",
-                summary=f"Edit {path}",
                 content=safety_violation_content or diff_content,
                 can_approve=can_approve,
-                is_diff=not safety_violation_content,
-                warning=warning,
             )
 
         finally:
@@ -223,10 +217,8 @@ def generate_preview(args):
     except Exception as e:
         return ToolPreview(
             tool="edit_file",
-            summary=f"Error: {str(e)}",
-            content="",
+            content=f"Error: {str(e)}",
             can_approve=False,
-            warning=str(e),
         )
 
 

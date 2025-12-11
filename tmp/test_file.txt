@@ -1,12 +1,9 @@
-This is a test file created for testing purposes.
+This file has been edited for testing purposes.
 
-It contains some sample text that can be used to verify:
-- File creation functionality
-- Content writing operations
-- File reading capabilities
+The content has been modified to test the edit functionality.
 
-Additional lines for comprehensive testing:
-- Line 4 with mixed content 123
-- Line 5 with special chars: @#$%^&*()
-- Line 6 with JSON-like structure: {"key": "value", "number": 42}
-- Final line: Test complete.
+Edited on: 2025-12-11
+
+Purpose: Testing file editing capabilities.
+
+This demonstrates that file modification operations work correctly.

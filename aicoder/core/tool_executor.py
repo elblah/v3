@@ -120,15 +120,16 @@ class ToolExecutor:
         if not preview_result:
             return True
 
-        # Display the preview content (tools format their own output)
+        # If can't approve (e.g., safety violation), show content directly without preview header
+        if not preview_result.can_approve:
+            LogUtils.print(preview_result.content)
+            return False  # Reject tool execution
+
+        # Display preview content with header for normal previews
         # Extract file path from arguments for preview header
         file_path = arguments.get('path')
         formatted_preview = ToolFormatter.format_preview(preview_result, file_path)
         LogUtils.print(formatted_preview)
-        
-        # If can't approve, stop execution
-        if not preview_result.can_approve:
-            return False  # Reject tool execution
 
         return True
 
