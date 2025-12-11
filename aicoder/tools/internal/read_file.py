@@ -117,7 +117,6 @@ def generatePreview(args):
 
         return ToolPreview(
             tool="read_file",
-            summary=f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{cwd}"',
             content=f'read_file: path "{path}" outside current directory not allowed',
             can_approve=False,
         )
