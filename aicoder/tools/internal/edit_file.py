@@ -8,6 +8,7 @@ import tempfile
 from typing import Dict, Any, List, Tuple
 from aicoder.core.tool_formatter import ToolOutput, ToolPreview
 from aicoder.core.config import Config
+from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file, write_file
 from aicoder.utils.diff_utils import generate_unified_diff_with_status
 
@@ -61,6 +62,18 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
+
+    # Safety check: File must have been read first (tracked by FileAccessTracker)
+    if not FileAccessTracker.was_file_read(path):
+        return ToolOutput(
+            tool="edit_file",
+            friendly=f"WARNING: Must read file '{path}' first before editing",
+            important={"path": path},
+            results={
+                "error": f"Must read file first. Use read_file('{path}') before editing.",
+                "showWhenDetailOff": True,
+            },
+        )
 
     try:
         content = read_file(path)
@@ -176,6 +189,11 @@ def generate_preview(args):
                 warning="Text to edit not found in file",
             )
 
+        # Add warning if file wasn't read first
+        warning = None
+        if not FileAccessTracker.was_file_read(path):
+            warning = "File was not read first - recommend reading file before editing"
+
         # Create temp files for diff preview
         temp_old = tempfile.NamedTemporaryFile(
             mode="w", suffix="_old.txt", delete=False
@@ -201,8 +219,9 @@ def generate_preview(args):
                 tool="edit_file",
                 summary=f"Edit {path}",
                 content=diff_content,
-                can_approve=True,
+                can_approve=False if warning else True,  # Don't allow approval if warning exists
                 is_diff=True,
+                warning=warning,
             )
 
         finally:
