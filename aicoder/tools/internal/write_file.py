@@ -60,6 +60,9 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
             # Write the actual file
             file_write(path, content)
+            
+            # Mark file as read since user just created/updated it
+            FileAccessTracker.record_read(path)
 
             # Prepare result
             if exists:
