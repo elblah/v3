@@ -4,7 +4,7 @@ Extracted from AICoder class for better separation of concerns
 """
 
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
@@ -62,8 +62,9 @@ class ToolExecutor:
 
         # Generate and display preview
         if self._should_show_preview(tool_def, arguments):
-            if not self._handle_preview_display(tool_def, arguments, tool_call.get("id", "")):
-                return None  # Preview was rejected
+            result = self._handle_preview_display(tool_def, arguments, tool_call.get("id", ""))
+            if result is False:
+                return None  # Preview was rejected without message
 
         # Show formatted arguments if no preview
         elif tool_def and tool_def.get("formatArguments"):
@@ -109,7 +110,7 @@ class ToolExecutor:
             return True
         return tool_def and tool_def.get("generatePreview")
 
-    def _handle_preview_display(self, tool_def: Dict[str, Any], arguments: Dict[str, Any], tool_call_id: str) -> bool:
+    def _handle_preview_display(self, tool_def: Dict[str, Any], arguments: Dict[str, Any], tool_call_id: str) -> Union[bool, Dict[str, Any]]:
         """Handle preview display and return True if approved, False if rejected"""
         try:
             preview_result = tool_def["generatePreview"](arguments)
@@ -123,12 +124,20 @@ class ToolExecutor:
         # If can't approve (e.g., safety violation), show content directly without preview header
         if not preview_result.can_approve:
             LogUtils.print(preview_result.content)
-            return False  # Reject tool execution
+            # Return the message for AI to see
+            return {
+                "tool_call_id": tool_call_id,
+                "content": preview_result.content,
+            }
 
         # Display preview content with header for normal previews
-        # Extract file path from arguments for preview header
+        # Only show file path in header if content doesn't already include it
         file_path = arguments.get('path')
-        formatted_preview = ToolFormatter.format_preview(preview_result, file_path)
+        if preview_result.content and "Path:" in preview_result.content:
+            # Content already includes path, don't duplicate in header
+            formatted_preview = ToolFormatter.format_preview(preview_result, None)
+        else:
+            formatted_preview = ToolFormatter.format_preview(preview_result, file_path)
         LogUtils.print(formatted_preview)
 
         return True

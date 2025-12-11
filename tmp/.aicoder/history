@@ -1,14 +1,2 @@
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "please write a file with any content we are just testing"}
-{"prompt": "new edit it"}
-{"prompt": "we are testing i need you not to ask"}
-{"prompt": "so please test other tools"}
-{"prompt": "please test the tools be creative... dont ask"}
-{"prompt": "please test the tools be creative... dont ask"}
+{"prompt": "WE ARE TESTING... please test the tools... focus on edge cases on write_file and edit_file... we need to test errors"}
+{"prompt": "WE ARE TESTING... please test the tools... focus on edge cases on write_file and edit_file... we need to test errors... start focusing on trying to edit a file with write_file and edit_file without reading the file first"}
