@@ -115,10 +115,11 @@ class ToolExecutor:
         if not preview_result:
             return True
 
-        # Check if this is a sandbox error
-        if hasattr(preview_result, "canApprove") and not preview_result.canApprove:
-            if hasattr(preview_result, "friendly"):
-                LogUtils.print(preview_result.friendly, LogOptions(color=Config.colors["red"]))
+        # Check if approval is allowed (safety violations)
+        if hasattr(preview_result, "can_approve") and not preview_result.can_approve:
+            if hasattr(preview_result, "warning"):
+                LogUtils.print(f"[!] Warning: {preview_result.warning}", LogOptions(color=Config.colors["yellow"]))
+            LogUtils.print(preview_result.content, LogOptions(color=Config.colors["red"]))
             return False  # Reject tool execution
 
         # Display regular preview

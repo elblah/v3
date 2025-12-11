@@ -117,10 +117,15 @@ def generate_preview(args):
         # Check if file exists
         exists = file_exists(path)
         
-        # Add warning if file exists but wasn't read first
+        # Safety check for existing files
+        can_approve = True
         warning = None
+        safety_violation_content = None
+        
         if exists and not FileAccessTracker.was_file_read(path):
+            can_approve = False
             warning = "File exists but was not read first - potential overwrite"
+            safety_violation_content = "SAFETY VIOLATION: Must read file first before editing to prevent accidental overwrites."
 
         # Create temporary files for diff
         temp_old = tempfile.NamedTemporaryFile(
@@ -152,9 +157,9 @@ def generate_preview(args):
             return ToolPreview(
                 tool="write_file",
                 summary=f"{'Modify existing file' if exists else 'Create new file'}: {path}",
-                content=diff_content,
-                can_approve=False if warning else True,  # Don't allow approval if warning exists
-                is_diff=True,
+                content=safety_violation_content or diff_content,
+                can_approve=can_approve,
+                is_diff=not safety_violation_content,
                 warning=warning,
             )
 

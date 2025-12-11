@@ -189,10 +189,15 @@ def generate_preview(args):
                 warning="Text to edit not found in file",
             )
 
-        # Add warning if file wasn't read first
+        # Safety check for file reads
+        can_approve = True
         warning = None
+        safety_violation_content = None
+        
         if not FileAccessTracker.was_file_read(path):
+            can_approve = False
             warning = "File was not read first - recommend reading file before editing"
+            safety_violation_content = "SAFETY VIOLATION: Must read file first before editing to prevent accidental overwrites."
 
         # Create temp files for diff preview
         temp_old = tempfile.NamedTemporaryFile(
@@ -218,9 +223,9 @@ def generate_preview(args):
             return ToolPreview(
                 tool="edit_file",
                 summary=f"Edit {path}",
-                content=diff_content,
-                can_approve=False if warning else True,  # Don't allow approval if warning exists
-                is_diff=True,
+                content=safety_violation_content or diff_content,
+                can_approve=can_approve,
+                is_diff=not safety_violation_content,
                 warning=warning,
             )
 
