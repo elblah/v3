@@ -21,6 +21,7 @@ from aicoder.core.command_handler import CommandHandler
 from aicoder.core.tool_executor import ToolExecutor
 from aicoder.core.stream_processor import StreamProcessor
 from aicoder.core.session_manager import SessionManager
+from aicoder.core.prompt_builder import PromptBuilder
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.type_defs.message_types import AssistantMessage
 from aicoder.utils.stdin_utils import read_stdin_as_string
@@ -80,26 +81,13 @@ class AICoder:
 
     def initialize_system_prompt(self) -> None:
         """Initialize with system prompt focused on internal tools"""
-        system_prompt = self._build_system_prompt()
-        self.message_history.add_system_message(system_prompt)
-
-    def _build_system_prompt(self) -> str:
-        """Build system prompt using universal prompt builder"""
-        from aicoder.core.prompt_builder import PromptBuilder
-
         # Initialize prompt builder if needed
         if not PromptBuilder.is_initialized():
             PromptBuilder.initialize()
 
-        # Get tool information
-        tools = self.tool_manager.get_tool_definitions()
-
-        # Create prompt builder instance
-        prompt_builder = PromptBuilder()
-
-        # Build system prompt
-        system_prompt = prompt_builder.build_system_prompt(tools)
-        return system_prompt
+        # Build and add system prompt
+        system_prompt = PromptBuilder.build_system_prompt()
+        self.message_history.add_system_message(system_prompt)
 
     def run(self) -> None:
         """Run the interactive AI Coder session"""

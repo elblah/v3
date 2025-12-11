@@ -153,21 +153,22 @@ Always follow user instructions carefully and provide helpful responses."""
         return """Basic tools available: file operations (read, write, list),
 search (grep), shell command execution, and more via API request."""
 
-    def build_system_prompt(self, tools: list) -> str:
-        """Build system prompt with tool information"""
+    @classmethod
+    def build_system_prompt(cls) -> str:
+        """Build system prompt with context information"""
         # Initialize if needed
-        if not PromptBuilder.is_initialized():
-            PromptBuilder.initialize()
+        if not cls.is_initialized():
+            cls.initialize()
 
         # Create context
         context = PromptContext()
 
         # Load additional content
-        context.agents_content = PromptBuilder.load_agents_content()
+        context.agents_content = cls.load_agents_content()
 
         # Load prompt override if exists
         options = PromptOptions()
-        options.override_prompt = PromptBuilder.load_prompt_override()
+        options.override_prompt = cls.load_prompt_override()
 
         # Build and return prompt
-        return PromptBuilder.build_prompt(context, options)
+        return cls.build_prompt(context, options)
