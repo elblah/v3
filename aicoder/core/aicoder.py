@@ -20,6 +20,7 @@ from aicoder.core.council_service import CouncilService
 from aicoder.core.command_handler import CommandHandler
 from aicoder.core.tool_executor import ToolExecutor
 from aicoder.core.stream_processor import StreamProcessor
+from aicoder.core.session_manager import SessionManager
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.type_defs.message_types import AssistantMessage
 from aicoder.utils.stdin_utils import read_stdin_as_string
@@ -41,6 +42,15 @@ class AICoder:
         self.context_bar = ContextBar()
         self.tool_executor = ToolExecutor(self.tool_manager, self.message_history)
         self.stream_processor = StreamProcessor(self.streaming_client)
+        self.session_manager = SessionManager(
+            self.message_history, 
+            self.streaming_client,
+            self.stream_processor,
+            self.tool_executor,
+            self.context_bar,
+            self.stats,
+            self.compaction_service
+        )
         self.input_handler = InputHandler(
             self.context_bar, self.stats, self.message_history
         )
@@ -130,7 +140,7 @@ class AICoder:
                     self.add_user_input(user_input)
 
                 # Process with AI
-                self.process_with_ai()
+                self.session_manager.process_with_ai()
 
             except KeyboardInterrupt:
                 continue
@@ -180,7 +190,7 @@ class AICoder:
 
             # Process with AI only if there are messages to send
             if self.message_history.get_messages():
-                self.process_with_ai()
+                self.session_manager.process_with_ai()
         except Exception as e:
             LogUtils.error(f"Error: {e}")
 
@@ -195,130 +205,7 @@ class AICoder:
 
         prompt_history.save_prompt(user_input)
 
-    def process_with_ai(self) -> None:
-        """Process conversation with AI"""
-        if Config.debug():
-            LogUtils.debug("*** process_with_ai called")
-
-        self.is_processing = True
-
-        try:
-            preparation = self.prepare_for_processing()
-            if Config.debug():
-                LogUtils.debug(
-                    f"*** prepare_for_processing returned should_continue={preparation.get('should_continue')}"
-                )
-            if not preparation["should_continue"]:
-                return
-
-            self.streaming_client.reset_colorizer()
-
-            streaming_result = self.stream_response(preparation["messages"])
-            if not streaming_result["should_continue"]:
-                return
-
-            has_tool_calls = self.validate_and_process_tool_calls(
-                streaming_result["full_response"],
-                streaming_result["accumulated_tool_calls"],
-            )
-
-            self.handle_post_processing(has_tool_calls)
-
-        except Exception as e:
-            self.handle_processing_error(e)
-        finally:
-            self.is_processing = False
-
-    def prepare_for_processing(self) -> Dict[str, Any]:
-        """Prepare for AI processing"""
-        # Handle compaction
-        if Config.auto_compact_enabled():
-            current_size = self.stats.current_prompt_size or 0
-            if current_size > Config.context_size():
-                self.force_compaction()
-
-        # Show context bar before AI response
-        print()
-        self.context_bar.print_context_bar(self.stats, self.message_history)
-        LogUtils.print("AI: ", LogOptions(color=Config.colors["cyan"], bold=True))
-
-        # Check if interrupted
-        if not self.is_processing:
-            print("\n[AI response interrupted before starting]")
-            return {"should_continue": False, "messages": []}
-
-        messages = self.message_history.get_messages()
-        return {"should_continue": True, "messages": messages}
-
-    def stream_response(self, messages: list) -> Dict[str, Any]:
-        """Stream response from API"""
-        if Config.debug():
-            LogUtils.debug(f"*** stream_response called with {len(messages)} messages")
-
-        # Use StreamProcessor to handle the streaming
-        result = self.stream_processor.process_stream(
-            messages,
-            lambda: self.is_processing,  # is_processing_callback
-            self.stream_processor.accumulate_tool_call  # process_chunk_callback
-        )
-
-        # Handle error case by adding to message history
-        if result.get("error"):
-            self.message_history.add_assistant_message(
-                AssistantMessage(content=f"[API Error: {result['error']}]")
-            )
-
-        return result
-
-    def validate_and_process_tool_calls(
-        self, full_response: str, accumulated_tool_calls: dict
-    ) -> bool:
-        """Validate and process accumulated tool calls"""
-        if not accumulated_tool_calls:
-            self.handle_empty_response(full_response)
-            return False
-
-        valid_tool_calls = self.validate_tool_calls(accumulated_tool_calls)
-        if not valid_tool_calls:
-            LogUtils.error("No valid tool calls to execute")
-            return False
-
-        # Add assistant message with tool calls
-        from aicoder.type_defs.message_types import AssistantMessage, MessageToolCall
-
-        tool_calls_for_message = []
-        for i, call in enumerate(valid_tool_calls):
-            tool_calls_for_message.append(
-                MessageToolCall(
-                    id=call.get("id"),
-                    type=call.get("type", "function"),
-                    function={
-                        "name": call.get("function", {}).get("name"),
-                        "arguments": call.get("function", {}).get("arguments"),
-                    },
-                    index=i,
-                )
-            )
-
-        self.message_history.add_assistant_message(
-            AssistantMessage(
-                content=full_response or "I'll help you with that.",
-                tool_calls=tool_calls_for_message,
-            )
-        )
-
-        self.tool_executor.execute_tool_calls(valid_tool_calls)
-        return True
-
-    def handle_post_processing(self, has_tool_calls: bool) -> None:
-        """Handle post-processing after AI response"""
-        if has_tool_calls and self.is_processing:
-            # Just continue the main processing loop - same as TS processWithAI()
-            self.process_with_ai()
-
-    def handle_processing_error(self, error: Exception) -> None:
-        """Handle processing errors"""
-        LogUtils.error(f"Processing error: {error}")
+    
 
     
 
@@ -336,48 +223,7 @@ class AICoder:
             if Config.debug():
                 LogUtils.warn(f"[!] Plugin initialization failed: {e}")
 
-    def perform_auto_compaction(self) -> None:
-        """Perform automatic compaction"""
-        try:
-            if self.compaction_service:
-                self.compaction_service.compact_messages(self.message_history)
-        except Exception as e:
-            if Config.debug():
-                LogUtils.warn(f"[!] Auto-compaction failed: {e}")
-
-    def force_compaction(self) -> None:
-        """Force compaction of messages"""
-        try:
-            if self.compaction_service:
-                self.compaction_service.force_compact(self.message_history)
-        except Exception as e:
-            LogUtils.error(f"Force compaction failed: {e}")
-
-    def handle_empty_response(self, full_response: str) -> None:
-        """Handle empty response from AI"""
-        if full_response and full_response.strip() != "":
-            # AI provided text response but no tools
-            from aicoder.type_defs.message_types import AssistantMessage
-
-            self.message_history.add_assistant_message(
-                AssistantMessage(content=full_response)
-            )
-            print("")
-        else:
-            # AI provided no text response (this is normal when AI has nothing to say)
-            # Add a minimal message to show AI responded, then continue
-            from aicoder.type_defs.message_types import AssistantMessage
-
-            self.message_history.add_assistant_message(AssistantMessage(content=""))
-            print("")
-
-    def validate_tool_calls(self, tool_calls: dict) -> list:
-        """Validate tool calls"""
-        return [
-            tool_call
-            for tool_call in tool_calls.values()
-            if tool_call.get("function", {}).get("name") and tool_call.get("id")
-        ]
+    
 
     def call_notify_hook(self, hook_name: str) -> None:
         """Call notification hook"""
