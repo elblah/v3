@@ -48,10 +48,11 @@ def execute(args: Dict[str, Any]) -> ToolResult:
     try:
         # Check sandbox restrictions
         if not _check_sandbox(path):
+            # The sandbox message is already printed by _check_sandbox
             return ToolResult(
                 tool="grep",
-                friendly=f'ERROR: Failed to search: path "{path}" outside current directory not allowed',
-                detailed=f'Cannot search outside current directory. Path "{path}" is not allowed.'
+                friendly=f'grep: path "{path}" outside current directory not allowed',
+                detailed=f'grep: path "{path}" outside current directory not allowed'
             )
 
         # Validate search text
@@ -123,16 +124,18 @@ def _check_sandbox(path: str) -> bool:
     if Config.sandbox_disabled():
         return True
 
-    # Simple sandbox - prevent directory traversal
-    if ".." in path:
+    if not path:
+        return True
+
+    # Resolve the path
+    resolved_path = os.path.abspath(path)
+    current_dir = os.getcwd()
+    
+    # Check if resolved path is within current directory
+    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
+        print(f'[x] Sandbox: grep trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
-
-    # Allow absolute paths only if they're in current directory
-    if path.startswith("/"):
-        cwd = os.getcwd()
-        if not path.startswith(cwd):
-            return False
-
+    
     return True
 
 

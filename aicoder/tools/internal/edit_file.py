@@ -18,10 +18,18 @@ def _check_sandbox(path: str) -> bool:
     if Config.sandbox_disabled():
         return True
 
-    # Simple sandbox - prevent directory traversal
-    if ".." in path:
-        return False
+    if not path:
+        return True
 
+    # Resolve the path
+    resolved_path = os.path.abspath(path)
+    current_dir = os.getcwd()
+    
+    # Check if resolved path is within current directory
+    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
+        print(f'[x] Sandbox: edit_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        return False
+    
     return True
 
 
@@ -52,7 +60,7 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         raise Exception("Path and old_string are required")
 
     if not _check_sandbox(path):
-        raise Exception(f"Access denied: {path}")
+        raise Exception(f'edit_file: path "{path}" outside current directory not allowed')
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
@@ -162,9 +170,10 @@ def generate_preview(args):
         relative_path = get_relative_path(path)
         
         if not _check_sandbox(path):
+            # The sandbox message is already printed by _check_sandbox
             return ToolPreview(
                 tool="edit_file",
-                content=f"Path: {relative_path}\nError: Access denied - path is outside allowed directory",
+                content=f'edit_file: path "{path}" outside current directory not allowed',
                 can_approve=False,
             )
 

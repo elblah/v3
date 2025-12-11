@@ -37,10 +37,11 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
         # Check sandbox restrictions
         if not _check_sandbox(resolved_path):
+            # The sandbox message is already printed by _check_sandbox
             return ToolResult(
                 tool="list_directory",
-                friendly=f"Access denied: Path '{path}' is outside current directory",
-                detailed=f"Path '{path}' resolves to '{resolved_path}' which is outside current directory. Access denied."
+                friendly=f'list_directory: path "{path}" outside current directory not allowed',
+                detailed=f'list_directory: path "{path}" outside current directory not allowed'
             )
 
         # Check if path exists and is a directory
@@ -170,16 +171,18 @@ def _check_sandbox(path: str) -> bool:
     if Config.sandbox_disabled():
         return True
 
-    # Simple sandbox - prevent directory traversal
-    if ".." in path:
+    if not path:
+        return True
+
+    # Resolve the path
+    resolved_path = os.path.abspath(path)
+    current_dir = os.getcwd()
+    
+    # Check if resolved path is within current directory
+    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
+        print(f'[x] Sandbox: list_directory trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
-
-    # Allow absolute paths only if they're in current directory
-    if path.startswith("/"):
-        cwd = os.getcwd()
-        if not path.startswith(cwd):
-            return False
-
+    
     return True
 
 
