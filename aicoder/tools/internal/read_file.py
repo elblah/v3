@@ -19,16 +19,18 @@ def _check_sandbox(path: str) -> bool:
     if Config.sandbox_disabled():
         return True
 
-    # Simple sandbox - prevent directory traversal
-    if ".." in path:
+    if not path:
+        return True
+
+    # Resolve the path
+    resolved_path = os.path.abspath(path)
+    current_dir = os.getcwd()
+    
+    # Check if resolved path is within current directory
+    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
+        print(f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
-
-    # Allow absolute paths only if they're in current directory
-    if path.startswith("/"):
-        cwd = os.getcwd()
-        if not path.startswith(cwd):
-            return False
-
+    
     return True
 
 
@@ -42,7 +44,9 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         raise Exception("Path is required")
 
     if not _check_sandbox(path):
-        raise Exception(f"Access denied: {path}")
+        resolved_path = os.path.abspath(path)
+        current_dir = os.getcwd()
+        raise Exception(f'read_file: path "{path}" outside current directory not allowed')
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
@@ -108,16 +112,16 @@ def generatePreview(args):
     """Generate preview with sandbox validation (executed BEFORE approval)"""
     path = args.get("path", "")
 
-    # Check sandbox first - this is the key difference from Python version
+    # Check sandbox first - this generates the nice warning message
     if not _check_sandbox(path):
-        # Generate exact TypeScript-style error message
-        cwd = os.getcwd()
-        resolved_path = os.path.abspath(path)
         from aicoder.core.tool_formatter import ToolPreview
-
+        
+        resolved_path = os.path.abspath(path)
+        current_dir = os.getcwd()
+        
         return ToolPreview(
             tool="read_file",
-            content=f'read_file: path "{path}" outside current directory not allowed',
+            content=f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"',
             can_approve=False,
         )
 
