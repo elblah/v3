@@ -76,15 +76,13 @@ def execute(args: Dict[str, Any]) -> ToolResult:
                     f"({len(content.splitlines())} lines, {len(content)} bytes)"
                 )
 
-            # Build detailed message for AI
+            # Build detailed message for AI (no diff to save context)
             detailed_parts = [
                 f"Path: {path}",
                 f"Action: {'Updated' if exists else 'Created'}",
                 f"Size: {len(content)} bytes",
                 f"Lines: {len(content.splitlines()) if content else 0}"
             ]
-            if diff_content:
-                detailed_parts.append(f"Diff:\n{diff_content}")
             
             detailed = "\n".join(detailed_parts)
 
