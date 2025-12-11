@@ -129,7 +129,7 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         return ToolResult(
             tool="edit_file",
             friendly=friendly,
-            detailed=f"Edit completed: {friendly}\n\nDiff:\n{''.join(diff_lines)}"
+            detailed=f"Edit completed: {friendly}"
         )
 
     except Exception as e:
