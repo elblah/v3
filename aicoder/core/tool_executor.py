@@ -65,6 +65,9 @@ class ToolExecutor:
             result = self._handle_preview_display(tool_def, arguments, tool_call.get("id", ""))
             if result is False:
                 return None  # Preview was rejected without message
+            elif isinstance(result, dict):
+                # Safety violation or error - return directly to AI
+                return result
 
         # Show formatted arguments if no preview
         elif tool_def and tool_def.get("formatArguments"):
