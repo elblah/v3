@@ -82,8 +82,9 @@ class ToolManager:
 
         except Exception as error:
             return ToolResult(
-                tool_call_id=tool_id,
-                content=f"Error executing {name}: {str(error)}",
+                tool=name,
+                friendly=f"✗ Error executing {name}: {str(error)}",
+                detailed=f"Tool execution failed: {str(error)}",
                 success=False,
             )
 
@@ -146,10 +147,10 @@ class ToolManager:
         ai_result = self._check_size(ai_result, tool_def, tool_name)
 
         return ToolResult(
-            tool_call_id=tool_call_id,
-            content=ai_result,
-            success=True,
+            tool=tool_name,
             friendly=friendly_result,
+            detailed=ai_result,
+            success=True,
         )
 
     def _check_size(

@@ -50,13 +50,14 @@ class ToolExecutionArgs:
 
 @dataclass
 class ToolPreview:
-    content: str
-    can_approve: bool
+    tool: str          # Tool name (e.g., 'write_file', 'edit_file')
+    content: str       # Content to display in preview box
+    can_approve: bool  # If False, show message and stop (no approval)
 
 
 @dataclass
 class ToolResult:
-    tool_call_id: str
+    tool: str          # Tool name (e.g., 'write_file', 'edit_file')
     friendly: str      # Always shown to users
     detailed: str      # Always sent to AI, shown to users in detail mode
     success: bool = True

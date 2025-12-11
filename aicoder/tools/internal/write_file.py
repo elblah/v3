@@ -89,7 +89,7 @@ def execute(args: Dict[str, Any]) -> ToolResult:
             detailed = "\n".join(detailed_parts)
 
             return ToolResult(
-                tool_call_id="",  # Will be set by executor
+                tool="write_file",
                 friendly=friendly,
                 detailed=detailed
             )
@@ -104,7 +104,7 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
     except Exception as e:
         return ToolResult(
-            tool_call_id="",
+            tool="write_file",
             friendly=f"❌ Error writing {get_relative_path(path)}: {str(e)}",
             detailed=(
                 f"Path: {path}\n"

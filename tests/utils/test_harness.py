@@ -63,31 +63,25 @@ class TestHarness:
         if working_dir is None:
             working_dir = self.temp_dir
         
-        # Change to working directory temporarily
-        original_cwd = os.getcwd()
+        # Store original directory and change to working directory
+        self.original_cwd = os.getcwd()
+        os.chdir(working_dir)
         
-        try:
-            os.chdir(working_dir)
-            
-            # Enable YOLO mode for testing (auto-approves tools)
-            os.environ['YOLO_MODE'] = '1'
-            
-            # Import and initialize AI Coder
-            from aicoder.core.aicoder import AICoder
-            self.aicoder = AICoder()
-            
-            # Initialize plugins and other components
-            self.aicoder.initialize_plugins()
-            
-            # Setup message injector
-            self.message_injector = MessageInjector(self.aicoder)
-            
-            # Setup input monkey patching
-            self._setup_input_mock()
-            
-        finally:
-            # Restore original directory
-            os.chdir(original_cwd)
+        # Enable YOLO mode for testing (auto-approves tools)
+        os.environ['YOLO_MODE'] = '1'
+        
+        # Import and initialize AI Coder
+        from aicoder.core.aicoder import AICoder
+        self.aicoder = AICoder()
+        
+        # Initialize plugins and other components
+        self.aicoder.initialize_plugins()
+        
+        # Setup message injector
+        self.message_injector = MessageInjector(self.aicoder)
+        
+        # Setup input monkey patching
+        self._setup_input_mock()
     
     def reset_between_tests(self) -> None:
         """Reset all state between test runs."""
@@ -195,15 +189,16 @@ class TestHarness:
             "correct_order": True
         }
         
-        # Check correct order: tool header, then path, then warning
+        # Check correct order: tool header, then preview, then path, then warning
         tool_pos = output_text.find(f"[*] Tool: {tool_name}")
+        preview_pos = output_text.find("[PREVIEW]")
         path_pos = output_text.find(f"Path: {file_path}")
         warn_pos = output_text.find("[!] Warning: The file must be read before editing.")
         
-        if -1 in [tool_pos, path_pos, warn_pos]:
+        if -1 in [tool_pos, preview_pos, path_pos, warn_pos]:
             results["correct_order"] = False
         else:
-            results["correct_order"] = (tool_pos < path_pos < warn_pos)
+            results["correct_order"] = (tool_pos < preview_pos < path_pos < warn_pos)
         
         return results
     
@@ -243,6 +238,10 @@ class TestHarness:
         self.print_capture.reset()
         self.aicoder = None
         self.message_injector = None
+        
+        # Restore original directory
+        if hasattr(self, 'original_cwd'):
+            os.chdir(self.original_cwd)
         
         # Restore original input function
         if self.original_input:
@@ -308,7 +307,8 @@ class TestPatterns:
         Returns:
             Test results dictionary
         """
-        # Create test file
+        # Create test file (get full path first)
+        full_file_path = harness.get_test_file_path(file_path)
         harness.create_test_file(file_path, "existing content")
         
         # Create tool call for writing without reading
@@ -348,7 +348,8 @@ class TestPatterns:
         
         return {
             "tool_name": tool_name,
-            "file_path": file_path,
+            "file_path": full_file_path,  # Full path for test verification
+            "file_name": file_path,  # Just filename for format checking
             "output_lines": output_lines,
             "tool_results": tool_results,
             "format_results": format_results,
