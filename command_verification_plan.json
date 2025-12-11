@@ -1,0 +1,169 @@
+{
+  "verification_plan": {
+    "total_commands": 17,
+    "completed": 0,
+    "failed": 0,
+    "commands": [
+      {
+        "name": "HelpCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/help.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/help.py",
+        "status": "fixed",
+        "issues": [
+          "Fixed missing fallback checks for command methods",
+          "Fixed incorrect slash handling - removed extra slash from cmd_name",
+          "Matched exact TS padding and formatting logic"
+        ],
+        "parity": true
+      },
+      {
+        "name": "QuitCommand", 
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/quit.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/quit.py",
+        "status": "verified",
+        "issues": [],
+        "parity": true
+      },
+      {
+        "name": "ClearCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/clear.ts", 
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/clear.py",
+        "status": "verified",
+        "issues": [
+          "Cross-platform difference acceptable: uses os.system instead of console.clear"
+        ],
+        "parity": true
+      },
+      {
+        "name": "StatsCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/stats.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/stats.py", 
+        "status": "verified",
+        "issues": [],
+        "parity": true
+      },
+      {
+        "name": "SaveCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/save.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/save.py",
+        "status": "fixed", 
+        "issues": [
+          "Fixed to use JsonUtils.writeFile like TypeScript",
+          "Proper sync context implementation", 
+          "Exact TS logic implementation"
+        ],
+        "parity": true
+      },
+      {
+        "name": "LoadCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/load.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/load.py",
+        "status": "fixed",
+        "issues": [
+          "Fixed missing JsonUtils.readFile usage - was using manual json.load",
+          "Fixed missing FileUtils.file_exists - was using os.path.exists", 
+          "Fixed missing execute method",
+          "Fixed dictionary to Message object conversion - root cause of reported error",
+          "Added proper MessageRole and MessageToolCall conversion from JSON"
+        ],
+        "parity": true
+      },
+      {
+        "name": "CompactCommand", 
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/compact.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/compact.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "SandboxCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/sandbox.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/sandbox.py", 
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "CouncilCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/council.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/council.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "EditCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/edit.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/edit.py",
+        "status": "fixed",
+        "issues": [],
+        "parity": true
+      },
+      {
+        "name": "ModelCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/model.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/model.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "ModelBackCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/model.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/model.py", 
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "RetryCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/retry.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/retry.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "MemoryCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/memory.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/memory.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "SnippetsCommand", 
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/snippets.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/snippets.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "YoloCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/yolo.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/yolo.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      },
+      {
+        "name": "DetailCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/detail.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/detail.py",
+        "status": "fixed", 
+        "issues": [],
+        "parity": true
+      },
+      {
+        "name": "ResetCommand",
+        "ts_file": "/mnt/cacho/storage/github/ana/src/core/commands/reset.ts",
+        "py_file": "/home/blah/poc/aicoder/v3/aicoder/core/commands/reset.py",
+        "status": "pending",
+        "issues": [],
+        "parity": false
+      }
+    ]
+  }
+}
