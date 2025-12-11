@@ -70,6 +70,7 @@ Thumbs.db
 
 # Session files
 session.json
+session*.json
 
 # History files
 .aicoder/history
