@@ -22,12 +22,6 @@ def _check_sandbox(path: str) -> bool:
     if ".." in path:
         return False
 
-    # Allow absolute paths only if they're in current directory
-    if path.startswith("/"):
-        cwd = os.getcwd()
-        if not path.startswith(cwd):
-            return False
-
     return True
 
 
