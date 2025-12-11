@@ -117,6 +117,9 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
         # Write the new content
         write_file(path, new_content)
+        
+        # Mark file as read since user just modified it
+        FileAccessTracker.record_read(path)
 
         # Prepare friendly message matching TypeScript exactly
         if new_string is None or new_string == "":
