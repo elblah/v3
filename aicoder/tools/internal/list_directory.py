@@ -166,7 +166,7 @@ def _list_recursive(path: str, max_depth: int, show_hidden: bool) -> list:
     return result
 
 
-def _check_sandbox(path: str) -> bool:
+def _check_sandbox(path: str, print_message: bool = True) -> bool:
     """Check if path is within allowed directory"""
     if Config.sandbox_disabled():
         return True
@@ -180,7 +180,8 @@ def _check_sandbox(path: str) -> bool:
     
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        print(f'[x] Sandbox: list_directory trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        if print_message:
+            print(f'[x] Sandbox: list_directory trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True
