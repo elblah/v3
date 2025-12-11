@@ -1,0 +1,7 @@
+Line 1: Normal text
+Line 2: With tabs	and spaces
+Line 3: Special chars: !@#$%^&*()
+Line 4: Unicode: ñáéíóú 中文
+Line 5: Escapes: \n \t \r
+Line 6: Quotes: "single" and 'double'
+Line 7: Empty line above this
