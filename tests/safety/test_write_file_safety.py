@@ -49,12 +49,11 @@ def test_write_file_safety_violation():
         print(f"Test passed: {results['test_passed']}")
         
         # Verify file was not created/modified
-        file_path = harness.get_test_file_path(test_file)
-        file_exists = os.path.exists(file_path)
+        file_exists = os.path.exists(results['file_path'])
         print(f"File exists after test: {file_exists}")
         
         if file_exists:
-            with open(file_path, 'r') as f:
+            with open(results['file_path'], 'r') as f:
                 content = f.read()
             print(f"File content: {repr(content)}")
         
@@ -75,7 +74,7 @@ def test_write_file_new_file_no_warning():
         harness.setup_aicoder()
         
         # Use a file that doesn't exist
-        new_file = "new_file.txt"
+        new_file = "truly_new_file.txt"
         file_path = harness.get_test_file_path(new_file)
         
         # Ensure file doesn't exist
@@ -106,13 +105,17 @@ def test_write_file_new_file_no_warning():
         print(f"Errors: {errors}")
         
         # Verify file was created
-        file_exists = os.path.exists(file_path)
+        full_path = harness.get_test_file_path(new_file)
+        file_exists = os.path.exists(full_path)
+        print(f"Checking file at: {full_path}")
         print(f"File exists after test: {file_exists}")
+        print(f"Test directory: {harness.temp_dir}")
+        print(f"Files in test directory: {os.listdir(harness.temp_dir)}")
         
         if file_exists:
-            with open(file_path, 'r') as f:
+            with open(full_path, 'r') as f:
                 content = f.read()
-            print(f"File content: {repr(content)}")
+            print(f"Final file content: {repr(content)}")
         
         return {
             "violation_count": violation_count,
