@@ -8,8 +8,8 @@ from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass
 
 from aicoder.core.stats import Stats
-from aicoder.core.tool_formatter import ToolFormatter, ToolOutput
-from aicoder.core.message_history import ToolResult
+from aicoder.core.tool_formatter import ToolFormatter
+from aicoder.type_defs.tool_types import ToolResult
 from aicoder.tools.internal.read_file import TOOL_DEFINITION as READ_FILE_DEF
 from aicoder.tools.internal.write_file import TOOL_DEFINITION as WRITE_FILE_DEF
 from aicoder.tools.internal.edit_file import TOOL_DEFINITION as EDIT_FILE_DEF
@@ -19,17 +19,7 @@ from aicoder.tools.internal.run_shell_command import (
 from aicoder.tools.internal.grep import TOOL_DEFINITION as GREP_DEF
 from aicoder.tools.internal.list_directory import TOOL_DEFINITION as LIST_DIRECTORY_DEF
 from aicoder.type_defs.api_types import ToolCall
-from aicoder.type_defs.tool_types import ToolExecutionArgs
-
-
-@dataclass
-class ToolDefinition:
-    type: str  # 'internal' | 'plugin'
-    auto_approved: bool
-    approval_excludes_arguments: bool
-    description: str
-    parameters: Dict[str, Any]
-    execute: callable
+from aicoder.type_defs.tool_types import ToolExecutionArgs, ToolDefinition, ToolResult
 
 
 class ToolManager:
@@ -122,7 +112,7 @@ class ToolManager:
 
     def _execute_tool(
         self, name: str, args_obj: Dict[str, Any], tool_def: ToolDefinition
-    ) -> ToolOutput:
+    ) -> ToolResult:
         """Execute the tool"""
         try:
             execute_func = tool_def.get("execute")
@@ -142,7 +132,7 @@ class ToolManager:
 
     def _format_result(
         self,
-        tool_output: ToolOutput,
+        tool_output: ToolResult,
         tool_def: ToolDefinition,
         tool_name: str,
         tool_call_id: str,

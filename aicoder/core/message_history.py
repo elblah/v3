@@ -14,19 +14,8 @@ from aicoder.type_defs.message_types import (
 )
 
 
-# Define ToolResult here to avoid circular imports
-class ToolResult:
-    def __init__(
-        self,
-        tool_call_id: str,
-        content: str,
-        success: bool = True,
-        friendly: Optional[str] = None,
-    ):
-        self.tool_call_id = tool_call_id
-        self.content = content
-        self.success = success
-        self.friendly = friendly
+# Import ToolResult from types package
+from aicoder.type_defs.tool_types import ToolResult
 
 
 from aicoder.core.stats import Stats

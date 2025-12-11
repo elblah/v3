@@ -8,36 +8,7 @@ from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass
 
 from aicoder.core.config import Config
-
-
-@dataclass
-class ToolOutput:
-    tool: str
-    friendly: Optional[str] = None  # Human-friendly message when detail mode is OFF
-    important: Optional[Dict[str, Any]] = None  # Structured data when detail mode is ON
-    detailed: Optional[Dict[str, Any]] = None
-    results: Optional[Dict[str, Any]] = None
-    approval_shown: Optional[bool] = (
-        None  # Flag to indicate approval details were already displayed
-    )
-
-
-@dataclass
-class ToolResult:
-    tool_call_id: str
-    content: str
-    success: bool = True
-    friendly: Optional[str] = None
-
-
-@dataclass
-class ToolPreview:
-    tool: str
-    summary: str  # Brief description of the change
-    content: str  # The preview content (whatever the tool generates)
-    warning: Optional[str] = None  # Any warnings about the operation
-    can_approve: bool = False  # Whether this operation can be auto-approved
-    is_diff: bool = False  # Whether the content is a diff that needs coloring
+from aicoder.type_defs.tool_types import ToolPreview, ToolResult
 
 
 class ToolFormatter:
@@ -72,67 +43,35 @@ class ToolFormatter:
         return "\n".join(colored_lines)
 
     @staticmethod
-    def format_for_ai(output: ToolOutput) -> str:
-        """Format tool output for AI consumption
-        Always returns the full formatted output regardless of detail mode"""
-        lines = []
-        indent = "  "  # 2 spaces for cleaner alignment
-
-        # Always show important info (full output for AI)
-        if output.important:
-            for key, value in output.important.items():
-                label = ToolFormatter._format_label(key)
-                lines.append(
-                    f"{indent}{label}{ToolFormatter._format_value_for_ai(value)}"
-                )
-
-        # Always show detailed info (full output for AI)
-        if output.detailed:
-            for key, value in output.detailed.items():
-                label = ToolFormatter._format_label(key)
-                lines.append(
-                    f"{indent}{label}{ToolFormatter._format_value_for_ai(value)}"
-                )
-
-        # Always show results (except for showWhenDetailOff flag)
-        if output.results:
-            for key, value in output.results.items():
-                if key != "showWhenDetailOff":
-                    label = ToolFormatter._format_label(key)
-                    lines.append(
-                        f"{indent}{label}{ToolFormatter._format_value_for_ai(value)}"
-                    )
-
-        return "\n".join(lines)
+    def format_for_ai(result: ToolResult) -> str:
+        """Format tool result for AI consumption - always returns detailed version"""
+        return result.detailed
 
     @staticmethod
-    def format_for_display(output: ToolOutput) -> Optional[str]:
-        """Format tool output for local display (always show friendly when available)"""
-        return output.friendly
+    def format_for_display(result: ToolResult) -> Optional[str]:
+        """Format tool result for local display - always show friendly when available"""
+        return result.friendly
 
     @staticmethod
-    def format_preview(preview) -> str:
-        """Format preview for approval matching TypeScript exactly"""
+    def format_preview(preview, file_path=None) -> str:
+        """Format preview for approval - simplified design"""
         from aicoder.utils.log import LogUtils, LogOptions
 
         lines = []
-
-        lines.append(
-            f"{Config.colors['cyan']}[PREVIEW] {preview.summary}{Config.colors['reset']}"
-        )
-
-        if preview.warning:
-            lines.append(
-                f"{Config.colors['yellow']}[!] Warning: {preview.warning}{Config.colors['reset']}"
-            )
-
-        lines.append("")
-
-        # Colorize diff content if explicitly marked as diff
-        if preview.is_diff:
-            lines.append(ToolFormatter.colorize_diff(preview.content))
+        
+        # Show file path if available
+        if file_path:
+            preview_title = file_path
         else:
-            lines.append(preview.content)
+            preview_title = "Preview"
+            
+        lines.append(
+            f"{Config.colors['cyan']}[PREVIEW] {preview_title}{Config.colors['reset']}"
+        )
+        lines.append("")
+        
+        # Always show content - tools are responsible for formatting
+        lines.append(preview.content)
 
         return "\n".join(lines)
 

@@ -5,7 +5,7 @@ Following TypeScript structure exactly
 
 import os
 from typing import Dict, Any
-from aicoder.core.tool_formatter import ToolOutput, ToolPreview
+from aicoder.type_defs.tool_types import ToolResult, ToolPreview
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file as file_read
@@ -32,7 +32,7 @@ def _check_sandbox(path: str) -> bool:
     return True
 
 
-def execute(args: Dict[str, Any]) -> ToolOutput:
+def execute(args: Dict[str, Any]) -> ToolResult:
     """Read file with pagination"""
     path = args.get("path")
     offset = args.get("offset", 0)
@@ -57,16 +57,10 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
         # Apply offset and limit
         if offset >= len(lines):
-            return ToolOutput(
+            return ToolResult(
                 tool="read_file",
                 friendly=f"File {path} has {len(lines)} lines, but offset {offset} is beyond end of file",
-                important={
-                    "path": path,
-                    "total_lines": len(lines),
-                    "offset": offset,
-                    "lines_found": 0,
-                },
-                detailed={"error": "Offset beyond file end"},
+                detailed=f"Cannot read file '{path}'. Requested offset {offset} but file only has {len(lines)} lines."
             )
 
         end_index = min(offset + limit, len(lines))
@@ -96,28 +90,17 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
         if offset > 0 or end_index < len(lines):
             friendly_msg += f" (showing lines {offset + 1}-{end_index} of {len(lines)})"
 
-        return ToolOutput(
+        return ToolResult(
             tool="read_file",
             friendly=friendly_msg,
-            important={
-                "path": path,
-                "total_lines": len(lines),
-                "lines_shown": len(selected_lines),
-                "offset": offset,
-                "limit": limit,
-            },
-            detailed={
-                "content": selected_content,
-                "line_count": len(selected_lines),
-                "has_more": end_index < len(lines),
-            },
+            detailed=f"File: {path}\nTotal lines: {len(lines)}\nShowing: lines {offset + 1}-{end_index}\n\nContent:\n{selected_content}"
         )
 
     except Exception as e:
-        return ToolOutput(
+        return ToolResult(
             tool="read_file",
             friendly=f"❌ Error reading {path}: {str(e)}",
-            important={"error": str(e)},
+            detailed=f"Error reading file '{path}': {str(e)}"
         )
 
 

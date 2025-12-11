@@ -6,7 +6,7 @@ Following TypeScript structure exactly
 import os
 import subprocess
 from typing import Dict, Any, Optional
-from aicoder.core.tool_formatter import ToolOutput
+from aicoder.type_defs.tool_types import ToolResult
 from aicoder.core.config import Config
 
 
@@ -35,7 +35,7 @@ def formatArguments(args: Dict[str, Any]) -> str:
     return "\n  ".join(parts)
 
 
-def execute(args: Dict[str, Any]) -> ToolOutput:
+def execute(args: Dict[str, Any]) -> ToolResult:
     """Search for text in files using ripgrep or grep"""
     text = args.get("text")
     path = args.get("path", ".")
@@ -48,25 +48,18 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
     try:
         # Check sandbox restrictions
         if not _check_sandbox(path):
-            return ToolOutput(
+            return ToolResult(
                 tool="grep",
                 friendly=f'ERROR: Failed to search: path "{path}" outside current directory not allowed',
-                important={"text": text},
-                results={
-                    "error": f'path "{path}" outside current directory not allowed',
-                    "showWhenDetailOff": True,
-                },
+                detailed=f'Cannot search outside current directory. Path "{path}" is not allowed.'
             )
 
         # Validate search text
         if not text.strip():
-            return ToolOutput(
+            return ToolResult(
                 tool="grep",
-                important={"text": text},
-                results={
-                    "error": "Search text cannot be empty.",
-                    "showWhenDetailOff": True,
-                },
+                friendly=f'ERROR: Search text cannot be empty.',
+                detailed=f'Search text "{text}" is invalid - it cannot be empty or whitespace only.'
             )
 
         # Build command using ripgrep (matching TypeScript exactly)
@@ -96,31 +89,23 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
         else:
             friendly = f"🔍 Found {len(matches)} matches for '{text}'"
 
-        return ToolOutput(
+        return ToolResult(
             tool="grep",
             friendly=friendly,
-            important={
-                "text": text,
-                "path": path,
-                "matches_found": len(matches),
-                "max_results": max_results,
-                "context": context,
-                "tool_used": "ripgrep",
-            },
-            results={"matches": matches, "command": " ".join(cmd)},
+            detailed=f"Search completed: {friendly}\n\nCommand: {' '.join(cmd)}\n\nMatches:\n{chr(10).join(matches)}"
         )
 
     except subprocess.TimeoutExpired:
-        return ToolOutput(
+        return ToolResult(
             tool="grep",
             friendly=f"⏰ Search timed out",
-            important={"text": text, "error": "timeout"},
+            detailed=f"Search for '{text}' timed out. Command: {' '.join(cmd)}"
         )
     except Exception as e:
-        return ToolOutput(
+        return ToolResult(
             tool="grep",
             friendly=f"❌ Search error: {str(e)}",
-            important={"text": text, "error": str(e)},
+            detailed=f"Search for '{text}' failed with error: {str(e)}"
         )
 
 
