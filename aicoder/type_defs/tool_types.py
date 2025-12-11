@@ -17,15 +17,12 @@ from typing import Protocol
 
 @dataclass
 class ToolDefinition:
-    name: str
+    type: str  # 'internal' | 'plugin'
+    auto_approved: bool
+    approval_excludes_arguments: bool
     description: str
-    parameters: "ToolParameters"
-    execute: Callable[["ToolExecutionArgs"], Awaitable["ToolOutput"]]
-    generate_preview: Optional[Callable[[dict], Awaitable[Optional["ToolPreview"]]]] = (
-        None
-    )
-    auto_approved: bool = False
-    hide_results: bool = False
+    parameters: Dict[str, Any]
+    execute: callable
 
 
 @dataclass
@@ -48,16 +45,21 @@ class ToolExecutionArgs:
             setattr(self, key, value)
 
 
-@dataclass
-class ToolOutput:
-    content: str
-    friendly: Optional[str] = None
+
 
 
 @dataclass
 class ToolPreview:
     content: str
     can_approve: bool
+
+
+@dataclass
+class ToolResult:
+    tool_call_id: str
+    friendly: str      # Always shown to users
+    detailed: str      # Always sent to AI, shown to users in detail mode
+    success: bool = True
 
 
 # CLI & Command related types

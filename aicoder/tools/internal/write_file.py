@@ -4,16 +4,17 @@ Following TypeScript structure exactly
 """
 
 import os
+import sys
 import tempfile
 from typing import Dict, Any
-from aicoder.core.tool_formatter import ToolOutput, ToolPreview
+from aicoder.type_defs.tool_types import ToolResult, ToolPreview, ToolResult
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, write_file as file_write
-from aicoder.utils.diff_utils import generate_unified_diff_with_status
+from aicoder.utils.file_utils import file_exists, write_file as file_write, get_relative_path
+from aicoder.utils.diff_utils import generate_unified_diff_with_status, colorize_diff
 
 
-def execute(args: Dict[str, Any]) -> ToolOutput:
+def execute(args: Dict[str, Any]) -> ToolResult:
     """Write content to file"""
     path = args.get("path")
     content = args.get("content", "")
@@ -24,17 +25,7 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
     if not Config.sandbox_disabled() and ".." in path:
         raise Exception("Directory traversal not allowed")
 
-    # Safety check: File must have been read first (tracked by FileAccessTracker)
-    if file_exists(path) and not FileAccessTracker.was_file_read(path):
-        return ToolOutput(
-            tool="write_file",
-            friendly=f"WARNING: Must read file '{path}' first before writing",
-            important={"path": path},
-            results={
-                "error": f"Must read file first. Use read_file('{path}') before writing to avoid accidental overwrites.",
-                "showWhenDetailOff": True,
-            },
-        )
+    
 
     try:
         # Check if file exists
@@ -76,20 +67,31 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
             else:
                 friendly = f"✓ Created '{path}' ({len(content.splitlines())} lines, {len(content)} bytes)"
 
-            return ToolOutput(
-                tool="write_file",
+            # Build friendly message
+            if exists:
+                friendly = f"✓ Updated '{get_relative_path(path)}'"
+            else:
+                friendly = (
+                    f"✓ Created '{get_relative_path(path)}' "
+                    f"({len(content.splitlines())} lines, {len(content)} bytes)"
+                )
+
+            # Build detailed message for AI
+            detailed_parts = [
+                f"Path: {path}",
+                f"Action: {'Updated' if exists else 'Created'}",
+                f"Size: {len(content)} bytes",
+                f"Lines: {len(content.splitlines()) if content else 0}"
+            ]
+            if diff_content:
+                detailed_parts.append(f"Diff:\n{diff_content}")
+            
+            detailed = "\n".join(detailed_parts)
+
+            return ToolResult(
+                tool_call_id="",  # Will be set by executor
                 friendly=friendly,
-                important={
-                    "path": path,
-                    "exists": exists,
-                    "size": len(content),
-                    "lines": len(content.splitlines()) if content else 0,
-                },
-                detailed={
-                    "content_length": len(content),
-                    "lines": len(content.splitlines()) if content else 0,
-                    "diff": diff_content,
-                },
+                detailed=detailed
             )
 
         finally:
@@ -101,10 +103,13 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
                 pass
 
     except Exception as e:
-        return ToolOutput(
-            tool="write_file",
-            friendly=f"❌ Error writing {path}: {str(e)}",
-            important={"path": path, "error": str(e)},
+        return ToolResult(
+            tool_call_id="",
+            friendly=f"❌ Error writing {get_relative_path(path)}: {str(e)}",
+            detailed=(
+                f"Path: {path}\n"
+                f"Error: {str(e)}"
+            )
         )
 
 
@@ -118,14 +123,19 @@ def generate_preview(args):
         exists = file_exists(path)
         
         # Safety check for existing files
-        can_approve = True
-        warning = None
-        safety_violation_content = None
-        
         if exists and not FileAccessTracker.was_file_read(path):
-            can_approve = False
-            warning = "File exists but was not read first - potential overwrite"
-            safety_violation_content = "SAFETY VIOLATION: Must read file first before editing to prevent accidental overwrites."
+            relative_path = get_relative_path(path)
+            # Tool formats its own message (no colors - system handles display)
+            safety_message = (
+                f"Path: {relative_path}\n"
+                "[!] Warning: The file must be read before editing."
+            )
+            
+            return ToolPreview(
+                tool="write_file",
+                content=safety_message,
+                can_approve=False
+            )
 
         # Create temporary files for diff
         temp_old = tempfile.NamedTemporaryFile(
@@ -153,14 +163,26 @@ def generate_preview(args):
                 temp_old.name, temp_new.name
             )
             diff_content = diff_result.get("diff", "")
+            
+            # Colorize diff in the tool (not system)
+            colorized_diff = colorize_diff(diff_content) if diff_content else ""
 
+            # Normal preview - format content based on file status
+            if exists:
+                preview_content = (
+                    f"Existing file will be updated:\n\n"
+                    f"{colorized_diff}"
+                )
+            else:
+                preview_content = (
+                    f"New file will be created:\n\n"
+                    f"{content}"
+                )
+                
             return ToolPreview(
                 tool="write_file",
-                summary=f"{'Modify existing file' if exists else 'Create new file'}: {path}",
-                content=safety_violation_content or diff_content,
-                can_approve=can_approve,
-                is_diff=not safety_violation_content,
-                warning=warning,
+                content=preview_content,
+                can_approve=True
             )
 
         finally:
@@ -174,10 +196,8 @@ def generate_preview(args):
     except Exception as e:
         return ToolPreview(
             tool="write_file",
-            summary=f"Error: {str(e)}",
-            content="",
-            can_approve=False,
-            warning=str(e),
+            content=f"Error: {str(e)}",
+            can_approve=False
         )
 
 

@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
-from aicoder.type_defs.tool_types import ToolExecutionArgs, ToolOutput
+from aicoder.type_defs.tool_types import ToolExecutionArgs, ToolResult
 from aicoder.type_defs.system_types import PopupMenuItem
 
 
@@ -124,7 +124,7 @@ class Plugin(ABC):
         """Hook before tool call"""
         pass
 
-    def after_tool_call(self, tool_name: str, result: ToolOutput) -> ToolOutputResult:
+    def after_tool_call(self, tool_name: str, result: ToolResult) -> ToolOutputResult:
         """Hook after tool call"""
         pass
 
@@ -320,8 +320,8 @@ class PluginSystem:
         return None
 
     def after_tool_call(
-        self, tool_name: str, result: ToolOutput
-    ) -> Optional[ToolOutput]:
+        self, tool_name: str, result: ToolResult
+    ) -> Optional[ToolResult]:
         """Hook after tool call"""
         modified_result = result
 

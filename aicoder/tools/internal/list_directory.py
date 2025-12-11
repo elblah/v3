@@ -5,7 +5,7 @@ Following TypeScript structure exactly
 
 import os
 from typing import Dict, Any, Optional
-from aicoder.core.tool_formatter import ToolOutput
+from aicoder.type_defs.tool_types import ToolResult
 from aicoder.core.config import Config
 
 
@@ -24,7 +24,7 @@ def formatArguments(args: Dict[str, Any]) -> str:
     return ""
 
 
-def execute(args: Dict[str, Any]) -> ToolOutput:
+def execute(args: Dict[str, Any]) -> ToolResult:
     """List directory contents"""
     path = args.get("path", ".")
     MAX_FILES = 100
@@ -37,26 +37,18 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
         # Check sandbox restrictions
         if not _check_sandbox(resolved_path):
-            return ToolOutput(
+            return ToolResult(
                 tool="list_directory",
                 friendly=f"Access denied: Path '{path}' is outside current directory",
-                important={"path": path},
-                results={
-                    "error": f"Path '{path}' resolves outside current directory. Access denied.",
-                    "showWhenDetailOff": True,
-                },
+                detailed=f"Path '{path}' resolves to '{resolved_path}' which is outside current directory. Access denied."
             )
 
         # Check if path exists and is a directory
         if not os.path.exists(resolved_path) or not os.path.isdir(resolved_path):
-            return ToolOutput(
+            return ToolResult(
                 tool="list_directory",
                 friendly=f"Directory not found: '{resolved_path}'",
-                important={"path": path},
-                results={
-                    "error": f"Directory not found at '{resolved_path}'.",
-                    "showWhenDetailOff": True,
-                },
+                detailed=f"Directory not found at '{resolved_path}'. Path does not exist or is not a directory."
             )
 
         # Use find to list files - much faster and simpler (matching TypeScript)
@@ -82,37 +74,29 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
         # Create output matching TypeScript structure
         if limited_files == []:
-            return ToolOutput(
+            return ToolResult(
                 tool="list_directory",
                 friendly=f"Directory is empty: '{resolved_path}'",
-                important={"path": path},
-                results={
-                    "message": f"Directory is empty: '{resolved_path}'",
-                    "showWhenDetailOff": True,
-                },
+                detailed=f"Directory '{resolved_path}' exists but contains no files or subdirectories."
             )
         elif actual_count > MAX_FILES:
-            return ToolOutput(
+            return ToolResult(
                 tool="list_directory",
                 friendly=f"Found {actual_count}+ files (limited to {MAX_FILES}) in '{resolved_path}'",
-                important={"path": path},
-                detailed={"actual_count": actual_count, "limit": MAX_FILES},
-                results={"files": "\n".join(limited_files), "showWhenDetailOff": True},
+                detailed=f"Directory contains {actual_count} items total. Showing first {MAX_FILES}:\n\n{chr(10).join(limited_files)}"
             )
         else:
-            return ToolOutput(
+            return ToolResult(
                 tool="list_directory",
                 friendly=f"✓ Found {actual_count} files in '{resolved_path}'",
-                important={"path": path},
-                detailed={"file_count": actual_count, "resolved_path": resolved_path},
-                results={"files": "\n".join(limited_files), "showWhenDetailOff": True},
+                detailed=f"Directory '{resolved_path}' contents ({actual_count} items):\n\n{chr(10).join(limited_files)}"
             )
 
     except Exception as e:
-        return ToolOutput(
+        return ToolResult(
             tool="list_directory",
             friendly=f"❌ Error listing directory: {str(e)}",
-            important={"path": path, "error": str(e)},
+            detailed=f"Error listing directory '{path}': {str(e)}"
         )
 
 

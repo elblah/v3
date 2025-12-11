@@ -6,7 +6,7 @@ Following TypeScript structure exactly
 import os
 import tempfile
 from typing import Dict, Any, List, Tuple
-from aicoder.core.tool_formatter import ToolOutput, ToolPreview
+from aicoder.type_defs.tool_types import ToolResult, ToolPreview
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file, write_file
@@ -48,7 +48,7 @@ def _find_occurrences(content: str, old_string: str) -> List[int]:
     return occurrences
 
 
-def execute(args: Dict[str, Any]) -> ToolOutput:
+def execute(args: Dict[str, Any]) -> ToolResult:
     """Edit file by replacing text"""
     path = args.get("path")
     old_string = args.get("old_string")
@@ -65,29 +65,20 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
 
     # Safety check: File must have been read first (tracked by FileAccessTracker)
     if not FileAccessTracker.was_file_read(path):
-        return ToolOutput(
+        return ToolResult(
             tool="edit_file",
             friendly=f"WARNING: Must read file '{path}' first before editing",
-            important={"path": path},
-            results={
-                "error": f"Must read file first. Use read_file('{path}') before editing.",
-                "showWhenDetailOff": True,
-            },
+            detailed=f"Must read file first. Use read_file('{path}') before editing."
         )
 
     try:
         content = read_file(path)
 
         if old_string not in content:
-            return ToolOutput(
+            return ToolResult(
                 tool="edit_file",
                 friendly=f"❌ Text not found in {path}: '{old_string[:50]}{'...' if len(old_string) > 50 else ''}'",
-                important={
-                    "path": path,
-                    "old_string": old_string,
-                    "action": "not_found",
-                },
-                detailed={"error": "Text not found"},
+                detailed=f"Text not found in {path}. Searched for: '{old_string[:100]}{'...' if len(old_string) > 100 else ''}'"
             )
 
         # Create temp files for diff preview
@@ -135,25 +126,17 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
                 f"✓ Updated '{path}' ({len(old_string)} → {len(new_string)} chars)"
             )
 
-        return ToolOutput(
+        return ToolResult(
             tool="edit_file",
             friendly=friendly,
-            important={
-                "path": path,
-                "action": "replaced" if new_string else "deleted",
-                "old_length": len(old_string),
-                "new_length": len(new_string) if new_string else 0,
-                "file_size_change": len(new_content) - len(content),
-                "occurrences": occurrences,
-            },
-            detailed={"diff": "".join(diff_lines), "occurrences": occurrences},
+            detailed=f"Edit completed: {friendly}\n\nDiff:\n{''.join(diff_lines)}"
         )
 
     except Exception as e:
-        return ToolOutput(
+        return ToolResult(
             tool="edit_file",
             friendly=f"❌ Error editing {path}: {str(e)}",
-            important={"path": path, "error": str(e)},
+            detailed=f"Error editing file '{path}': {str(e)}"
         )
 
 

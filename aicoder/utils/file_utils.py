@@ -17,6 +17,24 @@ def get_current_dir() -> str:
     return _current_dir
 
 
+def get_relative_path(path: str) -> str:
+    """Get relative path from current working directory"""
+    try:
+        # Use Path to get relative path
+        current = Path(_current_dir)
+        target = Path(path).resolve()
+        
+        # If target is within current directory, return relative path
+        try:
+            return str(target.relative_to(current))
+        except ValueError:
+            # If not within current directory, return absolute path
+            return str(target)
+    except Exception:
+        # Fallback to original path
+        return path
+
+
 def check_sandbox(path: str, context: str = "file operation") -> bool:
     """Check if a path is allowed by sandbox rules"""
     # Import here to avoid circular imports

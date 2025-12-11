@@ -5,11 +5,11 @@ Following TypeScript structure exactly
 
 import subprocess
 from typing import Dict, Any, Optional
-from aicoder.core.tool_formatter import ToolOutput
+from aicoder.type_defs.tool_types import ToolResult
 from aicoder.core.config import Config
 
 
-def execute(args: Dict[str, Any]) -> ToolOutput:
+def execute(args: Dict[str, Any]) -> ToolResult:
     """Execute shell command with timeout"""
     command = args.get("command")
     timeout = args.get("timeout", 30)
@@ -47,37 +47,23 @@ def execute(args: Dict[str, Any]) -> ToolOutput:
             else:
                 output = result.stderr
 
-        return ToolOutput(
+        return ToolResult(
             tool="run_shell_command",
             friendly=friendly,
-            important={
-                "command": command,
-                "exit_code": result.returncode,
-                "timeout": timeout,
-                "cwd": cwd or ".",
-            },
-            detailed={
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "combined_output": output,
-            },
+            detailed=f"Command: {command}\nExit code: {result.returncode}\nTimeout: {timeout}s\nWorking directory: {cwd or '.'}\n\nOutput:\n{output}"
         )
 
     except subprocess.TimeoutExpired:
-        return ToolOutput(
+        return ToolResult(
             tool="run_shell_command",
             friendly=f"✗ Command timed out after {timeout}s (exit code: 124)",
-            important={
-                "command": command,
-                "error": "timeout",
-                "timeout_seconds": timeout,
-            },
+            detailed=f"Command timed out after {timeout}s: {command}"
         )
     except Exception as e:
-        return ToolOutput(
+        return ToolResult(
             tool="run_shell_command",
             friendly=f"✗ Command failed: {str(e)}",
-            important={"command": command, "error": str(e)},
+            detailed=f"Command failed: {command}\nError: {str(e)}"
         )
 
 

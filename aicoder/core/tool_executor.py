@@ -23,6 +23,8 @@ class ToolExecutor:
         """Execute multiple tool calls with approval and display"""
         if not tool_calls:
             return
+        
+        
 
         try:
             tool_results = []
@@ -102,6 +104,9 @@ class ToolExecutor:
 
     def _should_show_preview(self, tool_def: Dict[str, Any], arguments: Dict[str, Any]) -> bool:
         """Check if preview should be shown"""
+        # Force True for testing write_file
+        if tool_def and tool_def.get("name") == "write_file":
+            return True
         return tool_def and tool_def.get("generatePreview")
 
     def _handle_preview_display(self, tool_def: Dict[str, Any], arguments: Dict[str, Any], tool_call_id: str) -> bool:
@@ -115,17 +120,19 @@ class ToolExecutor:
         if not preview_result:
             return True
 
-        # Check if approval is allowed (safety violations)
-        if hasattr(preview_result, "can_approve") and not preview_result.can_approve:
-            if hasattr(preview_result, "warning"):
-                LogUtils.print(f"[!] Warning: {preview_result.warning}", LogOptions(color=Config.colors["yellow"]))
-            LogUtils.print(preview_result.content, LogOptions(color=Config.colors["red"]))
+        # Display the preview content (tools format their own output)
+        # Extract file path from arguments for preview header
+        file_path = arguments.get('path')
+        formatted_preview = ToolFormatter.format_preview(preview_result, file_path)
+        LogUtils.print(formatted_preview)
+        
+        # If can't approve, stop execution
+        if not preview_result.can_approve:
             return False  # Reject tool execution
 
-        # Display regular preview
-        formatted_preview = ToolFormatter.format_preview(preview_result)
-        LogUtils.print(formatted_preview)
         return True
+
+    
 
     def _get_tool_approval(self, tool_name: str) -> bool:
         """Get user approval for tool if needed"""
@@ -154,10 +161,10 @@ class ToolExecutor:
             tool_def = self.tool_manager.tools.get(tool_name)
             self.display_tool_result(result, tool_def)
 
-            # Return result for message history
+            # Return result for message history (AI always gets detailed version)
             return {
                 "tool_call_id": tool_call_id,
-                "content": result.content if hasattr(result, "content") else str(result),
+                "content": result.detailed,  # AI always receives detailed version
             }
         except Exception as e:
             LogUtils.error(f"✗ Error executing {tool_name}: {str(e)}")
@@ -167,18 +174,15 @@ class ToolExecutor:
             }
 
     def display_tool_result(self, result, tool_def: Dict[str, Any]) -> None:
-        """Display tool execution result using tool's own formatting"""
+        """Display tool execution result using the new ToolResult format"""
         if tool_def and tool_def.get("hide_results"):
             LogUtils.success("[*] Done")
         else:
             # Display based on detail mode
-            if (
-                not Config.detail_mode()
-                and hasattr(result, "friendly")
-                and result.friendly
-            ):
+            if Config.detail_mode():
+                # Detail mode: show detailed first, then friendly
+                LogUtils.print(result.detailed)
                 LogUtils.print(result.friendly)
             else:
-                # In detail mode, show the full content
-                content_to_show = getattr(result, "content", str(result))
-                LogUtils.print(content_to_show)
+                # Non-detail mode: show only friendly
+                LogUtils.print(result.friendly)

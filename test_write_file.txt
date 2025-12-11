@@ -1,1 +1,1 @@
-test
+Testing write_file without reading first
