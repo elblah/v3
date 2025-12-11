@@ -18,6 +18,8 @@ from aicoder.core.plugin_system import plugin_system as global_plugin_system
 from aicoder.core.compaction_service import CompactionService
 from aicoder.core.council_service import CouncilService
 from aicoder.core.command_handler import CommandHandler
+from aicoder.core.tool_executor import ToolExecutor
+from aicoder.core.stream_processor import StreamProcessor
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.type_defs.message_types import AssistantMessage
 from aicoder.utils.stdin_utils import read_stdin_as_string
@@ -37,6 +39,8 @@ class AICoder:
         self.tool_manager = ToolManager(self.stats)
         self.streaming_client = StreamingClient(self.stats, self.tool_manager)
         self.context_bar = ContextBar()
+        self.tool_executor = ToolExecutor(self.tool_manager, self.message_history)
+        self.stream_processor = StreamProcessor(self.streaming_client)
         self.input_handler = InputHandler(
             self.context_bar, self.stats, self.message_history
         )
@@ -251,83 +255,20 @@ class AICoder:
         if Config.debug():
             LogUtils.debug(f"*** stream_response called with {len(messages)} messages")
 
-        full_response = ""
-        accumulated_tool_calls = {}
+        # Use StreamProcessor to handle the streaming
+        result = self.stream_processor.process_stream(
+            messages,
+            lambda: self.is_processing,  # is_processing_callback
+            self.stream_processor.accumulate_tool_call  # process_chunk_callback
+        )
 
-        try:
-            if Config.debug():
-                LogUtils.debug(f"Stream: {len(messages)} messages")
-
-            for chunk in self.streaming_client.stream_request(
-                messages, send_tools=True
-            ):
-                # Check if user interrupted
-                if not self.is_processing:
-                    print("\n[AI response interrupted]")
-                    return {
-                        "should_continue": False,
-                        "full_response": full_response,
-                        "accumulated_tool_calls": accumulated_tool_calls,
-                    }
-
-                # Update token stats if present
-                if hasattr(chunk, "usage") and chunk.usage:
-                    self.streaming_client.update_token_stats(chunk.usage)
-
-                # Process choice (TS gets first choice directly)
-                if not hasattr(chunk, "choices") or not chunk.choices:
-                    # Handle case where chunk doesn't have expected structure
-                    LogUtils.debug(
-                        f"Chunk missing choices: {getattr(chunk, '__dict__', chunk)}"
-                    )
-                    continue
-
-                choice = chunk.choices[0]
-
-                # Content (ignore reasoning_content unless model is reasoning-only)
-                if choice.delta:
-                    content = choice.delta.content
-                    if content:
-                        full_response += content
-                        colored_content = (
-                            self.streaming_client.process_with_colorization(content)
-                        )
-                        print(colored_content, end="", flush=True)
-
-                # Tool calls
-                if choice.delta and choice.delta.tool_calls:
-                    if Config.debug():
-                        LogUtils.debug(
-                            f"Tool calls: {len(choice.delta.tool_calls)} received"
-                        )
-                    for tool_call in choice.delta.tool_calls:
-                        if isinstance(tool_call, dict):
-                            self.accumulate_tool_call(tool_call, accumulated_tool_calls)
-                        else:
-                            LogUtils.error(
-                                f"Invalid tool call format: {type(tool_call)} - {tool_call}"
-                            )
-
-                # Finish reason
-                if choice.finish_reason == "tool_calls":
-                    pass
-
-        except Exception as e:
-            LogUtils.error(f"\n[Streaming error: {e}]")
+        # Handle error case by adding to message history
+        if result.get("error"):
             self.message_history.add_assistant_message(
-                AssistantMessage(content=f"[API Error: {str(e)}]")
+                AssistantMessage(content=f"[API Error: {result['error']}]")
             )
-            return {
-                "should_continue": False,
-                "full_response": "",
-                "accumulated_tool_calls": {},
-            }
 
-        return {
-            "should_continue": True,
-            "full_response": full_response,
-            "accumulated_tool_calls": accumulated_tool_calls,
-        }
+        return result
 
     def validate_and_process_tool_calls(
         self, full_response: str, accumulated_tool_calls: dict
@@ -366,7 +307,7 @@ class AICoder:
             )
         )
 
-        self.execute_tool_calls(valid_tool_calls)
+        self.tool_executor.execute_tool_calls(valid_tool_calls)
         return True
 
     def handle_post_processing(self, has_tool_calls: bool) -> None:
@@ -379,214 +320,11 @@ class AICoder:
         """Handle processing errors"""
         LogUtils.error(f"Processing error: {error}")
 
-    def accumulate_tool_call(
-        self, tool_call: dict, accumulated_tool_calls: dict
-    ) -> None:
-        """Accumulate tool call from stream - matches TS accumulateToolCall exactly"""
-        # Handle case where tool_call might not be a dict (unexpected API format)
-        if not isinstance(tool_call, dict):
-            LogUtils.error(f"Tool call is not a dict: {type(tool_call)} - {tool_call}")
-            return
+    
 
-        index = tool_call.get("index")
+    
 
-        if index in accumulated_tool_calls:
-            # Existing tool call - accumulate arguments
-            existing = accumulated_tool_calls[index]
-            if tool_call.get("function", {}).get("arguments"):
-                existing["function"]["arguments"] += tool_call["function"]["arguments"]
-            return
-
-        # New tool call
-        if not tool_call.get("function", {}).get("name"):
-            LogUtils.error("Invalid tool call: missing function name")
-            return
-
-        accumulated_tool_calls[index] = {
-            "id": tool_call.get("id", f"tool_call_{index}_{int(time.time())}"),
-            "type": tool_call.get("type", "function"),
-            "function": {
-                "name": tool_call["function"]["name"],
-                "arguments": tool_call.get("function", {}).get("arguments", ""),
-            },
-        }
-
-    def execute_tool_calls(self, tool_calls: list) -> None:
-        """Execute tool calls"""
-        if not tool_calls:
-            return
-
-        try:
-            from aicoder.utils.log import LogUtils
-
-            tool_results = []
-
-            for tool_call in tool_calls:
-                tool_name = tool_call.get("function", {}).get("name")
-                if not tool_name:
-                    continue
-
-                # Get tool definition for formatting
-                tool_def = self.tool_manager.tools.get(tool_name)
-
-                # Tool not found - handle like TypeScript
-                if not tool_def:
-                    LogUtils.error(f"[x] Tool not found: {tool_name}")
-                    self.message_history.add_system_message(
-                        f"Error: Tool '{tool_name}' does not exist."
-                    )
-                    tool_results.append(
-                        {
-                            "tool_call_id": tool_call.get("id", ""),
-                            "content": f"Error: Tool '{tool_name}' does not exist.",
-                        }
-                    )
-                    continue
-
-                # Parse arguments for display using tool's formatter
-                args_str = tool_call.get("function", {}).get("arguments", "{}")
-                import json
-
-                try:
-                    if isinstance(args_str, dict):
-                        arguments = args_str
-                    else:
-                        arguments = json.loads(args_str)
-                except (json.JSONDecodeError, TypeError):
-                    arguments = {}
-
-                # Display tool info like TypeScript
-                LogUtils.print(
-                    f"\n[*] Tool: {tool_name}",
-                    LogOptions(color=Config.colors["yellow"], bold=True),
-                )
-
-                # Generate preview and check sandbox (like TypeScript)
-                preview_result = None
-                if tool_def and tool_def.get("generatePreview"):
-                    try:
-                        preview_result = tool_def["generatePreview"](arguments)
-                    except Exception as e:
-                        LogUtils.error(f"Preview generation failed: {e}")
-
-                # Display tool info and preview
-                if preview_result:
-                    # Check if this is a sandbox error (ToolOutput with canApprove=False)
-                    if (
-                        hasattr(preview_result, "canApprove")
-                        and not preview_result.canApprove
-                    ):
-                        # Sandbox error - display and reject
-                        if hasattr(preview_result, "friendly"):
-                            LogUtils.print(
-                                preview_result.friendly,
-                                LogOptions(color=Config.colors["red"]),
-                            )
-                        tool_results.append(
-                            {
-                                "tool_call_id": tool_call.get("id", ""),
-                                "content": getattr(
-                                    preview_result, "friendly", "Preview rejected"
-                                ),
-                            }
-                        )
-                        continue
-                    else:
-                        # Regular preview (diff) - use ToolFormatter for proper coloring
-                        from aicoder.core.tool_formatter import ToolFormatter
-
-                        formatted_preview = ToolFormatter.format_preview(preview_result)
-                        LogUtils.print(formatted_preview)
-                else:
-                    # Show formatted arguments if tool has formatArguments function
-                    if tool_def and tool_def.get("formatArguments"):
-                        formatted_args = tool_def["formatArguments"](arguments)
-                        if formatted_args:
-                            LogUtils.print(
-                                formatted_args, LogOptions(color=Config.colors["cyan"])
-                            )
-
-                # Check approval
-                if (
-                    self.tool_manager.needs_approval(tool_name)
-                    and not Config.yolo_mode()
-                ):
-                    try:
-                        approval = input("Approve [Y/n]: ").strip().lower()
-                        if approval in ["n", "no"]:
-                            LogUtils.error("[x] Tool execution cancelled.")
-                            print()  # Blank line before context bar
-                            tool_results.append(
-                                {
-                                    "tool_call_id": tool_call.get("id", ""),
-                                    "content": "Tool execution cancelled by user",
-                                }
-                            )
-                            continue
-                    except (EOFError, KeyboardInterrupt):
-                        # Handle EOF or Ctrl+C gracefully
-                        LogUtils.error("[x] Tool execution cancelled.")
-                        print()  # Blank line before context bar
-                        tool_results.append(
-                            {
-                                "tool_call_id": tool_call.get("id", ""),
-                                "content": "Tool execution cancelled (EOF/Interrupt)",
-                            }
-                        )
-                        continue
-
-                # Execute tool
-                try:
-                    from aicoder.type_defs.tool_types import ToolExecutionArgs
-
-                    exec_args = ToolExecutionArgs(name=tool_name, arguments=arguments)
-                    result = self.tool_manager.execute_tool_with_args(exec_args)
-
-                    # Display result using tool's own formatting (like TypeScript)
-                    self.display_tool_result(result, tool_def)
-
-                    # Add result to tool results
-                    tool_results.append(
-                        {
-                            "tool_call_id": tool_call.get("id", ""),
-                            "content": result.content
-                            if hasattr(result, "content")
-                            else str(result),
-                        }
-                    )
-                except Exception as e:
-                    LogUtils.error(f"✗ Error executing {tool_name}: {str(e)}")
-                    tool_results.append(
-                        {
-                            "tool_call_id": tool_call.get("id", ""),
-                            "content": f"Error: {str(e)}",
-                        }
-                    )
-
-            # Add tool results to message history
-            self.message_history.add_tool_results(tool_results)
-
-        except Exception as e:
-            LogUtils.error(f"Tool execution error: {e}")
-
-    def display_tool_result(self, result, tool_def):
-        """Display tool execution result using tool's own formatting"""
-        from aicoder.utils.log import LogUtils
-
-        if tool_def and tool_def.get("hide_results"):
-            LogUtils.success("[*] Done")
-        else:
-            # Display based on detail mode - use ToolResult.friendly from ToolFormatter
-            if (
-                not Config.detail_mode()
-                and hasattr(result, "friendly")
-                and result.friendly
-            ):
-                LogUtils.print(result.friendly)
-            else:
-                # In detail mode, show the full content
-                content_to_show = getattr(result, "content", str(result))
-                LogUtils.print(content_to_show)
+    
 
     def initialize_plugins(self) -> None:
         """Initialize plugin system"""
