@@ -1,54 +1,81 @@
 #!/usr/bin/env python3
 """
-Creative test demonstration showcasing various tool capabilities.
-This script generates ASCII art, processes data, and demonstrates file operations.
+Creative test of available tools - Python script that demonstrates
+various operations and creates interesting content.
 """
 
-import random
+import json
 import time
+import random
 from datetime import datetime
 
-def generate_ascii_art(text):
-    """Generate simple ASCII art banner."""
-    border = "=" * (len(text) + 4)
-    return f"\n{border}\n| {text} |\n{border}\n"
-
-def create_mandelbrot_data():
-    """Generate a simplified Mandelbrot set representation."""
-    data = []
-    for i in range(20):
-        row = []
-        for j in range(60):
-            # Simplified calculation for demo purposes
-            x = (j - 30) / 20
-            y = (i - 10) / 8
-            if x*x + y*y < 2:
-                row.append("*")
-            else:
-                row.append(" ")
-        data.append("".join(row))
-    return "\n".join(data)
-
-def create_log_entry():
-    """Create a timestamped log entry."""
-    return f"[{datetime.now().isoformat()}] System test completed successfully"
-
-def main():
-    """Main demonstration function."""
-    print(generate_ascii_art("CREATIVE TOOL TESTING"))
+class CreativeToolTest:
+    def __init__(self):
+        self.timestamp = datetime.now()
+        self.operations = []
     
-    print("\n🎨 ASCII Art Mandelbrot Visualization:")
-    mandelbrot = create_mandelbrot_data()
-    print(mandelbrot)
+    def generate_ascii_art(self):
+        """Generate ASCII art using characters"""
+        art = """
+    ╔══════════════════════════════╗
+    ║   CREATIVE TOOLS TEST!       ║
+    ║   Testing file operations... ║
+    ╚══════════════════════════════╝
+        """
+        return art
     
-    print(f"\n📊 Random Data Sample: {random.randint(1000, 9999)}")
-    print(f"🕐 Current Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    def create_data_structures(self):
+        """Create interesting data structures"""
+        data = {
+            "test_timestamp": self.timestamp.isoformat(),
+            "random_number": random.randint(1, 1000),
+            "fibonacci_sequence": self.fibonacci(10),
+            "prime_numbers": self.primes(20),
+            "ascii_art_lines": len(self.generate_ascii_art().split('\n')),
+            "operations_log": self.operations
+        }
+        return data
     
-    log_entry = create_log_entry()
-    print(f"\n📝 Log Entry: {log_entry}")
+    def fibonacci(self, n):
+        """Generate Fibonacci sequence"""
+        seq = [0, 1]
+        for i in range(2, n):
+            seq.append(seq[-1] + seq[-2])
+        return seq
     
-    return log_entry
+    def primes(self, n):
+        """Generate prime numbers up to n"""
+        primes = []
+        for num in range(2, n + 1):
+            if all(num % p != 0 for p in range(2, int(num ** 0.5) + 1)):
+                primes.append(num)
+        return primes
+    
+    def simulate_file_operations(self):
+        """Simulate various file operations"""
+        operations = [
+            "✓ File reading test",
+            "✓ File writing test", 
+            "✓ Directory listing test",
+            "✓ Text search test",
+            "✓ File editing test",
+            "✓ Shell command test"
+        ]
+        return operations
 
 if __name__ == "__main__":
-    result = main()
-    print("\n✅ Creative test completed!")
+    tester = CreativeToolTest()
+    
+    # Generate content
+    print(tester.generate_ascii_art())
+    print(f"Test executed at: {tester.timestamp}")
+    
+    data = tester.create_data_structures()
+    print("\nGenerated data structures:")
+    print(json.dumps(data, indent=2))
+    
+    print("\nSimulated operations:")
+    for op in tester.simulate_file_operations():
+        print(f"  {op}")
+    
+    print(f"\nRandom interesting fact: {data['random_number']} is {'prime' if data['random_number'] in data['prime_numbers'] else 'not prime'}")

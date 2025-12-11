@@ -175,9 +175,11 @@ def generate_preview(args):
         safety_violation_content = None
         
         if not FileAccessTracker.was_file_read(path):
+            from aicoder.utils.file_utils import get_relative_path
+            relative_path = get_relative_path(path)
             can_approve = False
             warning = "File was not read first - recommend reading file before editing"
-            safety_violation_content = "SAFETY VIOLATION: Must read file first before editing to prevent accidental overwrites."
+            safety_violation_content = f"Path: {relative_path}\n[!] Warning: Must read file first before editing to prevent accidental overwrites."
 
         # Create temp files for diff preview
         temp_old = tempfile.NamedTemporaryFile(
