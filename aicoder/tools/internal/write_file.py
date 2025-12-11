@@ -176,7 +176,7 @@ def generate_preview(args):
             else:
                 preview_content = (
                     f"New file will be created:\n\n"
-                    f"{content}"
+                    f"{colorized_diff}"
                 )
                 
             return ToolPreview(
