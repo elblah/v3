@@ -36,12 +36,14 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         resolved_path = os.path.abspath(path)
 
         # Check sandbox restrictions
-        if not _check_sandbox(resolved_path):
-            # The sandbox message is already printed by _check_sandbox
+        # Check sandbox restrictions, but don't print message (will show in result)
+        if not _check_sandbox(resolved_path, print_message=False):
+            # Create sandbox message in result instead of printing
+            sandbox_msg = f'Path: {path}\n[x] Sandbox: list_directory trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
             return ToolResult(
                 tool="list_directory",
-                friendly=f'list_directory: path "{path}" outside current directory not allowed',
-                detailed=f'list_directory: path "{path}" outside current directory not allowed'
+                friendly=sandbox_msg,
+                detailed=sandbox_msg
             )
 
         # Check if path exists and is a directory

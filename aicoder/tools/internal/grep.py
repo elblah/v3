@@ -47,12 +47,17 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
     try:
         # Check sandbox restrictions
-        if not _check_sandbox(path):
-            # The sandbox message is already printed by _check_sandbox
+        # Check sandbox restrictions, but don't print message (will show in result)
+        if not _check_sandbox(path, print_message=False):
+            # Create sandbox message in result instead of printing
+            import os
+            resolved_path = os.path.abspath(path)
+            current_dir = os.getcwd()
+            sandbox_msg = f'Path: {path}\n[x] Sandbox: grep trying to access "{resolved_path}" outside current directory "{current_dir}"'
             return ToolResult(
                 tool="grep",
-                friendly=f'grep: path "{path}" outside current directory not allowed',
-                detailed=f'grep: path "{path}" outside current directory not allowed'
+                friendly=sandbox_msg,
+                detailed=sandbox_msg
             )
 
         # Validate search text
