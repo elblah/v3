@@ -1,1 +1,0 @@
-Content with null byte: \x00 and special chars: @#$%^&*(){}[]|\"'

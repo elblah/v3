@@ -5,7 +5,6 @@ Following TypeScript structure exactly
 
 import os
 from typing import Dict, Any, Optional
-from aicoder.type_defs.tool_types import ToolResult
 from aicoder.core.config import Config
 
 
@@ -24,7 +23,7 @@ def formatArguments(args: Dict[str, Any]) -> str:
     return ""
 
 
-def execute(args: Dict[str, Any]) -> ToolResult:
+def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """List directory contents"""
     path = args.get("path", ".")
     MAX_FILES = 100
@@ -39,20 +38,20 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         # Check sandbox restrictions, but don't print message (will show in result)
         if not _check_sandbox(resolved_path, print_message=False):
             # Create sandbox message in result instead of printing
-            sandbox_msg = f'Path: {path}\n[x] Sandbox: list_directory trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
-            return ToolResult(
-                tool="list_directory",
-                friendly=sandbox_msg,
-                detailed=sandbox_msg
-            )
+            sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
+            return {
+                "tool": "list_directory",
+                "friendly": sandbox_msg,
+                "detailed": sandbox_msg
+            }
 
         # Check if path exists and is a directory
         if not os.path.exists(resolved_path) or not os.path.isdir(resolved_path):
-            return ToolResult(
-                tool="list_directory",
-                friendly=f"Directory not found: '{resolved_path}'",
-                detailed=f"Directory not found at '{resolved_path}'. Path does not exist or is not a directory."
-            )
+            return {
+                "tool": "list_directory",
+                "friendly": f"Directory not found: '{resolved_path}'",
+                "detailed": f"Directory not found at '{resolved_path}'. Path does not exist or is not a directory."
+            }
 
         # Use find to list files - much faster and simpler (matching TypeScript)
         import subprocess
@@ -77,30 +76,30 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
         # Create output matching TypeScript structure
         if limited_files == []:
-            return ToolResult(
-                tool="list_directory",
-                friendly=f"Directory is empty: '{resolved_path}'",
-                detailed=f"Directory '{resolved_path}' exists but contains no files or subdirectories."
-            )
+            return {
+                "tool": "list_directory",
+                "friendly": f"Directory is empty: '{resolved_path}'",
+                "detailed": f"Directory '{resolved_path}' exists but contains no files or subdirectories."
+            }
         elif actual_count > MAX_FILES:
-            return ToolResult(
-                tool="list_directory",
-                friendly=f"Found {actual_count}+ files (limited to {MAX_FILES}) in '{resolved_path}'",
-                detailed=f"Directory contains {actual_count} items total. Showing first {MAX_FILES}:\n\n{chr(10).join(limited_files)}"
-            )
+            return {
+                "tool": "list_directory",
+                "friendly": f"Found {actual_count}+ files (limited to {MAX_FILES}) in '{resolved_path}'",
+                "detailed": f"Directory contains {actual_count} items total. Showing first {MAX_FILES}:\n\n{chr(10).join(limited_files)}"
+            }
         else:
-            return ToolResult(
-                tool="list_directory",
-                friendly=f"✓ Found {actual_count} files in '{resolved_path}'",
-                detailed=f"Directory '{resolved_path}' contents ({actual_count} items):\n\n{chr(10).join(limited_files)}"
-            )
+            return {
+                "tool": "list_directory",
+                "friendly": f"✓ Found {actual_count} files in '{resolved_path}'",
+                "detailed": f"Directory '{resolved_path}' contents ({actual_count} items):\n\n{chr(10).join(limited_files)}"
+            }
 
     except Exception as e:
-        return ToolResult(
-            tool="list_directory",
-            friendly=f"❌ Error listing directory: {str(e)}",
-            detailed=f"Error listing directory '{path}': {str(e)}"
-        )
+        return {
+            "tool": "list_directory",
+            "friendly": f"❌ Error listing directory: {str(e)}",
+            "detailed": f"Error listing directory '{path}': {str(e)}"
+        }
 
 
 def _list_single(path: str, show_hidden: bool) -> list:
@@ -183,7 +182,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
         if print_message:
-            print(f'[x] Sandbox: list_directory trying to access "{resolved_path}" outside current directory "{current_dir}"')
+            print(f'[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True

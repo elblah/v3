@@ -7,7 +7,6 @@ from typing import Dict, Any, List
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
-from aicoder.type_defs.message_types import AssistantMessage
 
 
 class SessionManager:
@@ -94,7 +93,7 @@ class SessionManager:
         # Handle error case by adding to message history
         if result.get("error"):
             self.message_history.add_assistant_message(
-                AssistantMessage(content=f"[API Error: {result['error']}]")
+                {"content": f"[API Error: {result['error']}]"}
             )
 
         return result
@@ -113,27 +112,25 @@ class SessionManager:
             return False
 
         # Add assistant message with tool calls
-        from aicoder.type_defs.message_types import AssistantMessage, MessageToolCall
-
         tool_calls_for_message = []
         for i, call in enumerate(valid_tool_calls):
             tool_calls_for_message.append(
-                MessageToolCall(
-                    id=call.get("id"),
-                    type=call.get("type", "function"),
-                    function={
+                {
+                    "id": call.get("id"),
+                    "type": call.get("type", "function"),
+                    "function": {
                         "name": call.get("function", {}).get("name"),
                         "arguments": call.get("function", {}).get("arguments"),
                     },
-                    index=i,
-                )
+                    "index": i,
+                }
             )
 
         self.message_history.add_assistant_message(
-            AssistantMessage(
-                content=full_response or "I'll help you with that.",
-                tool_calls=tool_calls_for_message,
-            )
+            {
+                "content": full_response or "I'll help you with that.",
+                "tool_calls": tool_calls_for_message,
+            }
         )
 
         self.tool_executor.execute_tool_calls(valid_tool_calls)
@@ -141,6 +138,12 @@ class SessionManager:
 
     def _handle_post_processing(self, has_tool_calls: bool) -> None:
         """Handle post-processing after AI response"""
+        # Check if user requested guidance mode (stop after current tool)
+        if self.tool_executor.is_guidance_mode():
+            LogUtils.success("[*] Guidance mode: Your turn - tell the AI how to proceed")
+            self.tool_executor.clear_guidance_mode()
+            return
+
         if has_tool_calls and self.is_processing and self.message_history.should_auto_compact():
             self._perform_auto_compaction()
 
@@ -156,18 +159,16 @@ class SessionManager:
         """Handle empty response from AI"""
         if full_response and full_response.strip() != "":
             # AI provided text response but no tools
-            from aicoder.type_defs.message_types import AssistantMessage
 
             self.message_history.add_assistant_message(
-                AssistantMessage(content=full_response)
+                {"content": full_response}
             )
             print("")
         else:
             # AI provided no text response (this is normal when AI has nothing to say)
             # Add a minimal message to show AI responded, then continue
-            from aicoder.type_defs.message_types import AssistantMessage
 
-            self.message_history.add_assistant_message(AssistantMessage(content=""))
+            self.message_history.add_assistant_message({"content": ""})
             print("")
 
     def _validate_tool_calls(self, tool_calls: dict) -> list:

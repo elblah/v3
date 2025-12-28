@@ -6,7 +6,6 @@ Following TypeScript structure exactly
 import os
 import tempfile
 from typing import Dict, Any, List, Tuple
-from aicoder.type_defs.tool_types import ToolResult, ToolPreview
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file, write_file
@@ -51,7 +50,7 @@ def _find_occurrences(content: str, old_string: str) -> List[int]:
     return occurrences
 
 
-def execute(args: Dict[str, Any]) -> ToolResult:
+def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Edit file by replacing text"""
     path = args.get("path")
     old_string = args.get("old_string")
@@ -61,18 +60,20 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         raise Exception("Path and old_string are required")
 
     if not _check_sandbox(path):
-        raise Exception(f'edit_file: path "{path}" outside current directory not allowed')
+        resolved_path = os.path.abspath(path)
+        current_dir = os.getcwd()
+        raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
 
     # Safety check: File must have been read first (tracked by FileAccessTracker)
     if not FileAccessTracker.was_file_read(path):
-        return ToolResult(
-            tool="edit_file",
-            friendly=f"WARNING: Must read file '{path}' first before editing",
-            detailed=f"Must read file first. Use read_file('{path}') before editing."
-        )
+        return {
+            "tool": "edit_file",
+            "friendly": f"WARNING: Must read file '{path}' first before editing",
+            "detailed": f"Must read file first. Use read_file('{path}') before editing."
+        }
 
     try:
         content = read_file(path)
@@ -80,11 +81,11 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         if old_string not in content:
             from aicoder.utils.file_utils import get_relative_path
             relative_path = get_relative_path(path)
-            return ToolResult(
-                tool="edit_file",
-                friendly=f"ERROR: Text not found in '{relative_path}' - check exact match including whitespace",
-                detailed=f"old_string not found in file. Use read_file('{relative_path}') to see current content and ensure exact match."
-            )
+            return {
+                "tool": "edit_file",
+                "friendly": f"ERROR: Text not found in '{relative_path}' - check exact match including whitespace",
+                "detailed": f"old_string not found in file. Use read_file('{relative_path}') to see current content and ensure exact match."
+            }
 
         # Create temp files for diff preview
         temp_old = tempfile.NamedTemporaryFile(
@@ -134,18 +135,18 @@ def execute(args: Dict[str, Any]) -> ToolResult:
                 f"✓ Updated '{path}' ({len(old_string)} → {len(new_string)} chars)"
             )
 
-        return ToolResult(
-            tool="edit_file",
-            friendly=friendly,
-            detailed=f"Edit completed: {friendly}"
-        )
+        return {
+            "tool": "edit_file",
+            "friendly": friendly,
+            "detailed": f"Edit completed: {friendly}"
+        }
 
     except Exception as e:
-        return ToolResult(
-            tool="edit_file",
-            friendly=f"❌ Error editing {path}: {str(e)}",
-            detailed=f"Error editing file '{path}': {str(e)}"
-        )
+        return {
+            "tool": "edit_file",
+            "friendly": f"❌ Error editing {path}: {str(e)}",
+            "detailed": f"Error editing file '{path}': {str(e)}"
+        }
 
 
 def generate_preview(args):
@@ -160,11 +161,11 @@ def generate_preview(args):
             msg.append("- path is required")
         if old_string is None:
             msg.append("- old_string is required")
-        return ToolPreview(
-            tool="edit_file",
-            content=f"Error: Missing required arguments:\n" + "\n".join(msg),
-            can_approve=False,
-        )
+        return {
+            "tool": "edit_file",
+            "content": f"Error: Missing required arguments:\n" + "\n".join(msg),
+            "can_approve": False,
+        }
 
     try:
         from aicoder.utils.file_utils import get_relative_path
@@ -174,29 +175,29 @@ def generate_preview(args):
             # Don't print in check since preview will show message
             resolved_path = os.path.abspath(path)
             current_dir = os.getcwd()
-            return ToolPreview(
-                tool="edit_file",
-                content=f'Path: {path}\n[x] Sandbox: edit_file trying to access "{resolved_path}" outside current directory "{current_dir}"',
-                can_approve=False,
-            )
+            return {
+                "tool": "edit_file",
+                "content": f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"',
+                "can_approve": False,
+            }
 
         if not file_exists(path):
-            return ToolPreview(
-                tool="edit_file",
-                content=f"Path: {relative_path}\nError: File not found",
-                can_approve=False,
-            )
+            return {
+                "tool": "edit_file",
+                "content": f"Path: {relative_path}\nError: File not found",
+                "can_approve": False,
+            }
 
         content = read_file(path)
 
         if old_string not in content:
             from aicoder.utils.file_utils import get_relative_path
             relative_path = get_relative_path(path)
-            return ToolPreview(
-                tool="edit_file",
-                content=f"Path: {relative_path}\nError: old_string not found in file. Use read_file('{relative_path}') to see current content and ensure exact match.",
-                can_approve=False,
-            )
+            return {
+                "tool": "edit_file",
+                "content": f"Path: {relative_path}\nError: old_string not found in file. Use read_file('{relative_path}') to see current content and ensure exact match.",
+                "can_approve": False,
+            }
 
         # Safety check for file reads
         can_approve = True
@@ -245,11 +246,11 @@ def generate_preview(args):
                 # Safety violation: already contains path and warning
                 preview_content = safety_violation_content
 
-            return ToolPreview(
-                tool="edit_file",
-                content=preview_content,
-                can_approve=can_approve,
-            )
+            return {
+                "tool": "edit_file",
+                "content": preview_content,
+                "can_approve": can_approve,
+            }
 
         finally:
             # Cleanup temp files
@@ -263,11 +264,11 @@ def generate_preview(args):
         from aicoder.utils.file_utils import get_relative_path
         path = args.get('path', 'unknown')
         relative_path = get_relative_path(path) if path != 'unknown' else 'unknown'
-        return ToolPreview(
-            tool="edit_file",
-            content=f"Path: {relative_path}\nError: {str(e)}",
-            can_approve=False,
-        )
+        return {
+            "tool": "edit_file",
+            "content": f"Path: {relative_path}\nError: {str(e)}",
+            "can_approve": False,
+        }
 
 
 def format_arguments(args):

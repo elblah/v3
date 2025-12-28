@@ -11,7 +11,10 @@ from aicoder.core.streaming_client import StreamingClient
 from aicoder.core.tool_manager import ToolManager
 from aicoder.core.stats import Stats
 from aicoder.core.command_handler import CommandHandler
-from aicoder.type_defs.message_types import Message, MessageRole
+
+# Type definitions are now dicts
+Message = dict[str, object]
+MessageRole = str
 
 
 @pytest.fixture
@@ -24,8 +27,8 @@ def app():
 def sample_messages():
     """Sample messages for testing"""
     return [
-        Message(role=MessageRole.USER, content="Hello"),
-        Message(role=MessageRole.ASSISTANT, content="Hi there!"),
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "Hi there!"},
     ]
 
 

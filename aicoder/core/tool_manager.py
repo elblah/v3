@@ -5,11 +5,9 @@ Following TypeScript structure exactly
 
 import json
 from typing import Dict, Any, Optional, List, Set
-from dataclasses import dataclass
 
 from aicoder.core.stats import Stats
 from aicoder.core.tool_formatter import ToolFormatter
-from aicoder.type_defs.tool_types import ToolResult
 from aicoder.tools.internal.read_file import TOOL_DEFINITION as READ_FILE_DEF
 from aicoder.tools.internal.write_file import TOOL_DEFINITION as WRITE_FILE_DEF
 from aicoder.tools.internal.edit_file import TOOL_DEFINITION as EDIT_FILE_DEF
@@ -18,8 +16,6 @@ from aicoder.tools.internal.run_shell_command import (
 )
 from aicoder.tools.internal.grep import TOOL_DEFINITION as GREP_DEF
 from aicoder.tools.internal.list_directory import TOOL_DEFINITION as LIST_DIRECTORY_DEF
-from aicoder.type_defs.api_types import ToolCall
-from aicoder.type_defs.tool_types import ToolExecutionArgs, ToolDefinition, ToolResult
 
 
 class ToolManager:
@@ -27,7 +23,7 @@ class ToolManager:
 
     def __init__(self, stats: Stats):
         self.stats = stats
-        self.tools: Dict[str, ToolDefinition] = {}
+        self.tools: Dict[str, Dict[str, Any]] = {}
         self.read_files: Set[str] = set()
 
         # Register internal tools
@@ -60,11 +56,11 @@ class ToolManager:
         return definitions
 
     def execute_tool_call(
-        self, tool_call: ToolCall, skip_preview: bool = False
-    ) -> ToolResult:
+        self, tool_call: Dict[str, Any], skip_preview: bool = False
+    ) -> Dict[str, Any]:
         """Execute a tool call (internal tools only)"""
-        tool_id = tool_call.id
-        func = tool_call.function
+        tool_id = tool_call.get("id")
+        func = tool_call.get("function", {})
         name = func.get("name")
         args = func.get("arguments", "{}")
 
@@ -81,14 +77,14 @@ class ToolManager:
             return self._format_result(tool_output, tool_def, name, tool_id)
 
         except Exception as error:
-            return ToolResult(
-                tool=name,
-                friendly=f"✗ Error executing {name}: {str(error)}",
-                detailed=f"Tool execution failed: {str(error)}",
-                success=False,
-            )
+            return {
+                "tool": name,
+                "friendly": f"✗ Error executing {name}: {str(error)}",
+                "detailed": f"Tool execution failed: {str(error)}",
+                "success": False,
+            }
 
-    def _validate_tool(self, name: Optional[str]) -> ToolDefinition:
+    def _validate_tool(self, name: Optional[str]) -> Dict[str, Any]:
         """Validate tool exists"""
         if not name:
             raise Exception("Tool name is required")
@@ -112,8 +108,8 @@ class ToolManager:
         pass
 
     def _execute_tool(
-        self, name: str, args_obj: Dict[str, Any], tool_def: ToolDefinition
-    ) -> ToolResult:
+        self, name: str, args_obj: Dict[str, Any], tool_def: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Execute the tool"""
         try:
             execute_func = tool_def.get("execute")
@@ -133,11 +129,11 @@ class ToolManager:
 
     def _format_result(
         self,
-        tool_output: ToolResult,
-        tool_def: ToolDefinition,
+        tool_output: Dict[str, Any],
+        tool_def: Dict[str, Any],
         tool_name: str,
         tool_call_id: str,
-    ) -> ToolResult:
+    ) -> Dict[str, Any]:
         """Format result for AI and display"""
         # Format for AI and display
         ai_result = ToolFormatter.format_for_ai(tool_output)
@@ -146,15 +142,15 @@ class ToolManager:
         # Check if result is too large
         ai_result = self._check_size(ai_result, tool_def, tool_name)
 
-        return ToolResult(
-            tool=tool_name,
-            friendly=friendly_result,
-            detailed=ai_result,
-            success=True,
-        )
+        return {
+            "tool": tool_name,
+            "friendly": friendly_result,
+            "detailed": ai_result,
+            "success": True,
+        }
 
     def _check_size(
-        self, content: str, tool_def: ToolDefinition, tool_name: str
+        self, content: str, tool_def: Dict[str, Any], tool_name: str
     ) -> str:
         """Check if content is too large and truncate if needed"""
         max_size = 10000  # Default max size
@@ -173,17 +169,17 @@ class ToolManager:
             return True
         return not tool_def.get("auto_approved", False)
 
-    def execute_tool_with_args(self, execution_args: "ToolExecutionArgs") -> ToolResult:
+    def execute_tool_with_args(self, execution_args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute tool with ToolExecutionArgs (compatibility method)"""
-        # Create ToolCall from ToolExecutionArgs
-        tool_call = ToolCall(
-            id=f"tool_{execution_args.name}_{hash(str(execution_args.arguments))}",
-            type="function",
-            function={
-                "name": execution_args.name,
-                "arguments": json.dumps(execution_args.arguments),
+        # Create ToolCall dict from execution args
+        tool_call = {
+            "id": f"tool_{execution_args["name"]}_{hash(str(execution_args["arguments"]))}",
+            "type": "function",
+            "function": {
+                "name": execution_args["name"],
+                "arguments": json.dumps(execution_args["arguments"]),
             },
-        )
+        }
 
         # Execute using existing method
         return self.execute_tool_call(tool_call)

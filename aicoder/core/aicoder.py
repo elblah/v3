@@ -14,16 +14,14 @@ from aicoder.core.tool_manager import ToolManager
 from aicoder.core.streaming_client import StreamingClient
 from aicoder.core.input_handler import InputHandler
 from aicoder.core.context_bar import ContextBar
-from aicoder.core.plugin_system import plugin_system as global_plugin_system
 from aicoder.core.compaction_service import CompactionService
-from aicoder.core.council_service import CouncilService
 from aicoder.core.command_handler import CommandHandler
 from aicoder.core.tool_executor import ToolExecutor
 from aicoder.core.stream_processor import StreamProcessor
 from aicoder.core.session_manager import SessionManager
 from aicoder.core.prompt_builder import PromptBuilder
+from aicoder.core.socket_server import SocketServer
 from aicoder.utils.log import LogUtils, LogOptions
-from aicoder.type_defs.message_types import AssistantMessage
 from aicoder.utils.stdin_utils import read_stdin_as_string
 
 
@@ -45,8 +43,7 @@ class AICoder:
             self.context_bar, self.stats, self.message_history
         )
         self.compaction_service = CompactionService(None)
-        self.council_service = CouncilService()
-        
+
         # Extracted components (need to be initialized after core services)
         self.tool_executor = ToolExecutor(self.tool_manager, self.message_history)
         self.stream_processor = StreamProcessor(self.streaming_client)
@@ -67,17 +64,22 @@ class AICoder:
             stats=self.stats,
         )
 
+        # Socket server for external control
+        self.socket_server = SocketServer(self)
+
         # Hooks
         self.notify_hooks = None
 
     def initialize(self) -> None:
         """Initialize AI Coder components"""
         Config.validate_config()
-        self.initialize_plugins()
         self.initialize_system_prompt()
 
         # Set up streaming client with message history (TS calls setApiClient on messageHistory)
         self.message_history.set_api_client(self.streaming_client)
+
+        # Start socket server for external control
+        self.socket_server.start()
 
     def initialize_system_prompt(self) -> None:
         """Initialize with system prompt focused on internal tools"""
@@ -93,6 +95,11 @@ class AICoder:
         """Run the interactive AI Coder session"""
         if Config.debug():
             LogUtils.debug(f"*** run() called, sys.stdin.isatty()={sys.stdin.isatty()}")
+
+        # Check if socket-only mode
+        if Config.socket_only():
+            self.run_socket_only()
+            return
 
         # Check if non-interactive
         if not sys.stdin.isatty():
@@ -139,11 +146,8 @@ class AICoder:
             except Exception as e:
                 LogUtils.error(f"Error: {e}")
 
-        # Print final stats
-        self.stats.print_stats()
-
-        # Close
-        self.input_handler.close()
+        # Shutdown
+        self.shutdown()
 
     def run_non_interactive(self) -> None:
         """Run in non-interactive mode (piped input)"""
@@ -184,6 +188,34 @@ class AICoder:
         except Exception as e:
             LogUtils.error(f"Error: {e}")
 
+        # Shutdown
+        self.shutdown()
+
+    def run_socket_only(self) -> None:
+        """Run in socket-only mode (no readline, only socket commands)"""
+        if Config.debug():
+            LogUtils.debug("*** run_socket_only called")
+
+        # Auto-enable YOLO mode since approval system won't work without readline
+        Config.set_yolo_mode(True)
+        LogUtils.success("YOLO mode auto-enabled (socket-only mode)")
+
+        Config.print_startup_info()
+        LogUtils.success("Socket-only mode. Use socket commands to control AI Coder.")
+
+        # Keep socket server alive, but don't read from stdin
+        while self.is_running:
+            try:
+                # Sleep to keep socket server alive in background thread
+                time.sleep(1)
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                LogUtils.error(f"Error: {e}")
+
+        # Shutdown
+        self.shutdown()
+
     def add_user_input(self, user_input: str) -> None:
         """Add user input to conversation"""
         user_input = user_input.strip()
@@ -194,26 +226,6 @@ class AICoder:
         from aicoder.core import prompt_history
 
         prompt_history.save_prompt(user_input)
-
-    
-
-    
-
-    
-
-    
-
-    def initialize_plugins(self) -> None:
-        """Initialize plugin system"""
-        try:
-            global_plugin_system.initialize()
-            global_plugin_system.register_tools(self.tool_manager)
-            LogUtils.success(f"[*] Loaded {len(global_plugin_system.plugins)} plugins")
-        except Exception as e:
-            if Config.debug():
-                LogUtils.warn(f"[!] Plugin initialization failed: {e}")
-
-    
 
     def handle_test_message(self, message: Dict[str, Any]) -> list:
         """
@@ -228,13 +240,12 @@ class AICoder:
         Returns:
             List of tool execution results
         """
-        # Convert to proper AssistantMessage format
-        from aicoder.type_defs.message_types import AssistantMessage as AICoderAssistantMessage
-        
-        assistant_message = AICoderAssistantMessage(
-            content=message.get("content", ""),
-            tool_calls=message.get("tool_calls", [])
-        )
+        # Use dict for message
+                
+        assistant_message = {
+            "content": message.get("content", ""),
+            "tool_calls": message.get("tool_calls", [])
+        }
         
         # Add the message to history using proper method
         self.message_history.add_assistant_message(assistant_message)
@@ -261,3 +272,8 @@ class AICoder:
             except Exception as e:
                 if Config.debug():
                     LogUtils.warn(f"[!] Hook {hook_name} failed: {e}")
+
+    def shutdown(self) -> None:
+        """Clean shutdown"""
+        self.socket_server.stop()
+        self.input_handler.close()

@@ -38,32 +38,32 @@ class StreamProcessor:
                     }
 
                 # Update token stats if present
-                if hasattr(chunk, "usage") and chunk.usage:
-                    self.streaming_client.update_token_stats(chunk.usage)
+                if "usage" in chunk and chunk["usage"]:
+                    self.streaming_client.update_token_stats(chunk["usage"])
 
                 # Process choice (TS gets first choice directly)
-                if not hasattr(chunk, "choices") or not chunk.choices:
+                if "choices" not in chunk or not chunk["choices"]:
                     # Handle case where chunk doesn't have expected structure
-                    LogUtils.debug(f"Chunk missing choices: {getattr(chunk, '__dict__', chunk)}")
+                    LogUtils.debug(f"Chunk missing choices: {chunk}")
                     continue
 
-                choice = chunk.choices[0]
+                choice = chunk["choices"][0]
 
                 # Content (ignore reasoning_content unless model is reasoning-only)
-                if choice.delta:
-                    content = choice.delta.content
+                if "delta" in choice:
+                    content = choice["delta"].get("content")
                     if content:
                         full_response += content
                         colored_content = self.streaming_client.process_with_colorization(content)
                         print(colored_content, end="", flush=True)
 
                 # Tool calls
-                if choice.delta and choice.delta.tool_calls:
-                    for tool_call in choice.delta.tool_calls:
+                if "delta" in choice and choice["delta"].get("tool_calls"):
+                    for tool_call in choice["delta"]["tool_calls"]:
                         process_chunk_callback(tool_call, accumulated_tool_calls)
 
                 # Finish reason
-                if choice.finish_reason == "tool_calls":
+                if choice.get("finish_reason") == "tool_calls":
                     pass
 
         except Exception as e:

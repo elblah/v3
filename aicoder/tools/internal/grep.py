@@ -6,7 +6,6 @@ Following TypeScript structure exactly
 import os
 import subprocess
 from typing import Dict, Any, Optional
-from aicoder.type_defs.tool_types import ToolResult
 from aicoder.core.config import Config
 
 
@@ -35,7 +34,7 @@ def formatArguments(args: Dict[str, Any]) -> str:
     return "\n  ".join(parts)
 
 
-def execute(args: Dict[str, Any]) -> ToolResult:
+def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search for text in files using ripgrep or grep"""
     text = args.get("text")
     path = args.get("path", ".")
@@ -53,20 +52,20 @@ def execute(args: Dict[str, Any]) -> ToolResult:
             import os
             resolved_path = os.path.abspath(path)
             current_dir = os.getcwd()
-            sandbox_msg = f'Path: {path}\n[x] Sandbox: grep trying to access "{resolved_path}" outside current directory "{current_dir}"'
-            return ToolResult(
-                tool="grep",
-                friendly=sandbox_msg,
-                detailed=sandbox_msg
-            )
+            sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"'
+            return {
+                "tool": "grep",
+                "friendly": sandbox_msg,
+                "detailed": sandbox_msg
+            }
 
         # Validate search text
         if not text.strip():
-            return ToolResult(
-                tool="grep",
-                friendly=f'ERROR: Search text cannot be empty.',
-                detailed=f'Search text "{text}" is invalid - it cannot be empty or whitespace only.'
-            )
+            return {
+                "tool": "grep",
+                "friendly": f'ERROR: Search text cannot be empty.',
+                "detailed": f'Search text "{text}" is invalid - it cannot be empty or whitespace only.'
+            }
 
         # Build command using ripgrep (matching TypeScript exactly)
         import os
@@ -95,24 +94,24 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         else:
             friendly = f"🔍 Found {len(matches)} matches for '{text}'"
 
-        return ToolResult(
-            tool="grep",
-            friendly=friendly,
-            detailed=f"Search completed: {friendly}\n\nCommand: {' '.join(cmd)}\n\nMatches:\n{chr(10).join(matches)}"
-        )
+        return {
+            "tool": "grep",
+            "friendly": friendly,
+            "detailed": f"Search completed: {friendly}\n\nCommand: {' '.join(cmd)}\n\nMatches:\n{chr(10).join(matches)}"
+        }
 
     except subprocess.TimeoutExpired:
-        return ToolResult(
-            tool="grep",
-            friendly=f"⏰ Search timed out",
-            detailed=f"Search for '{text}' timed out. Command: {' '.join(cmd)}"
-        )
+        return {
+            "tool": "grep",
+            "friendly": f"⏰ Search timed out",
+            "detailed": f"Search for '{text}' timed out. Command: {' '.join(cmd)}"
+        }
     except Exception as e:
-        return ToolResult(
-            tool="grep",
-            friendly=f"❌ Search error: {str(e)}",
-            detailed=f"Search for '{text}' failed with error: {str(e)}"
-        )
+        return {
+            "tool": "grep",
+            "friendly": f"❌ Search error: {str(e)}",
+            "detailed": f"Search for '{text}' failed with error: {str(e)}"
+        }
 
 
 def _has_ripgrep() -> bool:
@@ -139,7 +138,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
         if print_message:
-            print(f'[x] Sandbox: grep trying to access "{resolved_path}" outside current directory "{current_dir}"')
+            print(f'[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True

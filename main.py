@@ -5,24 +5,16 @@ Main entry point - synchronous version
 """
 
 import sys
-import signal
+import os
+import time
 
 from aicoder.core.aicoder import AICoder
 from aicoder.core.config import Config
 from aicoder.utils.log import success, warn, error
 
 
-# Super simple Ctrl+Z detection test
-def handle_ctrl_z(signum, frame):
-    print("\nDETECTED CTRL+Z!")
-    # Don't actually suspend, just continue
-    return
-
-
 def main():
     """Main entry point"""
-    # Setup Ctrl+Z detection
-    signal.signal(signal.SIGTSTP, handle_ctrl_z)
     
     # Show startup info
     if Config.debug():
@@ -33,6 +25,20 @@ def main():
 
     try:
         app.initialize()
+        
+        # Calculate and display startup time
+        start_time_str = os.environ.get("AICODER_START_TIME")
+        if start_time_str:
+            try:
+                # Convert EPOCHREALTIME (seconds.microseconds) to float
+                start_time = float(start_time_str)
+                current_time = time.time()
+                startup_time = current_time - start_time
+                print(f"{Config.colors['brightCyan']}Total startup time: {startup_time:.2f} seconds{Config.colors['reset']}")
+            except ValueError:
+                # If parsing fails, silently ignore
+                pass
+        
         app.run()
     except KeyboardInterrupt:
         print("\n👋 Goodbye!")

@@ -2,7 +2,8 @@
 Command handler for AI Coder
 """
 
-from .commands.base import CommandContext, CommandResult
+from typing import Dict
+from .commands.base import CommandContext, CommandResult, BaseCommand
 from .commands.registry import CommandRegistry
 from .message_history import MessageHistory
 from .input_handler import InputHandler
@@ -25,10 +26,6 @@ class CommandHandler:
         """Handle a command"""
         return self.registry.execute_command(command)
 
-    def register_command(self, name: str, handler, description: str = ""):
-        """Register a new command dynamically"""
-        self.registry.register_plugin_command(name, handler, description)
-
-    def get_all_commands(self):
-        """Get all commands (for plugin system)"""
+    def get_all_commands(self) -> Dict[str, "BaseCommand"]:
+        """Get all registered commands"""
         return self.registry.get_all_commands()

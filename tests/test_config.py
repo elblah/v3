@@ -221,18 +221,10 @@ def test_tool_config():
     # Test default
     with patch.dict(os.environ, {}, clear=True):
         assert Config.max_tool_result_size() == 300000
-        assert Config.disable_plugins() == False
 
     # Test custom values
-    with patch.dict(
-        os.environ, {"MAX_TOOL_RESULT_SIZE": "500000", "DISABLE_PLUGINS": "1"}
-    ):
+    with patch.dict(os.environ, {"MAX_TOOL_RESULT_SIZE": "500000"}):
         assert Config.max_tool_result_size() == 500000
-        assert Config.disable_plugins() == True
-
-    # Test DISABLE_PLUGINS as 'true'
-    with patch.dict(os.environ, {"DISABLE_PLUGINS": "true"}):
-        assert Config.disable_plugins() == True
 
 
 def test_debug():

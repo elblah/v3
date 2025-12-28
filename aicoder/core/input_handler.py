@@ -64,11 +64,9 @@ class InputHandler:
             # Show input prompt
             prompt = f"> "
             return input(prompt).strip()
-        except EOFError:
-            return ""
         except KeyboardInterrupt:
             print()  # New line after Ctrl+C
-            return ""
+            raise  # Re-raise, let caller handle it
 
     def _load_prompt_history(self):
         """Load prompt history"""
@@ -107,10 +105,9 @@ class InputHandler:
                     "/save",
                     "/load",
                     "/memory",
-                    "/reset",
-                    "/model",
+                    "/new",
+                    "/n",
                     "/e",
-                    "/council",
                 ]
 
                 # Filter commands that match

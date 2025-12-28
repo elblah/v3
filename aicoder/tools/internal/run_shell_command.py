@@ -5,11 +5,10 @@ Following TypeScript structure exactly
 
 import subprocess
 from typing import Dict, Any, Optional
-from aicoder.type_defs.tool_types import ToolResult
 from aicoder.core.config import Config
 
 
-def execute(args: Dict[str, Any]) -> ToolResult:
+def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute shell command with timeout"""
     command = args.get("command")
     timeout = args.get("timeout", 30)
@@ -47,24 +46,24 @@ def execute(args: Dict[str, Any]) -> ToolResult:
             else:
                 output = result.stderr
 
-        return ToolResult(
-            tool="run_shell_command",
-            friendly=friendly,
-            detailed=f"Command: {command}\nExit code: {result.returncode}\nTimeout: {timeout}s\nWorking directory: {cwd or '.'}\n\nOutput:\n{output}"
-        )
+        return {
+            "tool": "run_shell_command",
+            "friendly": friendly,
+            "detailed": f"Command: {command}\nExit code: {result.returncode}\nTimeout: {timeout}s\nWorking directory: {cwd or '.'}\n\nOutput:\n{output}"
+        }
 
     except subprocess.TimeoutExpired:
-        return ToolResult(
-            tool="run_shell_command",
-            friendly=f"✗ Command timed out after {timeout}s (exit code: 124)",
-            detailed=f"Command timed out after {timeout}s: {command}"
-        )
+        return {
+            "tool": "run_shell_command",
+            "friendly": f"✗ Command timed out after {timeout}s (exit code: 124)",
+            "detailed": f"Command timed out after {timeout}s: {command}"
+        }
     except Exception as e:
-        return ToolResult(
-            tool="run_shell_command",
-            friendly=f"✗ Command failed: {str(e)}",
-            detailed=f"Command failed: {command}\nError: {str(e)}"
-        )
+        return {
+            "tool": "run_shell_command",
+            "friendly": f"✗ Command failed: {str(e)}",
+            "detailed": f"Command failed: {command}\nError: {str(e)}"
+        }
 
 
 # Tool definition matching TypeScript structure

@@ -4,7 +4,9 @@ Tests to ensure exact behavior matches TypeScript version
 """
 
 from aicoder.core.stats import Stats
-from aicoder.type_defs.api_types import ApiUsage
+
+# Type definitions are now dicts
+ApiUsage = dict[str, int]
 
 
 def test_stats_initialization():
@@ -90,7 +92,7 @@ def test_setters():
     assert stats.last_user_prompt == "Hello world"
 
     # Test usage info
-    usage = ApiUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30)
+    usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
     stats.add_usage_info(usage)
     assert len(stats.usage_infos) == 1
     assert stats.usage_infos[0]["usage"] == usage
@@ -106,7 +108,7 @@ def test_reset():
     stats.add_api_time(1.0)
     stats.set_last_user_prompt("test")
     stats.add_usage_info(
-        ApiUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30)
+        {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
     )
 
     # Reset

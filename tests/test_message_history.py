@@ -10,12 +10,12 @@ from aicoder.core.message_history import (
     PRUNE_PROTECTION_THRESHOLD,
 )
 from aicoder.core.stats import Stats
-from aicoder.type_defs.message_types import (
-    Message,
-    MessageRole,
-    AssistantMessage,
-    MessageToolCall,
-)
+
+# Type definitions are now dicts
+Message = dict[str, object]
+MessageRole = str
+AssistantMessage = dict[str, object]
+MessageToolCall = dict[str, object]
 
 
 @pytest.fixture
@@ -158,7 +158,7 @@ def test_get_chat_messages(message_history):
 
 
 def test_clear(message_history):
-    """Test clearing messages"""
+    """Test clearing messages - should preserve system prompt"""
     message_history.add_system_message("System")
     message_history.add_user_message("User")
 
@@ -166,8 +166,12 @@ def test_clear(message_history):
 
     message_history.clear()
 
-    assert len(message_history.messages) == 0
-    assert message_history.stats.current_prompt_size == 0
+    # Should preserve the system prompt
+    assert len(message_history.messages) == 1
+    assert message_history.messages[0]["role"] == "system"
+    assert message_history.messages[0]["content"] == "System"
+    # Prompt size should account for the preserved system prompt
+    assert message_history.stats.current_prompt_size > 0
 
 
 def test_set_messages(message_history):

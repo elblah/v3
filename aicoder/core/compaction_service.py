@@ -14,7 +14,6 @@ from aicoder.core.config import Config
 @dataclass
 class MessageGroup:
     """Group of messages that should stay together"""
-
     messages: List[Dict[str, Any]]
     is_summary: bool
     is_user_turn: bool  # true if this starts with user message
@@ -25,7 +24,10 @@ class CompactionService:
 
     def __init__(self, api_client):
         self.api_client = api_client
-        # AI processor will be imported when needed to avoid circular imports
+        # Streaming client for API calls
+        self.streaming_client = None
+        if api_client:
+            self.streaming_client = api_client
 
     def compact(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Compact messages using sliding window + AI summarization"""
@@ -49,130 +51,318 @@ class CompactionService:
             else:
                 messages_to_compact.append(msg)
 
-        # Group into turns (user message + any assistant/tool responses)
-        turns = self._group_into_turns(messages_to_compact)
+        # Group only non-summary messages for compaction
+        groups = self.group_messages(messages_to_compact)
+        recent_groups = groups[-Config.compact_protect_rounds():] if len(groups) > Config.compact_protect_rounds() else []
+        old_groups = groups[:len(groups) - len(recent_groups)] if len(recent_groups) < len(groups) else []
 
-        # Select turns to compact
-        compact_turns = self._select_turns_to_compact(turns)
+        if len(old_groups) == 0:
+            return messages  # Nothing old enough to compact
 
-        # Generate summary for selected turns
-        if compact_turns:
-            summary = self._generate_summary(compact_turns)
-            if summary:
-                # Rebuild message list with summary
-                return self._rebuild_message_list(
-                    system_message,
-                    other_summaries,
-                    compact_turns,
-                    summary,
-                    turns,
-                    last_summary_index,
+        try:
+            summary = self._get_ai_summary(old_groups)
+            summary_message = self._create_summary_message(summary)
+
+            # Rebuild: system + existing summaries + new summary + recent messages
+            recent_messages = []
+            for g in recent_groups:
+                recent_messages.extend(g.messages)
+            new_messages: List[Dict[str, Any]] = [
+                system_message,
+                *other_summaries,
+                summary_message,
+                *recent_messages,
+            ]
+
+            return new_messages
+        except Exception as e:
+            LogUtils.error(f"[X] Compaction failed: {e}")
+            raise e  # Re-throw to let caller handle it
+
+    def force_compact_rounds(self, messages: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
+        """Force compact N oldest conversation rounds"""
+        rounds = self._identify_rounds(messages)
+        if len(rounds) == 0:
+            return messages
+
+        rounds_to_compact = rounds[:min(n, len(rounds))]
+        if len(rounds_to_compact) == 0:
+            return messages
+
+        messages_to_compact = []
+        for round in rounds_to_compact:
+            messages_to_compact.extend(round.messages)
+        # Filter out any summary messages from compaction
+        filtered_messages = [
+            msg for msg in messages_to_compact
+            if not msg.get("content", "").startswith("[SUMMARY]")
+        ]
+
+        if len(filtered_messages) == 0:
+            return messages
+
+        summary = self._get_ai_summary(
+            [
+                MessageGroup(
+                    messages=[msg],
+                    is_summary=False,
+                    is_user_turn=False,
                 )
+                for msg in filtered_messages
+            ]
+        )
+        summary_message = self._create_summary_message(summary)
 
-        return messages
+        return self._replace_messages_with_summary(messages, filtered_messages, summary_message)
 
-    def _group_into_turns(self, messages: List[Dict[str, Any]]) -> List[MessageGroup]:
-        """Group messages into conversation turns"""
-        turns = []
-        current_turn = []
+    def force_compact_messages(self, messages: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
+        """Force compact N oldest individual messages"""
+        eligible_messages = [
+            msg for msg in messages
+            if msg.get("role") != "system" and not msg.get("content", "").startswith("[SUMMARY]")
+        ]
+
+        if len(eligible_messages) == 0:
+            return messages
+
+        messages_to_compact = eligible_messages[:min(n, len(eligible_messages))]
+        summary = self._get_ai_summary(
+            [
+                MessageGroup(
+                    messages=[msg],
+                    is_summary=False,
+                    is_user_turn=False,
+                )
+                for msg in messages_to_compact
+            ]
+        )
+        summary_message = self._create_summary_message(summary)
+
+        return self._replace_messages_with_summary(messages, messages_to_compact, summary_message)
+
+    def group_messages(self, messages: List[Dict[str, Any]]) -> List[MessageGroup]:
+        """Group messages into atomic units (tool calls stay with responses)"""
+        groups: List[MessageGroup] = []
+        current: List[Dict[str, Any]] = []
 
         for msg in messages:
-            # Start new turn with user message
-            if msg.get("role") == "user" and current_turn:
-                turns.append(
+            current.append(msg)
+
+            # Complete group at tool result OR new user message (not first)
+            if msg.get("role") == "tool" or (msg.get("role") == "user" and len(current) > 1):
+                groups.append(
                     MessageGroup(
-                        messages=current_turn,
-                        is_summary=current_turn[0]
-                        .get("content", "")
-                        .startswith("[SUMMARY]"),
-                        is_user_turn=current_turn[0].get("role") == "user",
+                        messages=list(current),
+                        is_summary=current[0].get("content", "").startswith("[SUMMARY]"),
+                        is_user_turn=current[0].get("role") == "user",
                     )
                 )
-                current_turn = [msg]
-            else:
-                current_turn.append(msg)
+                current = [msg] if msg.get("role") == "user" else []
 
-        # Add last turn
-        if current_turn:
-            turns.append(
+        if len(current) > 0:
+            groups.append(
                 MessageGroup(
-                    messages=current_turn,
-                    is_summary=current_turn[0]
-                    .get("content", "")
-                    .startswith("[SUMMARY]"),
-                    is_user_turn=current_turn[0].get("role") == "user",
+                    messages=current,
+                    is_summary=current[0].get("content", "").startswith("[SUMMARY]"),
+                    is_user_turn=current[0].get("role") == "user",
                 )
             )
 
-        return turns
+        return groups
 
-    def _select_turns_to_compact(self, turns: List[MessageGroup]) -> List[MessageGroup]:
-        """Select which turns to compact using sliding window"""
-        # Keep most recent turns, compact older ones
-        keep_recent = Config.compaction_keep_last() or 2
-        compact_turns = turns[:-keep_recent] if len(turns) > keep_recent else []
-        return compact_turns
-
-    def _generate_summary(self, turns: List[MessageGroup]) -> Optional[str]:
-        """Generate AI summary for selected turns"""
-        try:
-            # Combine all messages in turns to compact
-            messages_to_summarize = []
-            for turn in turns:
-                messages_to_summarize.extend(turn.messages)
-
-            # Create summary prompt
-            summary_prompt = self._create_summary_prompt(messages_to_summarize)
-
-            # Call API to generate summary
-            # This is simplified - would need actual API call
-            # For now, return a basic summary
-            return f"[SUMMARY] Previous conversation condensed: {len(messages_to_summarize)} messages"
-
-        except Exception as e:
-            LogUtils.warn(f"Failed to generate summary: {e}")
-            return None
-
-    def _create_summary_prompt(self, messages: List[Dict[str, Any]]) -> str:
-        """Create prompt for summarization"""
-        prompt = "Summarize the following conversation:\n\n"
+    def _identify_rounds(self, messages: List[Dict[str, Any]]) -> List[MessageGroup]:
+        """Identify conversation rounds"""
+        rounds: List[MessageGroup] = []
+        current_round: List[Dict[str, Any]] = []
 
         for msg in messages:
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            prompt += f"{role}: {content}\n\n"
+            if msg.get("role") == "system" or msg.get("content", "").startswith("[SUMMARY]"):
+                continue  # Skip system and summary messages
 
-        prompt += (
-            "Provide a concise summary preserving key technical details and decisions."
-        )
-        return prompt
+            current_round.append(msg)
 
-    def _rebuild_message_list(
-        self,
-        system_message: Dict[str, Any],
-        existing_summaries: List[Dict[str, Any]],
-        compacted_turns: List[MessageGroup],
-        new_summary: str,
-        all_turns: List[MessageGroup],
-        insert_index: int,
-    ) -> List[Dict[str, Any]]:
-        """Rebuild the message list with new summary inserted"""
+            # Round ends at next user message
+            if msg.get("role") == "user" and len(current_round) > 1:
+                if len(current_round) > 1:
+                    rounds.append(
+                        MessageGroup(
+                            messages=list(current_round[:-1]),
+                            is_summary=current_round[0].get("content", "").startswith("[SUMMARY]"),
+                            is_user_turn=current_round[0].get("role") == "user",
+                        )
+                    )
+                current_round = [msg]  # Start new round
+
+        if len(current_round) > 0:
+            rounds.append(
+                MessageGroup(
+                    messages=current_round,
+                    is_summary=current_round[0].get("content", "").startswith("[SUMMARY]"),
+                    is_user_turn=current_round[0].get("role") == "user",
+                )
+            )
+
+        return rounds
+
+    def _get_ai_summary(self, groups: List[MessageGroup]) -> str:
+        """Get AI summary using existing streaming client"""
+        messages = []
+        for g in groups:
+            messages.extend(g.messages)
+        messages_to_summarize = [
+            msg for msg in messages if not msg.get("content", "").startswith("[SUMMARY]")
+        ]
+
+        if len(messages_to_summarize) == 0:
+            return "No previous content"
+
+        prompt = f"""Based on the conversation below:
+
+Numbered conversation to analyze:
+{self._format_messages_for_summary(messages_to_summarize)}
+
+---
+Provide a detailed but concise summary of our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next. Generate at least 1000 if you have enough information available to do so."""
+
+        try:
+            system_prompt = """You are a helpful AI assistant tasked with summarizing conversations.
+
+When asked to summarize, provide a detailed but concise summary of the conversation.
+Focus on information that would be helpful for continuing the conversation, including:
+
+- What was done
+- What is currently being worked on
+- Which files are being modified
+- What needs to be done next
+
+Your summary should be comprehensive enough to provide context but concise enough to be quickly understood."""
+
+            if not self.streaming_client:
+                LogUtils.warn("[!] No streaming client available for summarization")
+                return f"Previous conversation condensed: {len(messages_to_summarize)} messages"
+
+            # Build messages for summarization
+            summary_messages: List[Dict[str, Any]] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+
+            # Non-streaming request to get complete summary
+            full_response = ""
+            for chunk in self.streaming_client.stream_request(
+                summary_messages,
+                stream=False,
+                throw_on_error=True,
+                send_tools=False
+            ):
+                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                if content:
+                    full_response += content
+
+            if not self._validate_summary(full_response):
+                LogUtils.warn("[!] Generated summary appears too short, using anyway")
+
+            return full_response or "Conversation summarized"
+
+        except Exception as e:
+            raise Exception(f"AI summarization failed: {e}")
+
+    def _format_messages_for_summary(self, messages: List[Dict[str, Any]]) -> str:
+        """Format messages for AI summarization with temporal tagging (Python strategy)"""
+        total_messages = len(messages)
         result = []
 
-        # Add system message
-        result.append(system_message)
+        for i, msg in enumerate(messages):
+            role = msg.get("role")
+            content = msg.get("content", "")
 
-        # Add existing summaries
-        for summary in existing_summaries:
-            result.append(summary)
+            # Calculate temporal position (Python's exact strategy)
+            current_index = i + 1
+            position_ratio = current_index / total_messages
+            position_percent = position_ratio * 100
 
-        # Add new summary
-        result.append({"role": "assistant", "content": new_summary})
+            # Add temporal priority indicator
+            if position_percent >= 80:
+                priority = "🔴 VERY RECENT (Last 20%)"
+            elif position_percent >= 60:
+                priority = "🟡 RECENT (Last 40%)"
+            elif position_percent >= 30:
+                priority = "🟢 MIDDLE"
+            else:
+                priority = "🔵 OLD (First 30%)"
 
-        # Add remaining (non-compacted) turns
-        compacted_set = set(id(turn) for turn in compacted_turns)
-        for turn in all_turns:
-            if id(turn) not in compacted_set:
-                result.extend(turn.messages)
+            prefix = f"[{current_index:03d}/{total_messages}] {priority} "
 
-        return result
+            # Format based on role with enhanced details
+            if role == "assistant":
+                tool_calls = msg.get("tool_calls", [])
+                if tool_calls and len(tool_calls) > 0:
+                    tool_info = "\n".join(
+                        f"Tool Call: {call.get('function', {}).get('name', 'unknown')}({call.get('function', {}).get('arguments', '{}')})"
+                        for call in tool_calls
+                    )
+                    result.append(f"{prefix} Assistant: {content}\n{tool_info}")
+                else:
+                    result.append(f"{prefix} Assistant: {content}")
+            elif role == "tool":
+                tool_call_id = msg.get("tool_call_id", "unknown")
+                tool_content = content
+
+                # Truncate very long tool results for summarization
+                if len(tool_content) > 500:
+                    tool_content = tool_content[:500] + "... (truncated for summarization)"
+
+                result.append(f"{prefix} Tool Result (ID: {tool_call_id}): {tool_content}")
+            elif role == "user":
+                result.append(f"{prefix} User: {content}")
+            else:
+                result.append(f"{prefix} {role.capitalize() if role else 'Unknown'}: {content}")
+
+            result.append("---")
+
+        return "\n".join(result)
+
+    def _validate_summary(self, summary: str) -> bool:
+        """Validate summary quality"""
+        return bool(summary and len(summary) >= 50)
+
+    def _create_summary_message(self, summary: str) -> Dict[str, Any]:
+        """Create summary message (user role to avoid model issues)"""
+        return {
+            "role": "user",
+            "content": f"[SUMMARY] {summary}",
+        }
+
+    def _replace_messages_with_summary(
+        self,
+        messages: List[Dict[str, Any]],
+        to_replace: List[Dict[str, Any]],
+        summary: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Replace a range of messages with summary"""
+        if len(to_replace) == 0:
+            return messages
+
+        # Find indices by matching content and role (more reliable than object reference)
+        first_index = -1
+        for i, msg in enumerate(messages):
+            if msg.get("role") == to_replace[0].get("role") and msg.get("content") == to_replace[0].get("content"):
+                first_index = i
+                break
+
+        if first_index == -1:
+            return messages
+
+        # Find last index by matching last message in to_replace
+        last_message_to_replace = to_replace[-1]
+        last_index = -1
+        for i, msg in enumerate(messages):
+            if (i >= first_index and
+                    msg.get("role") == last_message_to_replace.get("role") and
+                    msg.get("content") == last_message_to_replace.get("content")):
+                last_index = i
+                break
+
+        actual_last_index = last_index if last_index != -1 else first_index + len(to_replace) - 1
+
+        return messages[:first_index] + [summary] + messages[actual_last_index + 1:]

@@ -7,7 +7,6 @@ import os
 import sys
 import tempfile
 from typing import Dict, Any
-from aicoder.type_defs.tool_types import ToolResult, ToolPreview, ToolResult
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, write_file as file_write, get_relative_path
@@ -35,7 +34,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     return True
 
 
-def execute(args: Dict[str, Any]) -> ToolResult:
+def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Write content to file"""
     path = args.get("path")
     content = args.get("content", "")
@@ -44,7 +43,9 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         raise Exception("Path is required")
 
     if not _check_sandbox(path):
-        raise Exception(f'write_file: path "{path}" outside current directory not allowed')
+        resolved_path = os.path.abspath(path)
+        current_dir = os.getcwd()
+        raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
 
     
 
@@ -110,11 +111,11 @@ def execute(args: Dict[str, Any]) -> ToolResult:
             
             detailed = "\n".join(detailed_parts)
 
-            return ToolResult(
-                tool="write_file",
-                friendly=friendly,
-                detailed=detailed
-            )
+            return {
+                "tool": "write_file",
+                "friendly": friendly,
+                "detailed": detailed
+            }
 
         finally:
             # Cleanup temp files
@@ -125,14 +126,14 @@ def execute(args: Dict[str, Any]) -> ToolResult:
                 pass
 
     except Exception as e:
-        return ToolResult(
-            tool="write_file",
-            friendly=f"❌ Error writing {get_relative_path(path)}: {str(e)}",
-            detailed=(
+        return {
+            "tool": "write_file",
+            "friendly": f"❌ Error writing {get_relative_path(path)}: {str(e)}",
+            "detailed": (
                 f"Path: {path}\n"
                 f"Error: {str(e)}"
             )
-        )
+        }
 
 
 def generate_preview(args):
@@ -153,11 +154,11 @@ def generate_preview(args):
                 "[!] Warning: The file must be read before editing."
             )
             
-            return ToolPreview(
-                tool="write_file",
-                content=safety_message,
-                can_approve=False
-            )
+            return {
+                "tool": "write_file",
+                "content": safety_message,
+                "can_approve": False
+            }
 
         # Create temporary files for diff
         temp_old = tempfile.NamedTemporaryFile(
@@ -200,12 +201,12 @@ def generate_preview(args):
                     f"New file will be created:\n\n"
                     f"{colorized_diff}"
                 )
-                
-            return ToolPreview(
-                tool="write_file",
-                content=preview_content,
-                can_approve=True
-            )
+
+            return {
+                "tool": "write_file",
+                "content": preview_content,
+                "can_approve": True
+            }
 
         finally:
             # Cleanup temp files
@@ -216,11 +217,11 @@ def generate_preview(args):
                 pass
 
     except Exception as e:
-        return ToolPreview(
-            tool="write_file",
-            content=f"Error: {str(e)}",
-            can_approve=False
-        )
+        return {
+            "tool": "write_file",
+            "content": f"Error: {str(e)}",
+            "can_approve": False
+        }
 
 
 def format_arguments(args):
