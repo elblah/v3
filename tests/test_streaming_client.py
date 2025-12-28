@@ -27,7 +27,9 @@ def sample_messages():
 def test_streaming_client_initialization(streaming_client):
     """Test StreamingClient initialization"""
     assert streaming_client.colorizer is not None
-    assert streaming_client.config is not None
+    assert streaming_client.stats is None  # Default when not provided
+    assert streaming_client.tool_manager is None
+    assert streaming_client.message_history is None
 
 
 def test_stream_request_success(streaming_client, sample_messages):

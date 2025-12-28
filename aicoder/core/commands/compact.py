@@ -121,7 +121,9 @@ class CompactCommand(BaseCommand):
         except Exception as e:
             LogUtils.error(f"[X] Compaction failed: {e}")
 
-    def _show_stats(self) -> Dict[str, Any]:
+        return CommandResult(should_quit=False, run_api_call=False)
+
+    def _show_stats(self) -> CommandResult:
         """Show conversation statistics"""
         message_history = self.context.message_history
         message_history.estimate_context()  # Update token estimate
@@ -141,9 +143,9 @@ class CompactCommand(BaseCommand):
         )
         LogUtils.print(f"  Total compactions: {message_history.get_compaction_count()}")
 
-        return {}
+        return CommandResult(should_quit=False, run_api_call=False)
 
-    def _handle_prune(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_prune(self, args: Dict[str, Any]) -> CommandResult:
         """Handle prune operations"""
         message_history = self.context.message_history
         stats = message_history.get_tool_call_stats()
@@ -168,7 +170,7 @@ class CompactCommand(BaseCommand):
 
         if stats.count == 0:
             LogUtils.warn("[i] No tool results to prune")
-            return {}
+            return CommandResult(should_quit=False, run_api_call=False)
 
         if prune_all:
             pruned_count = message_history.prune_all_tool_results()
@@ -178,7 +180,7 @@ class CompactCommand(BaseCommand):
             pruned_count = message_history.prune_oldest_tool_results(to_prune)
             LogUtils.success(f"[✓] Pruned {pruned_count} oldest tool result(s)")
 
-        return {}
+        return CommandResult(should_quit=False, run_api_call=False)
 
     def _show_help(self) -> Dict[str, Any]:
         """Show help for compact command"""

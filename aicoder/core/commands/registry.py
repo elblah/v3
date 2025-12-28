@@ -20,41 +20,32 @@ class CommandRegistry:
         """Register all built-in commands"""
         from .help import HelpCommand
         from .quit import QuitCommand
-        from .clear import ClearCommand
         from .stats import StatsCommand
         from .save import SaveCommand
         from .load import LoadCommand
         from .compact import CompactCommand
         from .sandbox import SandboxCommand
-        from .council import CouncilCommand
         from .edit import EditCommand
-        from .model import ModelCommand, ModelBackCommand
         from .retry import RetryCommand
         from .memory import MemoryCommand
-        from .snippets import SnippetsCommand
         from .yolo import YoloCommand
         from .detail import DetailCommand
-        from .reset import ResetCommand
+        from .new import NewCommand
 
         commands = [
             HelpCommand(self.context),
             QuitCommand(self.context),
-            ClearCommand(self.context),
             StatsCommand(self.context),
             SaveCommand(self.context),
             LoadCommand(self.context),
             CompactCommand(self.context),
             SandboxCommand(self.context),
-            CouncilCommand(self.context),
             EditCommand(self.context),
-            ModelCommand(self.context),
-            ModelBackCommand(self.context),
             RetryCommand(self.context),
             MemoryCommand(self.context),
-            SnippetsCommand(self.context),
             YoloCommand(self.context),
             DetailCommand(self.context),
-            ResetCommand(self.context),
+            NewCommand(self.context),
         ]
 
         for command in commands:
@@ -69,45 +60,6 @@ class CommandRegistry:
         # Register aliases
         for alias in command.get_aliases():
             self.aliases[alias] = name
-
-    def register_plugin_command(
-        self,
-        name: str,
-        handler: Callable[[List[str]], bool | None],
-        description: str = "Plugin command",
-    ):
-        """Register a plugin command with a simple handler function"""
-        # Strip leading slash if present
-        cmd_name = name.lstrip("/")
-
-        # Create a simple wrapper command class
-        class PluginCommand(BaseCommand):
-            def __init__(
-                self, context: CommandContext, handler_func: Callable, desc: str
-            ):
-                super().__init__(context)
-                self._handler = handler_func
-                self._desc = desc
-                self._name = cmd_name
-
-            def get_name(self) -> str:
-                return self._name
-
-            def get_description(self) -> str:
-                return self._desc
-
-            def execute(self, args: List[str] = None) -> CommandResult:
-                try:
-                    result = self._handler(args or [])
-                    if result is None:
-                        result = False
-                    return CommandResult(should_quit=bool(result), run_api_call=False)
-                except Exception as e:
-                    LogUtils.error(f"Plugin command error: {e}")
-                    return CommandResult(should_quit=False, run_api_call=False)
-
-        # Register plugin command
-        self.register_command(PluginCommand(self.context, handler, description))
 
     def get_command(self, name: str) -> Optional[BaseCommand]:
         """Get command by name or alias"""

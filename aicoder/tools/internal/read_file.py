@@ -5,7 +5,6 @@ Following TypeScript structure exactly
 
 import os
 from typing import Dict, Any
-from aicoder.type_defs.tool_types import ToolResult, ToolPreview
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file as file_read
@@ -35,7 +34,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     return True
 
 
-def execute(args: Dict[str, Any]) -> ToolResult:
+def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Read file with pagination"""
     path = args.get("path")
     offset = args.get("offset", 0)
@@ -47,7 +46,7 @@ def execute(args: Dict[str, Any]) -> ToolResult:
     if not _check_sandbox(path):
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
-        raise Exception(f'read_file: path "{path}" outside current directory not allowed')
+        raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
@@ -62,11 +61,11 @@ def execute(args: Dict[str, Any]) -> ToolResult:
 
         # Apply offset and limit
         if offset >= len(lines):
-            return ToolResult(
-                tool="read_file",
-                friendly=f"File {path} has {len(lines)} lines, but offset {offset} is beyond end of file",
-                detailed=f"Cannot read file '{path}'. Requested offset {offset} but file only has {len(lines)} lines."
-            )
+            return {
+                "tool": "read_file",
+                "friendly": f"File {path} has {len(lines)} lines, but offset {offset} is beyond end of file",
+                "detailed": f"Cannot read file '{path}'. Requested offset {offset} but file only has {len(lines)} lines."
+            }
 
         end_index = min(offset + limit, len(lines))
         selected_lines = lines[offset:end_index]
@@ -95,18 +94,18 @@ def execute(args: Dict[str, Any]) -> ToolResult:
         if offset > 0 or end_index < len(lines):
             friendly_msg += f" (showing lines {offset + 1}-{end_index} of {len(lines)})"
 
-        return ToolResult(
-            tool="read_file",
-            friendly=friendly_msg,
-            detailed=f"File: {path}\nTotal lines: {len(lines)}\nShowing: lines {offset + 1}-{end_index}\n\nContent:\n{selected_content}"
-        )
+        return {
+            "tool": "read_file",
+            "friendly": friendly_msg,
+            "detailed": f"File: {path}\nTotal lines: {len(lines)}\nShowing: lines {offset + 1}-{end_index}\n\nContent:\n{selected_content}"
+        }
 
     except Exception as e:
-        return ToolResult(
-            tool="read_file",
-            friendly=f"❌ Error reading {path}: {str(e)}",
-            detailed=f"Error reading file '{path}': {str(e)}"
-        )
+        return {
+            "tool": "read_file",
+            "friendly": f"❌ Error reading {path}: {str(e)}",
+            "detailed": f"Error reading file '{path}': {str(e)}"
+        }
 
 
 def generatePreview(args):
@@ -115,17 +114,16 @@ def generatePreview(args):
 
     # Check sandbox first - don't print message since preview will show it
     if not _check_sandbox(path, print_message=False):
-        from aicoder.core.tool_formatter import ToolPreview
         import os.path
-        
+
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
-        
-        return ToolPreview(
-            tool="read_file",
-            content=f'Path: {path}\n[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"',
-            can_approve=False,
-        )
+
+        return {
+            "tool": "read_file",
+            "content": f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"',
+            "can_approve": False,
+        }
 
     # If sandbox passes, no preview needed
     return None

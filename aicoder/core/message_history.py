@@ -3,22 +3,16 @@ Following TypeScript patterns exactly
 """
 
 import json
-from typing import List, Optional, TYPE_CHECKING
-from dataclasses import dataclass
+from typing import List, Optional, TYPE_CHECKING, Dict, Any
 
-from aicoder.type_defs.message_types import (
-    Message,
-    MessageRole,
-    AssistantMessage,
-    ToolResultData,
-)
+
 
 
 # Import ToolResult from types package
-from aicoder.type_defs.tool_types import ToolResult
 
 
 from aicoder.core.stats import Stats
+from aicoder.utils.log import LogUtils
 
 if TYPE_CHECKING:
     from ..core.streaming_client import StreamingClient
@@ -37,8 +31,8 @@ class MessageHistory:
     def __init__(self, stats: Stats, api_client: Optional["StreamingClient"] = None):
         self.stats = stats
         self.api_client = api_client
-        self.messages: List[Message] = []
-        self.initial_system_prompt: Optional[Message] = None
+        self.messages: List[Dict[str, Any]] = []
+        self.initial_system_prompt: Optional[Dict[str, Any]] = None
         self.is_compacting = False
 
     def set_api_client(self, api_client: "StreamingClient") -> None:
@@ -47,7 +41,12 @@ class MessageHistory:
 
     def add_system_message(self, content: str) -> None:
         """Add a system message"""
-        message = Message(role="system", content=content)
+        message = {"role": "system", "content": content}
+        
+        # Cache tokens immediately on creation (performance optimization)
+        from .token_estimator import cache_message
+        cache_message(message)
+        
         self.messages.append(message)
         self.estimate_context()
 
@@ -56,19 +55,75 @@ class MessageHistory:
 
     def add_user_message(self, content: str) -> None:
         """Add a user message"""
-        message = Message(role="user", content=content)
+        message = {"role": "user", "content": content}
+        
+        # Cache tokens immediately on creation (performance optimization)
+        from .token_estimator import cache_message
+        cache_message(message)
+        
         self.messages.append(message)
         self.stats.increment_messages_sent()
         # Update context size estimate
         self.estimate_context()
 
-    def add_assistant_message(self, message: AssistantMessage) -> None:
+    def insert_user_message_at_appropriate_position(self, content: str) -> None:
+        """
+        Insert a user message at the correct position in message history.
+        
+        Scans backwards from the end and finds the appropriate injection position:
+        Priority: 1) after last tool response, 2) after last assistant message with no tool calls, 3) after last user message
+        
+        This prevents breaking tool call/response chains during injection.
+        """
+        last_tool_index = -1
+        last_assistant_index = -1
+        last_user_index = -1
+        
+        # Scan backwards from the end to find the LAST occurrence of each type
+        for i in range(len(self.messages) - 1, -1, -1):
+            msg = self.messages[i]
+            role = msg.get("role")
+            
+            if role == "tool" and last_tool_index == -1:
+                last_tool_index = i
+            elif role == "assistant":
+                tool_calls = msg.get("tool_calls")
+                # Only consider assistant messages without tool calls
+                if (not tool_calls or len(tool_calls) == 0) and last_assistant_index == -1:
+                    last_assistant_index = i
+            elif role == "user" and last_user_index == -1:
+                last_user_index = i
+        
+        # Priority: tool > assistant > user
+        insertion_index = len(self.messages)  # Default: append to end
+        
+        if last_tool_index != -1:
+            insertion_index = last_tool_index + 1
+        elif last_assistant_index != -1:
+            insertion_index = last_assistant_index + 1
+        elif last_user_index != -1:
+            insertion_index = last_user_index + 1
+        
+        # Create and insert the user message
+        user_message = {"role": "user", "content": content}
+        
+        # Cache tokens immediately on creation (performance optimization)
+        from .token_estimator import cache_message
+        cache_message(user_message)
+        
+        self.messages.insert(insertion_index, user_message)
+        self.stats.increment_messages_sent()
+        # Update context size estimate
+        self.estimate_context()
+
+    def add_assistant_message(self, message: Dict[str, Any]) -> None:
         """Add an assistant message"""
-        assistant_message = Message(
-            role="assistant",
-            content=message.get("content"),
-            tool_calls=message.get("tool_calls"),
-        )
+        assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
+        
+        # Cache tokens immediately on creation (performance optimization)
+        from .token_estimator import cache_message
+        cache_message(assistant_message)
+        
         self.messages.append(assistant_message)
         # Update context size estimate
         self.estimate_context()
@@ -76,7 +131,7 @@ class MessageHistory:
     def add_tool_results(self, tool_results) -> None:
         """Add tool results - accepts both dicts and objects"""
         # Ensure tool_results is iterable
-        if isinstance(tool_results, (dict, ToolResult)) or not hasattr(
+        if isinstance(tool_results, dict) or not hasattr(
             tool_results, "__iter__"
         ):
             tool_results = [tool_results]
@@ -90,41 +145,74 @@ class MessageHistory:
                 tool_call_id = getattr(result, "tool_call_id", None)
                 content = getattr(result, "content", None)
 
-            tool_message = Message(
-                role="tool", content=content, tool_call_id=tool_call_id
-            )
+            tool_message = {
+                "role": "tool", "content": content, "tool_call_id": tool_call_id
+            }
+            
+            # Cache tokens immediately on creation (performance optimization)
+            from .token_estimator import cache_message
+            cache_message(tool_message)
+            
             self.messages.append(tool_message)
         # Update context size estimate
         self.estimate_context()
 
-    def get_messages(self) -> List[Message]:
+    def get_messages(self) -> List[Dict[str, Any]]:
         """Get all messages"""
         return self.messages.copy()
 
-    def get_chat_messages(self) -> List[Message]:
+    def get_chat_messages(self) -> List[Dict[str, Any]]:
         """Get chat messages (excluding system messages)"""
         return [msg for msg in self.messages if msg.get("role") != "system"]
 
-    def estimate_context(self) -> None:
-        """Estimate context size"""
-        # For simplicity, just count characters
-        total_chars = 0
-        for msg in self.messages:
-            content = msg.get("content")
-            if content:
-                total_chars += len(content)
+    def replace_messages(self, new_messages: List[Dict[str, Any]]) -> None:
+        """Replace all messages with new list"""
+        self.messages = new_messages
+        self.estimate_context()
 
-        # Rough estimate: 1 token = 4 characters
-        self.stats.set_current_prompt_size(total_chars // 4)
+    def set_messages(self, new_messages: List[Dict[str, Any]]) -> None:
+        """Directly set messages (useful for loading sessions and compaction)"""
+        self.messages = list(new_messages)  # Make a copy
+        self.estimate_context()
+
+    def estimate_context(self) -> None:
+        """Estimate context size using optimized weighted estimation"""
+        from .token_estimator import estimate_messages
+        
+        # Use cached estimation - super fast, no fallback
+        estimated_tokens = estimate_messages(self.messages)
+        self.stats.set_current_prompt_size(estimated_tokens, True)
 
     def clear(self) -> None:
-        """Clear all messages"""
+        """Clear all messages except the initial system prompt"""
+        # Save the initial system prompt if it exists
+        system_prompt = self.initial_system_prompt
+
+        # Clear all messages
         self.messages = []
         self.stats.set_current_prompt_size(0)
 
-    def set_messages(self, messages: List[Message]) -> None:
+        # Restore the initial system prompt if it exists
+        if system_prompt:
+            from .token_estimator import cache_message
+            cache_message(system_prompt)
+            self.messages.append(system_prompt)
+            self.estimate_context()
+        else:
+            # Clear cache if no system prompt to restore
+            from .token_estimator import clear_cache
+            clear_cache()
+
+    def set_messages(self, messages: List[Dict[str, Any]]) -> None:
         """Set messages (for loading)"""
         self.messages = messages.copy()
+        
+        # Clear cache and re-cache all messages when replaced
+        from .token_estimator import clear_cache, cache_message
+        clear_cache()
+        for msg in self.messages:
+            cache_message(msg)
+        
         self.estimate_context()
 
     def get_message_count(self) -> int:
@@ -135,7 +223,7 @@ class MessageHistory:
         """Get chat message count (excluding system)"""
         return len(self.get_chat_messages())
 
-    def get_initial_system_prompt(self) -> Optional[Message]:
+    def get_initial_system_prompt(self) -> Optional[Dict[str, Any]]:
         """Get the initial system prompt"""
         return self.initial_system_prompt
 
@@ -158,25 +246,43 @@ class MessageHistory:
             print("[!] API client not available for compaction")
             return
 
-        # For now, just prune tool results - full compaction service will be added later
         self.is_compacting = True
         try:
-            result = self.prune_tool_results_by_percentage(50)
-            if result["prunedCount"] > 0:
+            # Import here to avoid circular imports
+            from .compaction_service import CompactionService
+
+            LogUtils.warn(f"[*] Compacting conversation ({self.stats.current_prompt_size or 0:,} tokens)...")
+
+            compaction = CompactionService(self.api_client)
+            original_count = len(self.messages)
+
+            new_messages = compaction.compact(self.messages)
+            self.set_messages(new_messages)
+
+            if len(self.messages) < original_count:
                 self.increment_compaction_count()
                 print("[✓] Conversation compacted successfully")
+
         finally:
             self.is_compacting = False
 
     def force_compact_rounds(self, n: int) -> None:
         """Force compact N oldest rounds"""
-        # Simplified implementation for now
-        self.compact_memory()
+        # Import here to avoid circular imports
+        from .compaction_service import CompactionService
+
+        compaction = CompactionService(self.api_client)
+        new_messages = compaction.force_compact_rounds(self.messages, n)
+        self.set_messages(new_messages)
 
     def force_compact_messages(self, n: int) -> None:
         """Force compact N oldest messages"""
-        # Simplified implementation for now
-        self.compact_memory()
+        # Import here to avoid circular imports
+        from .compaction_service import CompactionService
+
+        compaction = CompactionService(self.api_client)
+        new_messages = compaction.force_compact_messages(self.messages, n)
+        self.set_messages(new_messages)
 
     def should_auto_compact(self) -> bool:
         """Check if auto-compaction should be triggered"""
@@ -199,7 +305,7 @@ class MessageHistory:
 
         return rounds
 
-    def get_tool_result_messages(self) -> List[Message]:
+    def get_tool_result_messages(self) -> List[Dict[str, Any]]:
         """Get all tool result messages"""
         return [msg for msg in self.messages if msg.get("role") == "tool"]
 

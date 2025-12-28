@@ -115,10 +115,9 @@ class MemoryCommand(BaseCommand):
                     elif role == "user":
                         self.context.message_history.add_user_message(content)
                     elif role == "assistant":
-                        from aicoder.type_defs.message_types import AssistantMessage
 
                         self.context.message_history.add_assistant_message(
-                            AssistantMessage(content=content, tool_calls=tool_calls)
+                            {"content": content, "tool_calls": tool_calls}
                         )
                     elif role == "tool":
                         self.context.message_history.add_tool_results(

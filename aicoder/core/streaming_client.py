@@ -7,26 +7,10 @@ from typing import List, Generator, Optional, Dict, Any
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
 from aicoder.utils.log import LogUtils
-from aicoder.type_defs.api_types import StreamChunk, ApiUsage
-from aicoder.type_defs.message_types import Message, MessageRole
-from aicoder.type_defs.tool_types import ToolDefinition
 from aicoder.utils.http_utils import fetch, Response
-from dataclasses import dataclass
 
 
-@dataclass
-class ChoiceDelta:
-    content: Optional[str] = None
-    reasoning_content: Optional[str] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    role: Optional[str] = None
 
-
-@dataclass
-class Choice:
-    index: int
-    delta: Optional[ChoiceDelta] = None
-    finish_reason: Optional[str] = None
 
 
 class StreamingClient:
@@ -39,11 +23,11 @@ class StreamingClient:
 
     def stream_request(
         self,
-        messages: List[Message],
+        messages: List[Dict[str, Any]],
         stream: bool = True,
         throw_on_error: bool = False,
         send_tools: bool = True,
-    ) -> Generator[StreamChunk, None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """Stream API request - exact port from TypeScript streamRequest"""
         if Config.debug():
             LogUtils.debug(
@@ -211,7 +195,7 @@ class StreamingClient:
 
     def _prepare_request_data(
         self,
-        messages: List[Message],
+        messages: List[Dict[str, Any]],
         model: Optional[str],
         stream: bool,
         send_tools: bool = True,
@@ -249,11 +233,20 @@ class StreamingClient:
             data["tools"] = tool_definitions
             data["tool_choice"] = "auto"
 
+            # Cache tool definition tokens for accurate estimation
+            from .token_estimator import set_tool_tokens
+            import json
+            tools_json = json.dumps(tool_definitions, separators=(',', ':'))
+            from .token_estimator import _estimate_weighted_tokens
+            tool_tokens = _estimate_weighted_tokens(tools_json)
+            set_tool_tokens(tool_tokens)
+
             if Config.debug():
                 LogUtils.debug(f"*** Tool definitions count: {len(tool_definitions)}")
+                LogUtils.debug(f"*** Tool tokens estimated: {tool_tokens}")
                 LogUtils.debug(f"*** Message count: {len(data.get('messages', []))}")
 
-    def _format_messages(self, messages: List[Message]) -> List[Dict[str, Any]]:
+    def _format_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Format messages for API - exact port from TS"""
         formatted = []
         for msg in messages:
@@ -291,7 +284,7 @@ class StreamingClient:
 
     def _handle_streaming_response(
         self, response: Response
-    ) -> Generator[StreamChunk, None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """Handle streaming response - exact port from TS handleStreamingResponse"""
         try:
             if not response:
@@ -341,37 +334,26 @@ class StreamingClient:
                             LogUtils.debug(f"Tool call JSON: {data_str[:100]}...")
                         chunk_data = json.loads(data_str)
 
-                        # Convert dict choices to Choice objects
+                        # Use choice dicts directly
                         choices = []
                         if chunk_data.get("choices"):
                             for choice_dict in chunk_data["choices"]:
-                                # Convert delta dict to ChoiceDelta object
+                                # Use delta dict directly
                                 delta_dict = choice_dict.get("delta", {})
-                                delta = ChoiceDelta(
-                                    content=delta_dict.get("content"),
-                                    reasoning_content=delta_dict.get(
-                                        "reasoning_content"
-                                    ),
-                                    tool_calls=delta_dict.get("tool_calls"),
-                                    role=delta_dict.get("role"),
-                                )
+                                delta = delta_dict
 
-                                choice = Choice(
-                                    index=choice_dict.get("index", 0),
-                                    delta=delta,
-                                    finish_reason=choice_dict.get("finish_reason"),
-                                )
+                                choice = choice_dict
                                 choices.append(choice)
 
-                        # Create StreamChunk object
-                        chunk = StreamChunk(
-                            id=chunk_data.get("id"),
-                            object=chunk_data.get("object"),
-                            created=chunk_data.get("created"),
-                            model=chunk_data.get("model"),
-                            choices=choices,
-                            usage=self._create_usage(chunk_data.get("usage")),
-                        )
+                        # Create chunk dict
+                        chunk = {
+                            "id": chunk_data.get("id"),
+                            "object": chunk_data.get("object"),
+                            "created": chunk_data.get("created"),
+                            "model": chunk_data.get("model"),
+                            "choices": choices,
+                            "usage": self._create_usage(chunk_data.get("usage")),
+                        }
 
                         if (
                             Config.debug()
@@ -393,7 +375,7 @@ class StreamingClient:
 
     def _handle_non_streaming_response(
         self, response: Response
-    ) -> Generator[StreamChunk, None, None]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """Handle non-streaming response - exact port from TS handleNonStreamingResponse"""
         data = response.json()
 
@@ -403,7 +385,7 @@ class StreamingClient:
 
             if choice.get("message"):
                 # Create synthetic streaming chunk from complete message
-                chunk: StreamChunk = {
+                chunk: Dict[str, Any] = {
                     "choices": [
                         {
                             "delta": {
@@ -419,7 +401,7 @@ class StreamingClient:
                 # Update stats from usage if available
                 usage = data.get("usage")
                 if usage:
-                    self._update_stats_from_usage(ApiUsage(**usage))
+                    self._update_stats_from_usage(usage)
 
                 yield chunk
                 return
@@ -442,7 +424,7 @@ class StreamingClient:
             # Final attempt failed
             return self._handle_final_attempt_failure(error, throw_on_error, start_time)
 
-    def _update_stats_from_usage(self, usage: ApiUsage) -> None:
+    def _update_stats_from_usage(self, usage: Dict[str, Any]) -> None:
         """Update stats from usage - exact port from TS"""
         if self.stats:
             if hasattr(usage, "prompt_tokens"):
@@ -459,20 +441,19 @@ class StreamingClient:
         """Reset colorizer state"""
         self.colorizer.reset_state()
 
-    def _create_usage(self, usage_data: Optional[Dict[str, Any]]) -> Optional[ApiUsage]:
+    def _create_usage(self, usage_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Create ApiUsage object from dict data"""
         if not usage_data:
             return None
-        return ApiUsage(
-            prompt_tokens=usage_data.get("prompt_tokens"),
-            completion_tokens=usage_data.get("completion_tokens"),
-            total_tokens=usage_data.get("total_tokens"),
-        )
-
-    def update_token_stats(self, usage: Any) -> None:
+        return {
+            "prompt_tokens": usage_data.get("prompt_tokens"),
+            "completion_tokens": usage_data.get("completion_tokens"),
+            "total_tokens": usage_data.get("total_tokens"),
+        }
+    def update_token_stats(self, usage: Dict[str, Any]) -> None:
         """Update token statistics"""
         if self.stats and usage:
-            prompt_tokens = getattr(usage, "prompt_tokens", 0)
-            completion_tokens = getattr(usage, "completion_tokens", 0)
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)

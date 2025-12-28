@@ -73,10 +73,7 @@ class TestHarness:
         # Import and initialize AI Coder
         from aicoder.core.aicoder import AICoder
         self.aicoder = AICoder()
-        
-        # Initialize plugins and other components
-        self.aicoder.initialize_plugins()
-        
+
         # Setup message injector
         self.message_injector = MessageInjector(self.aicoder)
         

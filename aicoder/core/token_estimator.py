@@ -1,15 +1,14 @@
 """
 Enhanced token estimation based on Python implementation
 More accurate than simple 4 chars per token while remaining fast and dependency-free
-Ported exactly from TypeScript version
+Maximum performance with cache-once, lookup-forever strategy
 """
 
-import re
 import json
 from typing import List, Dict, Any, Optional
 
 
-# Token estimation weights (matching Python config)
+# Token estimation weights (matching TSV config)
 TOKEN_LETTER_WEIGHT = 4.2
 TOKEN_NUMBER_WEIGHT = 3.5
 TOKEN_PUNCTUATION_WEIGHT = 1.0
@@ -17,75 +16,37 @@ TOKEN_WHITESPACE_WEIGHT = 0.15
 TOKEN_OTHER_WEIGHT = 3.0
 
 # Punctuation set for fast lookup
-PUNCTUATION_SET = set(
-    [
-        "!",
-        '"',
-        "#",
-        "$",
-        "%",
-        "&",
-        "'",
-        "(",
-        ")",
-        "*",
-        "+",
-        ",",
-        "-",
-        ".",
-        "/",
-        ":",
-        ";",
-        "<",
-        "=",
-        ">",
-        "?",
-        "@",
-        "[",
-        "\\",
-        "]",
-        "^",
-        "_",
-        "`",
-        "{",
-        "|",
-        "}",
-        "~",
-    ]
-)
+PUNCTUATION_SET = {
+    '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'
+}
 
-# Cache for message token estimation (like Python version)
-_message_token_cache = {}
-_last_tool_definitions_tokens = 0
+# Performance caches - cache-once strategy
+_message_cache: Dict[int, int] = {}  # id(msg) -> tokens
+_tools_tokens = 0
+_MAX_CACHE_SIZE = 1000  # Prevent unbounded growth
 
 
-def estimate_tokens(text: str) -> int:
-    """Estimate the number of tokens in a text string
-    Uses enhanced character-based estimation that accounts for different content types
-    """
-    if not text or len(text) == 0:
+def _estimate_weighted_tokens(text: str) -> int:
+    """TSV-style weighted character estimation - fast, no regex"""
+    if not text:
         return 0
-
-    # Count character types
-    letters = 0
-    numbers = 0
-    punctuation = 0
-    whitespace = 0
-    other = 0
-
+    
+    # Count character types (fast character comparisons, no regex)
+    letters = numbers = punctuation = whitespace = other = 0
+    
     for char in text:
-        if re.match(r"[a-zA-Z]", char):
+        if 'a' <= char <= 'z' or 'A' <= char <= 'Z':
             letters += 1
-        elif re.match(r"[0-9]", char):
+        elif '0' <= char <= '9':
             numbers += 1
         elif char in PUNCTUATION_SET:
             punctuation += 1
-        elif re.match(r"\s", char):
+        elif char.isspace():
             whitespace += 1
         else:
             other += 1
-
-    # Use configurable weights (matching Python implementation)
+    
+    # Apply TSV weights
     token_estimate = (
         letters / TOKEN_LETTER_WEIGHT
         + numbers / TOKEN_NUMBER_WEIGHT
@@ -93,52 +54,60 @@ def estimate_tokens(text: str) -> int:
         + whitespace * TOKEN_WHITESPACE_WEIGHT
         + other / TOKEN_OTHER_WEIGHT
     )
-
+    
     return max(0, round(token_estimate))
 
 
-def estimate_messages_tokens(messages: List[Dict[str, Any]]) -> int:
-    """Estimate tokens for a message array (matching Python implementation)
-    Based on real API testing, this estimates the full API request JSON including:
-    - Message content
-    - JSON structure (field names, quotes, braces)
-    - Tool definitions (if any)
+def cache_message(msg: Dict[str, Any]) -> None:
+    """Cache FULL JSON message tokens IMMEDIATELY on creation
+    Cache-once strategy - compute once, lookup forever
     """
-    global _message_token_cache, _last_tool_definitions_tokens
+    msg_id = id(msg)
+    
+    # Only compute once per message object
+    if msg_id not in _message_cache:
+        # Serialize ENTIRE message (TSV approach)
+        json_str = json.dumps(msg, sort_keys=True, separators=(',', ':'))
+        
+        # Weighted estimation (TSV approach)
+        tokens = _estimate_weighted_tokens(json_str)
+        
+        _message_cache[msg_id] = tokens
 
-    if not messages or len(messages) == 0:
+
+def estimate_messages(messages: List[Dict[str, Any]]) -> int:
+    """Super fast token estimation - cache-once, lookup-forever"""
+    global _tools_tokens, _MAX_CACHE_SIZE
+    
+    if not messages:
         return 0
-
-    token_count = 0
-
-    # Estimate tokens for each message (with caching like Python)
+    
+    # Cache cleanup when it gets too large (prevents memory issues)
+    if len(_message_cache) >= _MAX_CACHE_SIZE:
+        _message_cache.clear()
+    
+    # Cache any uncached messages, then sum all tokens
+    total = 0
     for msg in messages:
-        msg_json = json.dumps(
-            msg, sort_keys=True
-        )  # sort_keys for consistent cache keys
-        if msg_json in _message_token_cache:
-            token_count += _message_token_cache[msg_json]
-        else:
-            msg_tokens = estimate_tokens(msg_json)
-            _message_token_cache[msg_json] = msg_tokens
-            token_count += msg_tokens
-
-    # Add tool definitions tokens (if any)
-    token_count += _last_tool_definitions_tokens
-
-    return token_count
+        msg_id = id(msg)
+        if msg_id not in _message_cache:
+            # Cache the message if not already cached
+            json_str = json.dumps(msg, sort_keys=True, separators=(',', ':'))
+            tokens = _estimate_weighted_tokens(json_str)
+            _message_cache[msg_id] = tokens
+        total += _message_cache[msg_id]
+    
+    return total + _tools_tokens
 
 
-def set_tool_definitions_tokens(tokens: int) -> None:
-    """Set tool definitions tokens for estimation (called when tools are used)"""
-    global _last_tool_definitions_tokens
-    _last_tool_definitions_tokens = tokens
+def set_tool_tokens(tokens: int) -> None:
+    """Set tool definition tokens (cached separately)"""
+    global _tools_tokens
+    _tools_tokens = tokens
 
 
-def clear_token_cache() -> None:
-    """Clear the token cache
-    Called when messages are cleared or replaced to prevent stale cache entries
-    """
-    global _message_token_cache, _last_tool_definitions_tokens
-    _message_token_cache.clear()
-    _last_tool_definitions_tokens = 0
+def clear_cache() -> None:
+    """Clear all caches - called when messages are replaced"""
+    global _message_cache, _tools_tokens
+    _message_cache.clear()
+    _tools_tokens = 0

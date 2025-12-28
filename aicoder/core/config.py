@@ -95,6 +95,26 @@ class Config:
         """
         cls._detail_mode = enabled
 
+    # Retry Configuration
+    _runtime_max_retries = None
+
+    @staticmethod
+    def max_retries() -> int:
+        """Get max retry attempts from environment"""
+        return int(os.environ.get("MAX_RETRIES", "3"))
+
+    @staticmethod
+    def effective_max_retries() -> int:
+        """Get effective max retries (runtime override or environment)"""
+        if Config._runtime_max_retries is not None:
+            return Config._runtime_max_retries
+        return Config.max_retries()
+
+    @classmethod
+    def set_runtime_max_retries(cls, value: int | None) -> None:
+        """Set runtime max retry override"""
+        cls._runtime_max_retries = value
+
     @staticmethod
     def sandbox_disabled() -> bool:
         """
@@ -276,16 +296,6 @@ class Config:
         """
         return int(os.environ.get("MAX_TOOL_RESULT_SIZE", "300000"))
 
-    # Plugin Configuration
-    @staticmethod
-    def disable_plugins() -> bool:
-        """
-        Check if plugins are disabled
-        Ported exactly from TS version
-        """
-        disable_value = os.environ.get("DISABLE_PLUGINS")
-        return disable_value == "1" or disable_value == "true"
-
     # Debug and Development
     @staticmethod
     def debug() -> bool:
@@ -394,3 +404,11 @@ class Config:
         Ported exactly from TS version
         """
         return bool(os.environ.get("TMUX_PANE"))
+
+    @staticmethod
+    def socket_only() -> bool:
+        """
+        Check if running in socket-only mode (no readline input)
+        When true, AI Coder only responds to socket commands
+        """
+        return os.environ.get("AICODER_SOCKET_ONLY") == "1"

@@ -63,11 +63,6 @@ class LoadCommand(BaseCommand):
 
     def _convert_to_message_objects(self, messages_raw):
         """Convert dictionary messages to Message objects"""
-        from aicoder.type_defs.message_types import (
-            Message,
-            MessageRole,
-            MessageToolCall,
-        )
 
         messages = []
         for msg_dict in messages_raw:
@@ -88,20 +83,20 @@ class LoadCommand(BaseCommand):
                 tool_calls = []
                 for tc in msg_dict["tool_calls"]:
                     tool_calls.append(
-                        MessageToolCall(
-                            id=tc.get("id", ""),
-                            type=tc.get("type", "function"),
-                            function=tc.get("function", {}),
-                            index=tc.get("index"),
-                        )
+                        {
+                            "id": tc.get("id", ""),
+                            "type": tc.get("type", "function"),
+                            "function": tc.get("function", {}),
+                            "index": tc.get("index"),
+                        }
                     )
 
-            message = Message(
-                role=role,
-                content=msg_dict.get("content"),
-                tool_calls=tool_calls,
-                tool_call_id=msg_dict.get("tool_call_id"),
-            )
+            message = {
+                "role": role,
+                "content": msg_dict.get("content"),
+                "tool_calls": tool_calls,
+                "tool_call_id": msg_dict.get("tool_call_id"),
+            }
             messages.append(message)
 
         return messages

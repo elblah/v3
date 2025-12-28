@@ -12,7 +12,9 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 from aicoder.core.aicoder import AICoder
-from aicoder.type_defs.message_types import AssistantMessage as AICoderAssistantMessage
+
+# Type definitions are now dicts
+AICoderAssistantMessage = dict[str, object]
 
 
 @dataclass
@@ -53,13 +55,13 @@ class MessageInjector:
             List of tool execution results
         """
         self.executed_tools.clear()
-        
-        # Create AssistantMessage TypedDict for message_history
-        assistant_msg = AICoderAssistantMessage(
-            content=message.content,
-            tool_calls=[]
-        )
-        
+
+        # Create AssistantMessage dict for message_history
+        assistant_msg = {
+            "content": message.content,
+            "tool_calls": []
+        }
+
         # Add tool calls if present
         if message.tool_calls:
             tool_calls = []
@@ -101,19 +103,19 @@ class MessageInjector:
         for tool_call in tool_calls:
             internal_tool_calls.append({
                 "id": tool_call.id,
-                "type": "function", 
+                "type": "function",
                 "function": {
                     "name": tool_call.function_name,
                     "arguments": tool_call.arguments
                 }
             })
-        
-        # Create AssistantMessage TypedDict
-        assistant_message = AICoderAssistantMessage(
-            content="",
-            tool_calls=internal_tool_calls
-        )
-        
+
+        # Create AssistantMessage dict
+        assistant_message = {
+            "content": "",
+            "tool_calls": internal_tool_calls
+        }
+
         # Add to message history using proper method
         self.aicoder.message_history.add_assistant_message(assistant_message)
         

@@ -1,1 +1,0 @@
-/home/blah/poc/aicoder/v3/tmp/test_new_file.txt

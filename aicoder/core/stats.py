@@ -5,7 +5,6 @@ Stateful: class needed for maintaining counters
 """
 
 from typing import List, Dict, Any
-from aicoder.type_defs.api_types import ApiUsage
 
 
 class Stats:
@@ -107,7 +106,7 @@ class Stats:
         """
         self.last_user_prompt = prompt
 
-    def add_usage_info(self, usage: ApiUsage) -> None:
+    def add_usage_info(self, usage: Dict[str, Any]) -> None:
         """
         Add usage info
         Ported exactly from TS version

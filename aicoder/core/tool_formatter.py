@@ -8,7 +8,6 @@ from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass
 
 from aicoder.core.config import Config
-from aicoder.type_defs.tool_types import ToolPreview, ToolResult
 
 
 class ToolFormatter:
@@ -43,14 +42,14 @@ class ToolFormatter:
         return "\n".join(colored_lines)
 
     @staticmethod
-    def format_for_ai(result: ToolResult) -> str:
+    def format_for_ai(result: Dict[str, Any]) -> str:
         """Format tool result for AI consumption - always returns detailed version"""
-        return result.detailed
+        return result["detailed"]
 
     @staticmethod
-    def format_for_display(result: ToolResult) -> Optional[str]:
+    def format_for_display(result: Dict[str, Any]) -> Optional[str]:
         """Format tool result for local display - always show friendly when available"""
-        return result.friendly
+        return result["friendly"]
 
     @staticmethod
     def format_preview(preview, file_path=None) -> str:
@@ -58,20 +57,20 @@ class ToolFormatter:
         from aicoder.utils.log import LogUtils, LogOptions
 
         lines = []
-        
+
         # Show file path if available
         if file_path:
             preview_title = file_path
         else:
             preview_title = "Preview"
-            
+
         lines.append(
             f"{Config.colors['cyan']}[PREVIEW] {preview_title}{Config.colors['reset']}"
         )
         lines.append("")
-        
+
         # Always show content - tools are responsible for formatting
-        lines.append(preview.content)
+        lines.append(preview.get("content", ""))
 
         return "\n".join(lines)
 

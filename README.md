@@ -1,149 +1,85 @@
-# AI Coder Python Port
+# AI Coder
 
-A Python port of the TypeScript AI Coder application - a fast, lightweight AI-assisted development tool that runs anywhere. The goal is to maintain the same architecture and functionality while using only Python standard library.
+A fast, lightweight AI-assisted development tool that runs anywhere.
 
-## Architecture Principles
+## Features
 
-- **No external dependencies** - uses only Python stdlib
-- **Simple and direct** - minimal abstractions, clear code flow
-- **Async only when beneficial** - mainly for API streaming
-- **Maintain TS structure** - keep same module organization where possible
-- **Working over perfect** - prioritize functionality over elegance
+- Built with Python standard library only (no external dependencies)
+- Simple, direct code flow
+- Environment-based configuration
+- Streaming responses with retry logic
+- File operation sandbox for security
 
-## Current Status
-
-### ✅ Phase 1: Core Structure (Complete)
-- [x] Configuration system (environment variables)
-- [x] Type definitions (dataclasses)
-- [x] Logging utilities (ANSI colors, formatting)
-- [x] Stats tracking
-- [x] Message history
-- [x] Input handler
-- [x] Tool manager
-- [x] Markdown colorizer
-- [x] Streaming client (partial)
-
-### ✅ Phase 2: Basic Infrastructure (Complete)
-- [x] Internal tools implemented:
-  - [x] `read_file` - with sandbox and pagination
-  - [x] `write_file` - with directory creation and validation
-  - [x] `edit_file` - with exact string replacement
-  - [x] `run_shell_command` - with timeout and error handling
-  - [x] `grep` - text search with ripgrep/grep fallbacks
-  - [x] `list_directory` - directory listing with sandbox
-
-### 🔄 Phase 3: Tool System (In Progress)
-- [x] Tool manager with internal and plugin support
-- [x] Tool execution workflow
-- [x] Tool validation and formatting
-- [ ] Advanced tool features (previews, approval system)
-- [ ] Plugin system integration
-
-### ⏳ Phase 4: Main Application (Next)
-- [ ] Port `AICoder` main class
-- [ ] Port command system (`/help`, `/save`, etc.)
-- [ ] Port input handling with readline
-- [ ] Basic CLI integration
-
-### ⏳ Phase 5: Advanced Features (Later)
-- [ ] Message compaction logic
-- [ ] Plugin system
-- [ ] Remaining features (YOLO mode, etc.)
-
-## Configuration
-
-Uses environment variables:
+## Quick Start
 
 ```bash
-# Required
-export API_BASE_URL="https://your-api-provider.com/v1"
-export API_MODEL="your-model-name"
+# Set API configuration
+export API_BASE_URL="https://api.example.com/v1"
+export API_KEY="your-api-key"
+export API_MODEL="your-model"
 
-# Optional
-export API_KEY="your-api-key-here"
-export TEMPERATURE=0.0
-export MAX_TOKENS=4096
-export DEBUG=1
-export MINI_SANDBOX=1  # Enable filesystem sandbox
-```
-
-## Usage
-
-### Basic Usage
-```python
-from src.core.config import Config
-from src.core.stats import Stats
-from src.core.tool_manager import ToolManager
-
-# Initialize components
-stats = Stats()
-tool_manager = ToolManager(stats)
-
-# Execute tools
-result = tool_manager.execute_tool_call({
-    'id': 'test',
-    'function': {
-        'name': 'read_file',
-        'arguments': '{"path": "example.txt"}'
-    }
-})
-```
-
-### Testing
-```bash
-# Test the implementation
-python test_tools.py
-
-# Run basic startup
+# Run AI Coder
 python main.py
 ```
 
-## Technical Notes
+## Configuration
 
-### Tools
-All tools follow the same pattern:
-1. Validation function
-2. Format arguments function  
-3. Execute function
-4. Preview generation (for write/edit operations)
+Configure using environment variables:
 
-### Sandbox
-Simple filesystem sandbox for security:
-- Blocks `../` traversal
-- Restricts absolute paths to current directory
-- Can be disabled with `MINI_SANDBOX=0`
+- `API_BASE_URL` or `OPENAI_BASE_URL` - API endpoint
+- `API_KEY` or `OPENAI_API_KEY` - Authentication key
+- `API_MODEL` or `OPENAI_MODEL` - Model name
+- `TEMPERATURE` - Response temperature (default: 0.0)
+- `MAX_TOKENS` - Maximum tokens (optional)
+- `DEBUG=1` - Enable debug mode
+- `MAX_RETRIES` - Maximum retry attempts (default: 3)
+- `MINI_SANDBOX=0` - Disable sandbox restrictions
 
-### Streaming
-- Uses Server-Sent Events (SSE) format
-- Handles both streaming and non-streaming responses
-- Implements retry logic (up to 3 attempts)
+## Commands
 
-## Development
+- `/help` - Show available commands
+- `/save` - Save conversation
+- `/retry limit <n>` - Set retry limit (0 = unlimited)
+- `/exit` - Exit the application
 
-### Project Structure
+## tmux Integration
+
+AI Coder includes a tmux popup menu for quick access to common actions.
+
+### Setup
+
+Add to your `~/.tmux.conf`:
+
+```bash
+# Set path to the popup menu script
+AICODER_MENU_BIN="$HOME/poc/aicoder/v3/examples/tmux-popup-menu.sh"
+
+# Key bindings
+bind-key b run-shell -b "$AICODER_MENU_BIN"
+bind -n M-y run-shell -b "$AICODER_MENU_BIN yolo"
+bind -n M-d run-shell -b "$AICODER_MENU_BIN detail"
+bind -n M-f run-shell -b "$AICODER_MENU_BIN sandbox"
+bind -n M-s run-shell -b "$AICODER_MENU_BIN save"
+bind -n M-i run-shell -b "$AICODER_MENU_BIN inject"
+bind -n M-x run-shell -b "$AICODER_MENU_BIN stop"
+bind -n M-k run-shell -b "$AICODER_MENU_BIN kill"
+bind -n M-q run-shell -b "$AICODER_MENU_BIN quit"
 ```
-src/
-├── core/           # Core application logic
-├── tools/internal/  # Internal tools
-├── types/          # Type definitions
-└── utils/          # Utility functions
-```
 
-### Testing
-Test incrementally:
-1. Each module independently
-2. Tool system with file operations
-3. API streaming with mock responses
-4. Full integration with real API
+### Key Actions
 
-## Next Steps
-
-1. Complete the streaming client implementation
-2. Implement the main AICoder class
-3. Add command system
-4. Integrate with real API
-5. Add remaining advanced features
+| Key | Action |
+|-----|--------|
+| `prefix+b` | Open menu |
+| `Alt+y` | Yolo (quick action) |
+| `Alt+d` | Detail view |
+| `Alt+f` | Sandbox mode |
+| `Alt+s` | Save session |
+| `Alt+i` | Inject content |
+| `Alt+x` | Stop current |
+| `Alt+k` | Kill process |
+| `Alt+q` | Quit |
 
 ## License
 
-This project maintains the same license as the original TypeScript implementation.
+See LICENSE file for details.

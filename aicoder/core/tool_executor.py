@@ -9,7 +9,6 @@ from typing import Dict, Any, List, Union
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.core.tool_formatter import ToolFormatter
-from aicoder.type_defs.tool_types import ToolExecutionArgs
 
 
 class ToolExecutor:
@@ -18,13 +17,20 @@ class ToolExecutor:
     def __init__(self, tool_manager, message_history):
         self.tool_manager = tool_manager
         self.message_history = message_history
+        self._guidance_mode = False
+        
+    def is_guidance_mode(self) -> bool:
+        """Check if user requested guidance mode"""
+        return self._guidance_mode
+        
+    def clear_guidance_mode(self) -> None:
+        """Clear guidance mode"""
+        self._guidance_mode = False
 
     def execute_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> None:
         """Execute multiple tool calls with approval and display"""
         if not tool_calls:
             return
-        
-        
 
         try:
             tool_results = []
@@ -33,6 +39,10 @@ class ToolExecutor:
                 result = self._execute_single_tool_call(tool_call)
                 if result:
                     tool_results.append(result)
+
+                # Stop if guidance mode was activated during tool approval
+                if self._guidance_mode:
+                    break
 
             # Add all tool results to message history
             self.message_history.add_tool_results(tool_results)
@@ -125,18 +135,19 @@ class ToolExecutor:
             return True
 
         # If can't approve (e.g., safety violation), show content directly without preview header
-        if not preview_result.can_approve:
-            LogUtils.print(preview_result.content)
+        if not preview_result.get("can_approve", False):
+            LogUtils.print(preview_result.get("content", ""))
             # Return the message for AI to see
             return {
                 "tool_call_id": tool_call_id,
-                "content": preview_result.content,
+                "content": preview_result.get("content", ""),
             }
 
         # Display preview content with header for normal previews
         # Only show file path in header if content doesn't already include it
         file_path = arguments.get('path')
-        if preview_result.content and "Path:" in preview_result.content:
+        preview_content = preview_result.get("content", "")
+        if preview_content and "Path:" in preview_content:
             # Content already includes path, don't duplicate in header
             formatted_preview = ToolFormatter.format_preview(preview_result, None)
         else:
@@ -148,26 +159,62 @@ class ToolExecutor:
     
 
     def _get_tool_approval(self, tool_name: str) -> bool:
-        """Get user approval for tool if needed"""
+        """Get user approval for tool if needed
+        
+        Returns: bool indicating if tool was approved
+        Note: + modifier is handled at session level for flow control
+        """
         if not self.tool_manager.needs_approval(tool_name) or Config.yolo_mode():
             return True
 
         try:
             approval = input("Approve [Y/n]: ").strip().lower()
-            if approval in ["n", "no"]:
-                LogUtils.error("[x] Tool execution cancelled.")
+            if not approval:
+                approval = 'y'  # Default to yes
+                
+            # Handle yolo command
+            if approval == 'yolo':
+                Config.set_yolo_mode(True)
+                LogUtils.success('[*] YOLO mode ENABLED')
+                return True
+                
+            # Parse + modifier for guidance
+            has_guidance = approval.endswith('+')
+            base_answer = approval[:-1] if has_guidance else approval
+            
+            # Canonical answers
+            canonical_answer = (
+                'y' if base_answer == 'a' else 
+                'n' if base_answer == 'd' else 
+                base_answer
+            )
+            
+            # User denied
+            if canonical_answer not in ['y', 'yes']:
+                LogUtils.error('[x] Tool execution cancelled.')
+                if has_guidance:
+                    # Guidance mode: stop processing for user guidance
+                    # This will be handled by session manager
+                    self._guidance_mode = True
                 print()  # Blank line before context bar
                 return False
+                
+            # User approved
+            if has_guidance:
+                # Guidance mode: execute but stop processing afterward
+                self._guidance_mode = True
+                
             return True
+            
         except (EOFError, KeyboardInterrupt):
-            LogUtils.error("[x] Tool execution cancelled.")
+            LogUtils.error('[x] Tool execution cancelled.')
             print()  # Blank line before context bar
             return False
 
     def _execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str) -> Dict[str, Any]:
         """Execute the tool and return result"""
         try:
-            exec_args = ToolExecutionArgs(name=tool_name, arguments=arguments)
+            exec_args = {"name": tool_name, "arguments": arguments}
             result = self.tool_manager.execute_tool_with_args(exec_args)
 
             # Display result using tool's own formatting
@@ -177,7 +224,7 @@ class ToolExecutor:
             # Return result for message history (AI always gets detailed version)
             return {
                 "tool_call_id": tool_call_id,
-                "content": result.detailed,  # AI always receives detailed version
+                "content": result["detailed"],  # AI always receives detailed version
             }
         except Exception as e:
             LogUtils.error(f"✗ Error executing {tool_name}: {str(e)}")
@@ -187,15 +234,15 @@ class ToolExecutor:
             }
 
     def display_tool_result(self, result, tool_def: Dict[str, Any]) -> None:
-        """Display tool execution result using the new ToolResult format"""
+        """Display tool execution result using dict format"""
         if tool_def and tool_def.get("hide_results"):
             LogUtils.success("[*] Done")
         else:
             # Display based on detail mode
             if Config.detail_mode():
                 # Detail mode: show detailed first, then friendly
-                LogUtils.print(result.detailed)
-                LogUtils.print(result.friendly)
+                LogUtils.print(result["detailed"])
+                LogUtils.print(result["friendly"])
             else:
                 # Non-detail mode: show only friendly
-                LogUtils.print(result.friendly)
+                LogUtils.print(result["friendly"])

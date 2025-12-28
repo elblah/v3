@@ -15,10 +15,6 @@ AI Coder is a fast, lightweight AI-assisted development tool that runs anywhere.
 - Maintain environment-based configuration
 - Preserve the command system (`/help`, `/save`, etc.)
 
-## Reference Implementation
-Source reference available at: `/mnt/cacho/storage/github/ana`
-The Python version should maintain identical functionality and behavior.
-
 ## Development Approach
 
 ### Systematic Porting Method
@@ -55,11 +51,21 @@ All tools follow same pattern:
 
 IMPORTANT: use system tools when the reference uses them like diff, ripgrep, find...
 
-### Streaming
+### Streaming & Retry
 - Uses Server-Sent Events (SSE) format
 - Handles both streaming and non-streaming responses
-- Implements retry logic (up to 3 attempts)
+- Implements retry logic with visible error messages
+- Configurable via `MAX_RETRIES` environment variable (default: 3)
+- Runtime control: `/retry limit <n>` command (0 = unlimited)
+- Shows retry progress: `Attempt 1/3 failed: <error>. Retrying in 2s...`
+- Exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (capped)
 - Timeout handling per attempt
+
+### Sandbox
+Simple sandbox for file operations:
+- Blocks `../` traversal
+- Restricts absolute paths to current directory
+- Can be disabled with `MINI_SANDBOX=0`
 
 ### Sandbox
 Simple sandbox for file operations:
@@ -75,12 +81,22 @@ Simple sandbox for file operations:
 
 ## SUPER IMPORTANT
 
-<REMEMBER_THIS_FOREVER_THIS_IS_A_SPECIAL_RULE>
+**ABSOLUTELY FORBIDDEN: Mass-replacement tools or scripts**
 
-**NEVER USE SCRIPTS OR MASS REPLACEMENT TOOLS TO CHANGE CODE! NEVER! NEVER! I'm tired of scripts trying to save time end up destroying the codebase and I end up wasting my time reverting the mess**
+The following operations are strictly forbidden:
+- `sed`, `awk`, `perl` or any mass-replacement command
+- Python scripts or other scripts that modify multiple files
+- Any tool that performs batch/automated code changes
 
-ALL changes MUST be done safely. The AI should NEVER EVER bypass this rule. If you try I will deny! If you are running in YOLO and I realize later that you did this then I will revert ALL CHANGES IMMEDIATELY... REMEMBER this rule as a BRUTALLY SPECIAL RULE! YOU ARE STRICTLY FORBIDEN FOREVER TO USE ANY MASS REPLACEMENT TOOL (sed, perl, awk... any other) INCLUDING YOUR OWN SCRIPTS IN ANY LANGUAGE WITH THAT PURPOSE!!! You can do scripts that analyze code but
-NEVER scripts that change code in mass. ALL CHANGES must be precise there is no place for mistakes!!!
+**Rationale:** Mass changes lack context and frequently break:
+- Python indentation (syntax errors)
+- Code blocks and structure
+- Edge cases only visible with full context
 
-</REMEMBER_THIS_FOREVER_THIS_IS_A_SPECIAL_RULE>
+**Requirement:** ALL code changes must be:
+- Precise and intentional
+- Made with full context of the target file
+- One change at a time using proper edit tools
+
+**Exception:** Analysis scripts that only read/inspect code (not modify) are permitted.
 
