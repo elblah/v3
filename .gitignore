@@ -80,3 +80,7 @@ session*.json
 
 # Notify prompt files
 .notify-prompt
+
+# Backup files
+*.backup
+*_original
