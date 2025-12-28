@@ -15,22 +15,6 @@ AI Coder is a fast, lightweight AI-assisted development tool that runs anywhere.
 - Maintain environment-based configuration
 - Preserve the command system (`/help`, `/save`, etc.)
 
-## Development Approach
-
-### Systematic Porting Method
-Following the Anthropic long-running agent approach:
-1. **Initializer phase**: Complete analysis and feature mapping
-2. **Incremental implementation**: One component at a time
-3. **Verification each step**: Test against reference behavior
-4. **Clean commits**: Each component completion is committed
-
-### Progress Tracking
-Progress is tracked in `port-progress.json` with:
-- Component status (pending/in-progress/complete)
-- Sub-feature breakdown
-- Test verification status
-- Reference file mappings
-
 ## Technical Notes
 
 ### Configuration
@@ -76,7 +60,6 @@ Simple sandbox for file operations:
 ## Comments
 1. Keep comments professional. Comments must detail what the code does and not history.
 2. Focus on functionality, not implementation details
-3. Reference the TS implementation for exact behavior matching
 
 
 ## SUPER IMPORTANT

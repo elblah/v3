@@ -1,6 +1,6 @@
 """
 Run shell command tool
-Following TypeScript structure exactly
+
 """
 
 import subprocess
@@ -28,7 +28,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             cwd=cwd,
         )
 
-        # Create friendly message matching TypeScript exactly
+        # Create friendly message
         if result.returncode == 0:
             friendly = f"✓ Command completed (exit code: {result.returncode})"
         elif result.returncode == 124:
@@ -66,7 +66,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-# Tool definition matching TypeScript structure
+# Tool definition
 TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": False,  # Requires approval for safety
@@ -93,7 +93,7 @@ TOOL_DEFINITION = {
 
 
 def format_arguments(args):
-    """Format arguments for display (like TypeScript version)"""
+    """Format arguments for display ()"""
     command = args.get("command")
     timeout = args.get("timeout", 30)
     reason = args.get("reason")

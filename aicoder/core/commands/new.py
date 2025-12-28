@@ -1,6 +1,6 @@
 """
 New command - Reset the entire session (formerly reset)
-Ported exactly from TypeScript version
+
 """
 
 from typing import List

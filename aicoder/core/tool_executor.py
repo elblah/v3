@@ -14,10 +14,11 @@ from aicoder.core.tool_formatter import ToolFormatter
 class ToolExecutor:
     """Handles tool execution, approval, and result display"""
 
-    def __init__(self, tool_manager, message_history):
+    def __init__(self, tool_manager, message_history, plugin_system=None):
         self.tool_manager = tool_manager
         self.message_history = message_history
         self._guidance_mode = False
+        self.plugin_system = plugin_system
         
     def is_guidance_mode(self) -> bool:
         """Check if user requested guidance mode"""
@@ -160,12 +161,16 @@ class ToolExecutor:
 
     def _get_tool_approval(self, tool_name: str) -> bool:
         """Get user approval for tool if needed
-        
+
         Returns: bool indicating if tool was approved
         Note: + modifier is handled at session level for flow control
         """
         if not self.tool_manager.needs_approval(tool_name) or Config.yolo_mode():
             return True
+
+        # Call plugin hook before approval prompt
+        if self.plugin_system:
+            self.plugin_system.call_hooks("before_approval_prompt")
 
         try:
             approval = input("Approve [Y/n]: ").strip().lower()

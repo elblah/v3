@@ -1,6 +1,6 @@
 """
 Test Stats class
-Tests to ensure exact behavior matches TypeScript version
+Tests for
 """
 
 from aicoder.core.stats import Stats

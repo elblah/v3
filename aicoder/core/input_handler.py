@@ -1,10 +1,11 @@
 """
 Input handler for AI Coder using readline
-Ported exactly from TypeScript version - synchronous version
+ - synchronous version
 """
 
 import os
 import sys
+import signal
 from typing import List, Optional
 import readline
 from aicoder.core.config import Config
@@ -18,7 +19,7 @@ from aicoder.utils.shell_utils import ShellResult, execute_command_sync
 class InputHandler:
     """
     Input handler for AI Coder using readline
-    Ported exactly from TS version
+    
     """
 
     def __init__(self, context_bar=None, stats=None, message_history=None):

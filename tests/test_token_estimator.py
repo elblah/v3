@@ -1,6 +1,6 @@
 """
 Test TokenEstimator module
-Tests to ensure exact behavior matches TypeScript version
+Tests for
 CRITICAL: This must preserve the exact algorithm, not divide by 4
 """
 
@@ -210,7 +210,7 @@ def test_token_weights_correctness():
 
 
 def test_punctuation_set_completeness():
-    """Verify punctuation set matches TypeScript version"""
+    """Verify correct punctuation set"""
     from aicoder.core.token_estimator import PUNCTUATION_SET
 
     expected_punct = {

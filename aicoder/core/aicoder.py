@@ -21,6 +21,7 @@ from aicoder.core.stream_processor import StreamProcessor
 from aicoder.core.session_manager import SessionManager
 from aicoder.core.prompt_builder import PromptBuilder
 from aicoder.core.socket_server import SocketServer
+from aicoder.core.plugin_system import PluginSystem
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.utils.stdin_utils import read_stdin_as_string
 
@@ -44,11 +45,14 @@ class AICoder:
         )
         self.compaction_service = CompactionService(None)
 
+        # Plugin system (ultra-fast)
+        self.plugin_system = PluginSystem(plugins_dir=".aicoder/plugins")
+
         # Extracted components (need to be initialized after core services)
-        self.tool_executor = ToolExecutor(self.tool_manager, self.message_history)
+        self.tool_executor = ToolExecutor(self.tool_manager, self.message_history, self.plugin_system)
         self.stream_processor = StreamProcessor(self.streaming_client)
         self.session_manager = SessionManager(
-            self.message_history, 
+            self.message_history,
             self.streaming_client,
             self.stream_processor,
             self.tool_executor,
@@ -77,6 +81,38 @@ class AICoder:
 
         # Set up streaming client with message history (TS calls setApiClient on messageHistory)
         self.message_history.set_api_client(self.streaming_client)
+
+        # Load plugins (ultra-fast: only if .aicoder/plugins/ exists)
+        self.plugin_system.set_message_callback(self.add_plugin_message)
+        self.tool_manager.set_plugin_system(self.plugin_system)
+
+        # Set plugin system reference in write_file tool
+        from aicoder.tools.internal.write_file import set_plugin_system
+        set_plugin_system(self.plugin_system)
+
+        self.plugin_system.load_plugins()
+
+        # Register plugin tools
+        plugin_tools = self.plugin_system.get_plugin_tools()
+        for tool_name, tool_data in plugin_tools.items():
+            tool_def = {
+                "type": "plugin",
+                "description": tool_data["description"],
+                "parameters": tool_data["parameters"],
+                "auto_approved": tool_data.get("auto_approved", False),
+                "execute": tool_data["fn"],  # Store plugin function
+            }
+            # Add formatArguments if provided
+            if tool_data.get("formatArguments"):
+                tool_def["formatArguments"] = tool_data["formatArguments"]
+            self.tool_manager.tools[tool_name] = tool_def
+
+        # Register plugin commands
+        plugin_commands = self.plugin_system.get_plugin_commands()
+        for cmd_name, cmd_data in plugin_commands.items():
+            self.command_handler.registry.register_simple_command(
+                cmd_name, cmd_data["fn"], cmd_data.get("description")
+            )
 
         # Start socket server for external control
         self.socket_server.start()
@@ -118,6 +154,7 @@ class AICoder:
 
                 # Get user input
                 self.call_notify_hook("on_before_user_prompt")
+                self.plugin_system.call_hooks("before_user_prompt")
                 user_input = self.input_handler.get_user_input()
 
                 if not user_input.strip():
@@ -222,10 +259,15 @@ class AICoder:
         self.message_history.add_user_message(user_input)
         self.stats.increment_user_interactions()
 
-        # Save to prompt history (like TypeScript version)
+        # Save to prompt history ()
         from aicoder.core import prompt_history
 
         prompt_history.save_prompt(user_input)
+
+    def add_plugin_message(self, message: str) -> None:
+        """Add a message from plugins to conversation"""
+        self.message_history.add_user_message(message)
+        self.stats.increment_user_interactions()
 
     def handle_test_message(self, message: Dict[str, Any]) -> list:
         """
@@ -263,6 +305,10 @@ class AICoder:
             return results
         
         return []
+
+    def perform_auto_compaction(self) -> None:
+        """Perform auto-compaction (delegates to session_manager)"""
+        self.session_manager._perform_auto_compaction()
 
     def call_notify_hook(self, hook_name: str) -> None:
         """Call notification hook"""

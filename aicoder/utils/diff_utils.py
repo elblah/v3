@@ -1,6 +1,6 @@
 """
 Diff utilities for generating file differences
-Ported exactly from TypeScript version
+
 """
 
 from aicoder.utils.shell_utils import execute_command_sync
@@ -8,7 +8,7 @@ from aicoder.core.config import Config
 
 
 def colorize_diff(diff_output: str) -> str:
-    """Colorize diff output matching TypeScript exactly"""
+    """Colorize diff output"""
     lines = diff_output.split("\n")
     colored_lines = []
 

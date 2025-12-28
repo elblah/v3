@@ -1,6 +1,6 @@
 """
 Stream utilities for reading input/output
-Ported exactly from TypeScript version
+
 """
 
 import sys

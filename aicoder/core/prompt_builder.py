@@ -1,8 +1,8 @@
 """
 Universal prompt builder system
-Compatible with both Python and TypeScript implementations
+Compatible with Python
 Supports Python {variable} format and automatic AGENTS.md integration
-Ported exactly from TypeScript version
+
 """
 
 import os

@@ -78,9 +78,17 @@ session*.json
 # Local settings
 .aicoder/settings-local.json
 
+# Enabled plugins (per-project)
+.aicoder/plugins/
+
+# Available plugins cache
+plugins/__pycache__/
+
 # Notify prompt files
 .notify-prompt
 
 # Backup files
 *.backup
 *_original
+
+tmp/

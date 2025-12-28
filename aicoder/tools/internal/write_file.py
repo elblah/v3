@@ -1,6 +1,6 @@
 """
 Write file tool
-Following TypeScript structure exactly
+
 """
 
 import os
@@ -11,6 +11,15 @@ from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, write_file as file_write, get_relative_path
 from aicoder.utils.diff_utils import generate_unified_diff_with_status, colorize_diff
+
+# Global reference to plugin system (will be set by aicoder)
+_plugin_system = None
+
+
+def set_plugin_system(plugin_system):
+    """Set plugin system reference"""
+    global _plugin_system
+    _plugin_system = plugin_system
 
 
 def _check_sandbox(path: str, print_message: bool = True) -> bool:
@@ -41,6 +50,16 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
     if not path:
         raise Exception("Path is required")
+
+    # Call plugin hook before file write
+    global _plugin_system
+    if _plugin_system:
+        result = _plugin_system.call_hooks("before_file_write", path, content)
+        # Hook can modify content
+        if result and isinstance(result, list) and len(result) > 0:
+            modified_content = result[0]
+            if isinstance(modified_content, str):
+                content = modified_content
 
     if not _check_sandbox(path):
         resolved_path = os.path.abspath(path)
@@ -82,9 +101,13 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
             # Write the actual file
             file_write(path, content)
-            
+
             # Mark file as read since user just created/updated it
             FileAccessTracker.record_read(path)
+
+            # Call plugin hook after file write
+            if _plugin_system:
+                _plugin_system.call_hooks("after_file_write", path, content)
 
             # Prepare result
             if exists:
@@ -258,7 +281,7 @@ def file_read(path: str) -> str:
         return f.read()
 
 
-# Tool definition matching TypeScript structure
+# Tool definition
 TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": False,  # Requires approval for safety

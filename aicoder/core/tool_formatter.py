@@ -1,6 +1,6 @@
 """
 Centralized tool output formatter
-Following TypeScript structure exactly
+
 """
 
 import json
@@ -11,7 +11,7 @@ from aicoder.core.config import Config
 
 
 class ToolFormatter:
-    """Tool formatter following TypeScript patterns exactly"""
+    """Tool formatter"""
 
     @staticmethod
     def colorize_diff(diff_output: str) -> str:

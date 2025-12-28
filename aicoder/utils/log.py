@@ -44,7 +44,7 @@ def _is_debug() -> bool:
 class LogUtils:
     """
     Minimal logging utility for consistent output formatting
-    Ported exactly from TypeScript version
+    
     """
 
     @staticmethod
@@ -101,7 +101,7 @@ class LogUtils:
         LogUtils.print(message, LogOptions(color=color or Colors.yellow, debug=True))
 
 
-# Standalone convenience functions (exact TS pattern)
+# Standalone convenience functions
 def success(message: str) -> None:
     """Print success message"""
     LogUtils.success(message)

@@ -1,6 +1,6 @@
 """
 List directory tool
-Following TypeScript structure exactly
+
 """
 
 import os
@@ -53,7 +53,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
                 "detailed": f"Directory not found at '{resolved_path}'. Path does not exist or is not a directory."
             }
 
-        # Use find to list files - much faster and simpler (matching TypeScript)
+        # Use find to list files - much faster and simpler
         import subprocess
 
         find_command = f'find "{resolved_path}" -type f -print0 | head -z -n {MAX_FILES + 1} | tr "\\0" "\\n"'
@@ -74,7 +74,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         actual_count = len(files)
         limited_files = files[:MAX_FILES]
 
-        # Create output matching TypeScript structure
+        # Create output
         if limited_files == []:
             return {
                 "tool": "list_directory",
@@ -188,7 +188,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     return True
 
 
-# Tool definition matching TypeScript structure
+# Tool definition
 TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": True,

@@ -1,6 +1,6 @@
 """
 Read file tool
-Following TypeScript structure exactly
+
 """
 
 import os
@@ -153,7 +153,7 @@ def validate_arguments(args):
         raise Exception('read_file requires "path" argument (string)')
 
 
-# Tool definition matching TypeScript structure
+# Tool definition
 TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": True,

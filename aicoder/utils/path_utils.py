@@ -1,6 +1,6 @@
 """
 Path utilities for security and validation
-Ported exactly from TypeScript version
+
 """
 
 

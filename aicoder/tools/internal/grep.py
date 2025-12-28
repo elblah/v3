@@ -1,6 +1,6 @@
 """
 Grep tool - text search in files
-Following TypeScript structure exactly
+
 """
 
 import os
@@ -67,7 +67,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
                 "detailed": f'Search text "{text}" is invalid - it cannot be empty or whitespace only.'
             }
 
-        # Build command using ripgrep (matching TypeScript exactly)
+        # Build command using ripgrep ()
         import os
 
         search_path = os.path.abspath(path)
@@ -144,7 +144,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     return True
 
 
-# Tool definition matching TypeScript structure
+# Tool definition
 TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": True,

@@ -1,6 +1,6 @@
 """
 Configuration module for AI Coder
-Ported exactly from TypeScript version
+
 """
 
 import os
@@ -10,7 +10,7 @@ import sys
 class Config:
     """
     Configuration module for AI Coder
-    Ported exactly from TS version
+    
     """
 
     # ANSI Colors for terminal output - exact match
@@ -42,7 +42,7 @@ class Config:
     def yolo_mode() -> bool:
         """
         Get YOLO mode state
-        Ported exactly from TS version
+        
         """
         # Check environment variable first
         if os.environ.get("YOLO_MODE") == "1":
@@ -54,7 +54,7 @@ class Config:
     def get_yolo_mode() -> bool:
         """
         Get YOLO mode state
-        Ported exactly from TS version
+        
         """
         # Check environment variable first
         if os.environ.get("YOLO_MODE") == "1":
@@ -66,7 +66,7 @@ class Config:
     def set_yolo_mode(enabled: bool) -> None:
         """
         Set YOLO mode state
-        Ported exactly from TS version
+        
         """
         Config._yolo_mode = enabled
 
@@ -119,7 +119,7 @@ class Config:
     def sandbox_disabled() -> bool:
         """
         Check if sandbox is disabled
-        Ported exactly from TS version
+        
         """
         # Check both environment variable and runtime state
         return os.environ.get("MINI_SANDBOX") == "0" or Config._sandbox_disabled
@@ -128,7 +128,7 @@ class Config:
     def set_sandbox_disabled(disabled: bool) -> None:
         """
         Set sandbox disabled state
-        Ported exactly from TS version
+        
         """
         Config._sandbox_disabled = disabled
         if disabled:
@@ -145,7 +145,7 @@ class Config:
     def api_key() -> str:
         """
         Get API key
-        Ported exactly from TS version
+        
         """
         return os.environ.get("OPENAI_API_KEY") or os.environ.get("API_KEY") or ""
 
@@ -153,7 +153,7 @@ class Config:
     def base_url() -> str:
         """
         Get base URL
-        Ported exactly from TS version
+        
         """
         return os.environ.get("OPENAI_BASE_URL") or os.environ.get("API_BASE_URL") or ""
 
@@ -161,7 +161,7 @@ class Config:
     def api_endpoint() -> str:
         """
         Get API endpoint
-        Ported exactly from TS version
+        
         """
         base = Config.base_url()
         return f"{base}/chat/completions" if base else ""
@@ -170,7 +170,7 @@ class Config:
     def model() -> str:
         """
         Get model name
-        Ported exactly from TS version
+        
         """
         return os.environ.get("OPENAI_MODEL") or os.environ.get("API_MODEL") or ""
 
@@ -178,7 +178,7 @@ class Config:
     def temperature() -> float:
         """
         Get temperature setting
-        Ported exactly from TS version
+        
         """
         temp = os.environ.get("TEMPERATURE")
         return float(temp) if temp else None
@@ -187,7 +187,7 @@ class Config:
     def max_tokens():
         """
         Get max tokens setting
-        Ported exactly from TS version
+        
         """
         max_tokens = os.environ.get("MAX_TOKENS")
         return int(max_tokens) if max_tokens else None
@@ -197,7 +197,7 @@ class Config:
     def streaming_timeout() -> int:
         """
         Get streaming timeout
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("STREAMING_TIMEOUT", "300"))
 
@@ -205,7 +205,7 @@ class Config:
     def streaming_read_timeout() -> int:
         """
         Get streaming read timeout
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("STREAMING_READ_TIMEOUT", "30"))
 
@@ -213,7 +213,7 @@ class Config:
     def total_timeout() -> int:
         """
         Get total timeout in milliseconds
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("TOTAL_TIMEOUT", "300")) * 1000
 
@@ -222,7 +222,7 @@ class Config:
     def context_size() -> int:
         """
         Get context size
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("CONTEXT_SIZE", "128000"))
 
@@ -230,7 +230,7 @@ class Config:
     def context_compact_percentage() -> int:
         """
         Get context compact percentage
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("CONTEXT_COMPACT_PERCENTAGE", "0"))
 
@@ -238,7 +238,7 @@ class Config:
     def auto_compact_threshold() -> int:
         """
         Get auto compact threshold
-        Ported exactly from TS version
+        
         """
         percentage = Config.context_compact_percentage()
         if percentage > 0:
@@ -250,7 +250,7 @@ class Config:
     def auto_compact_enabled() -> bool:
         """
         Check if auto compact is enabled
-        Ported exactly from TS version
+        
         """
         return Config.auto_compact_threshold() > 0
 
@@ -258,7 +258,7 @@ class Config:
     def tmux_prune_percentage() -> int:
         """
         Get tmux prune percentage
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("TMUX_PRUNE_PERCENTAGE", "50"))
 
@@ -267,7 +267,7 @@ class Config:
     def compact_protect_rounds() -> int:
         """
         Get compact protect rounds
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("COMPACT_PROTECT_ROUNDS", "2"))
 
@@ -275,7 +275,7 @@ class Config:
     def min_summary_length() -> int:
         """
         Get minimum summary length
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("MIN_SUMMARY_LENGTH", "100"))
 
@@ -283,7 +283,7 @@ class Config:
     def force_compact_size() -> int:
         """
         Get force compact size
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("FORCE_COMPACT_SIZE", "5"))
 
@@ -292,7 +292,7 @@ class Config:
     def max_tool_result_size() -> int:
         """
         Get max tool result size
-        Ported exactly from TS version
+        
         """
         return int(os.environ.get("MAX_TOOL_RESULT_SIZE", "300000"))
 
@@ -301,7 +301,7 @@ class Config:
     def debug() -> bool:
         """
         Check if debug mode is enabled
-        Ported exactly from TS version
+        
         """
         return os.environ.get("DEBUG") == "1"
 
@@ -310,7 +310,7 @@ class Config:
     def fallback_configs():
         """
         Get fallback configurations
-        Ported exactly from TS version
+        
         """
         return []
 
@@ -319,7 +319,7 @@ class Config:
     def validate_config() -> None:
         """
         Validate required configuration
-        Ported exactly from TS version
+        
         """
         if not Config.base_url():
             print(
@@ -359,7 +359,7 @@ class Config:
     def print_startup_info() -> None:
         """
         Print configuration info at startup
-        Ported exactly from TS version
+        
         """
         print(f"{Config.colors['green']}Configuration:{Config.colors['reset']}")
         print(
@@ -391,7 +391,7 @@ class Config:
     def reset() -> None:
         """
         Reset all runtime state to defaults (for testing)
-        Ported exactly from TS version
+        
         """
         Config._yolo_mode = False
         Config._sandbox_disabled = False
@@ -401,7 +401,7 @@ class Config:
     def in_tmux() -> bool:
         """
         Check if running in tmux
-        Ported exactly from TS version
+        
         """
         return bool(os.environ.get("TMUX_PANE"))
 

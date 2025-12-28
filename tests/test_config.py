@@ -1,6 +1,6 @@
 """
 Test Config class
-Tests to ensure exact behavior matches TypeScript version
+Tests for
 """
 
 import os

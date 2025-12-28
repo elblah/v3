@@ -1,5 +1,5 @@
 """Message history management for AI Coder
-Following TypeScript patterns exactly
+
 """
 
 import json
@@ -170,11 +170,6 @@ class MessageHistory:
         self.messages = new_messages
         self.estimate_context()
 
-    def set_messages(self, new_messages: List[Dict[str, Any]]) -> None:
-        """Directly set messages (useful for loading sessions and compaction)"""
-        self.messages = list(new_messages)  # Make a copy
-        self.estimate_context()
-
     def estimate_context(self) -> None:
         """Estimate context size using optimized weighted estimation"""
         from .token_estimator import estimate_messages
@@ -286,8 +281,18 @@ class MessageHistory:
 
     def should_auto_compact(self) -> bool:
         """Check if auto-compaction should be triggered"""
-        # Simplified: always false for now
-        return False
+        from aicoder.core.config import Config
+
+        percentage = Config.context_compact_percentage()
+        if percentage <= 0:
+            return False  # Auto-compaction disabled
+
+        # Use the estimated prompt size from stats (not string length)
+        current_size = self.stats.current_prompt_size or 0
+        max_size = Config.context_size()
+        threshold = max_size * (percentage / 100)
+
+        return current_size > threshold
 
     def get_round_count(self) -> int:
         """Get number of conversation rounds"""

@@ -1,7 +1,8 @@
-"""Streaming client for API requests - Python version ported exactly from TypeScript"""
+"""Streaming API client for AI requests"""
 
 import json
 import time
+import itertools
 from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
@@ -14,12 +15,24 @@ from aicoder.utils.http_utils import fetch, Response
 
 
 class StreamingClient:
-    """Handles streaming API requests - exact port from TypeScript"""
+    """Handles streaming API requests"""
 
-    def __init__(self, stats: Optional[Any] = None, tool_manager: Optional[Any] = None):
+    def __init__(self, stats: Optional[Any] = None, tool_manager: Optional[Any] = None, message_history: Optional[Any] = None):
         self.stats = stats
         self.colorizer = MarkdownColorizer()
         self.tool_manager = tool_manager
+        self.message_history = message_history
+        self._recovery_attempted = False
+
+    def _calculate_backoff(self, attempt_num: int) -> float:
+        """Calculate exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (capped)"""
+        return min(2 ** attempt_num, 64)
+
+    def _wait_for_retry(self, attempt_num: int) -> None:
+        """Wait before retry with backoff and show message"""
+        delay = self._calculate_backoff(attempt_num)
+        LogUtils.warn(f"Retrying in {delay}s...")
+        time.sleep(delay)
 
     def stream_request(
         self,
@@ -28,7 +41,7 @@ class StreamingClient:
         throw_on_error: bool = False,
         send_tools: bool = True,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Stream API request - exact port from TypeScript streamRequest"""
+        """Stream API request - streamRequest"""
         if Config.debug():
             LogUtils.debug(
                 f"*** stream_request called with {len(messages)} messages, send_tools={send_tools}"
@@ -38,10 +51,12 @@ class StreamingClient:
         if self.stats:
             self.stats.increment_api_requests()
 
-        # Retry up to 3 times like TS
-        max_retries = 3
+        # Reset recovery flag for each new request
+        self._recovery_attempted = False
 
-        for attempt_num in range(1, max_retries + 1):
+        max_retries = Config.effective_max_retries()
+
+        for attempt_num in range(1, max_retries + 1) if max_retries > 0 else itertools.count(1):
             config = {"base_url": Config.base_url(), "model": Config.model()}
 
             try:
@@ -100,8 +115,13 @@ class StreamingClient:
                 ):
                     return
 
+                # Wait before next retry (except for last attempt)
+                # In unlimited mode (max_retries=0), always wait and continue
+                if max_retries == 0 or attempt_num < max_retries:
+                    self._wait_for_retry(attempt_num)
+
     def _log_retry_attempt(self, config: Dict[str, str], attempt_num: int) -> None:
-        """Log retry attempt - exact port from TS"""
+        """Log retry attempt -"""
         if Config.debug() and attempt_num > 1:
             from aicoder.utils.log import LogUtils
 
@@ -117,7 +137,7 @@ class StreamingClient:
         request_data: Dict[str, Any],
         attempt_num: int,
     ) -> None:
-        """Log request details - exact port from TS"""
+        """Log request details -"""
         if Config.debug():
             from aicoder.utils.log import LogUtils
 
@@ -128,7 +148,7 @@ class StreamingClient:
             )
 
     def _log_api_config_debug(self, config: Dict[str, str]) -> None:
-        """Log API config for debugging - exact port from TS"""
+        """Log API config for debugging -"""
         if Config.debug():
             from aicoder.utils.log import LogUtils
 
@@ -138,12 +158,12 @@ class StreamingClient:
     def _make_api_request(
         self, endpoint: str, headers: Dict[str, str], request_data: str
     ) -> Response:
-        """Make API request - exact port from TS makeApiRequest"""
+        """Make API request - makeApiRequest"""
         # This is handled by fetch() in Python version
         pass
 
     def _log_error_response(self, response: Response) -> None:
-        """Log error response - exact port from TS"""
+        """Log error response -"""
         if Config.debug():
             from aicoder.utils.log import LogUtils
 
@@ -159,7 +179,7 @@ class StreamingClient:
                 LogUtils.debug("Error response body: <could not parse as JSON>")
 
     def _log_attempt_error(self, error: Exception, attempt_num: int) -> None:
-        """Log attempt error - exact port from TS"""
+        """Log attempt error -"""
         if Config.debug():
             from aicoder.utils.log import LogUtils
 
@@ -172,7 +192,7 @@ class StreamingClient:
     def _handle_final_attempt_failure(
         self, error: Exception, throw_on_error: bool, start_time: float
     ) -> bool:
-        """Handle final attempt failure - exact port from TS"""
+        """Handle final attempt failure -"""
         if self.stats:
             self.stats.increment_api_errors()
             self.stats.add_api_time((time.time() - start_time))
@@ -188,7 +208,7 @@ class StreamingClient:
         return False  # Exit retry loop
 
     def _update_stats_on_success(self, start_time: float) -> None:
-        """Update stats on success - exact port from TS"""
+        """Update stats on success -"""
         if self.stats:
             self.stats.increment_api_success()
             self.stats.add_api_time((time.time() - start_time))
@@ -200,7 +220,7 @@ class StreamingClient:
         stream: bool,
         send_tools: bool = True,
     ) -> Dict[str, Any]:
-        """Prepare request data - exact port from TS"""
+        """Prepare request data -"""
         data = {
             "model": model or Config.model(),
             "messages": self._format_messages(messages),
@@ -223,7 +243,7 @@ class StreamingClient:
         return data
 
     def _add_tool_definitions(self, data: Dict[str, Any]) -> None:
-        """Add tool definitions to request data - exact port from TS"""
+        """Add tool definitions to request data -"""
         if not self.tool_manager:
             return
 
@@ -247,7 +267,7 @@ class StreamingClient:
                 LogUtils.debug(f"*** Message count: {len(data.get('messages', []))}")
 
     def _format_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Format messages for API - exact port from TS"""
+        """Format messages for API -"""
         formatted = []
         for msg in messages:
             msg_dict = {"role": msg.get("role"), "content": msg.get("content")}
@@ -263,7 +283,7 @@ class StreamingClient:
         return formatted
 
     def _build_headers(self) -> Dict[str, str]:
-        """Build request headers - exact port from TS"""
+        """Build request headers -"""
         headers = {
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
@@ -279,13 +299,13 @@ class StreamingClient:
         return headers
 
     def _is_streaming_response(self, content_type: str) -> bool:
-        """Check if response is streaming - exact port from TS"""
+        """Check if response is streaming -"""
         return "text/event-stream" in content_type.lower()
 
     def _handle_streaming_response(
         self, response: Response
     ) -> Generator[Dict[str, Any], None, None]:
-        """Handle streaming response - exact port from TS handleStreamingResponse"""
+        """Handle streaming response - handleStreamingResponse"""
         try:
             if not response:
                 raise Exception("No response body for streaming")
@@ -295,7 +315,7 @@ class StreamingClient:
             buffer = ""
             raw_response = ""
 
-            # Read response incrementally like TypeScript
+            # Read response incrementally
             while True:
                 line_bytes = (
                     response.readline()
@@ -376,7 +396,7 @@ class StreamingClient:
     def _handle_non_streaming_response(
         self, response: Response
     ) -> Generator[Dict[str, Any], None, None]:
-        """Handle non-streaming response - exact port from TS handleNonStreamingResponse"""
+        """Handle non-streaming response - handleNonStreamingResponse"""
         data = response.json()
 
         # Convert non-streaming response to streaming format like TS
@@ -414,18 +434,46 @@ class StreamingClient:
         throw_on_error: bool,
         start_time: float,
     ) -> bool:
-        """Handle attempt error - exact port from TS handleAttemptError"""
-        self._log_attempt_error(error, attempt_num)
+        """Handle attempt error"""
+        error_msg = str(error) if error else "Unknown error"
 
-        if attempt_num < max_retries:
-            # Continue retrying
-            return True
+        # Check if context is too large and attempt auto-recovery (once per request)
+        if self.message_history and self.stats and not throw_on_error:
+            current_size = self.stats.current_prompt_size or 0
+            threshold = Config.auto_compact_threshold()
+            if current_size > threshold and not self._recovery_attempted:
+                LogUtils.warn("[*] API failed with large context - attempting auto-recovery")
+                LogUtils.warn(f"[*] Context size: {current_size:,} (threshold: {threshold:,})")
+                self._recovery_attempted = True
+                self.message_history.force_compact_rounds(1)
+                LogUtils.info("[*] Retrying request after compaction...")
+                return True  # Retry with compacted context
+
+        # Display attempt count (unlimited mode doesn't show max)
+        if max_retries == 0:
+            LogUtils.warn(f"Attempt {attempt_num} failed: {error_msg}")
+            return True  # Always retry in unlimited mode
         else:
-            # Final attempt failed
-            return self._handle_final_attempt_failure(error, throw_on_error, start_time)
+            LogUtils.warn(f"Attempt {attempt_num}/{max_retries} failed: {error_msg}")
+
+            if attempt_num < max_retries:
+                return True
+            else:
+                # Final attempt failed
+                if self.stats:
+                    self.stats.increment_api_errors()
+                    self.stats.add_api_time((time.time() - start_time))
+
+                LogUtils.error(f"All {max_retries} attempts failed. Last error: {error_msg}")
+                LogUtils.warn("Use /retry to try again or /retry limit <n> to increase retries.")
+
+                if throw_on_error:
+                    raise Exception(f"All attempts failed: {error_msg}")
+
+                return False
 
     def _update_stats_from_usage(self, usage: Dict[str, Any]) -> None:
-        """Update stats from usage - exact port from TS"""
+        """Update stats from usage -"""
         if self.stats:
             if hasattr(usage, "prompt_tokens"):
                 self.stats.add_prompt_tokens(usage.prompt_tokens)
