@@ -1,6 +1,6 @@
 """
 Test datetime_utils module
-Tests to ensure exact behavior matches TypeScript version
+Tests for
 """
 
 import re
@@ -12,7 +12,7 @@ from aicoder.utils.datetime_utils import (
 
 
 def test_create_file_timestamp():
-    """Test timestamp format matches TS version exactly"""
+    """Test timestamp format"""
     timestamp = create_file_timestamp()
 
     # Should be 19 chars long (first 19 of ISO with replacements)
@@ -30,7 +30,7 @@ def test_create_file_timestamp():
 
 
 def test_create_timestamp_filename():
-    """Test filename creation matches TS version exactly"""
+    """Test filename creation"""
     filename = create_timestamp_filename("test", "txt")
 
     # Should have prefix, timestamp, and extension
@@ -45,7 +45,7 @@ def test_create_timestamp_filename():
 
 
 def test_get_current_iso_datetime():
-    """Test ISO datetime matches TS version exactly"""
+    """Test ISO datetime"""
     iso = get_current_iso_datetime()
 
     # Should be valid ISO format

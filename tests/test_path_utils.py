@@ -1,6 +1,6 @@
 """
 Test path_utils module
-Tests to ensure exact behavior matches TypeScript version
+Tests for
 """
 
 from aicoder.utils.path_utils import is_safe_path, validate_path, validate_tool_path

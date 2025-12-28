@@ -1,6 +1,6 @@
 """
 Cross-platform temporary file utilities
-Ported exactly from TypeScript version
+
 """
 
 import os

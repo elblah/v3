@@ -30,7 +30,15 @@ class CompactCommand(BaseCommand):
         if args is None:
             args = []
 
+        # Check for stats command first since it returns CommandResult
+        if len(args) >= 1 and args[0].lower() == "stats":
+            return self._show_stats()
+
         parsed = self._parse_args(args)
+
+        # If _parse_args returned a CommandResult (from prune), return it directly
+        if isinstance(parsed, CommandResult):
+            return parsed
 
         self._handle_compact(parsed)
 
@@ -72,7 +80,8 @@ class CompactCommand(BaseCommand):
                     return {}
             return self._handle_prune(parsed)
         elif command == "stats":
-            return self._show_stats()
+            # Stats is handled in execute() method to avoid type issues
+            parsed["stats"] = True
         elif command == "help":
             self._show_help()
         else:

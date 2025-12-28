@@ -1,6 +1,6 @@
 """
 Tool manager for AI Coder - Internal tools only
-Following TypeScript structure exactly
+
 """
 
 import json
@@ -19,15 +19,20 @@ from aicoder.tools.internal.list_directory import TOOL_DEFINITION as LIST_DIRECT
 
 
 class ToolManager:
-    """Tool manager following TypeScript patterns exactly"""
+    """Tool manager"""
 
     def __init__(self, stats: Stats):
         self.stats = stats
         self.tools: Dict[str, Dict[str, Any]] = {}
         self.read_files: Set[str] = set()
+        self.plugin_system = None  # Will be set by aicoder
 
         # Register internal tools
         self._register_internal_tools()
+
+    def set_plugin_system(self, plugin_system) -> None:
+        """Set plugin system reference"""
+        self.plugin_system = plugin_system
 
     def _register_internal_tools(self):
         """Register all internal tools"""

@@ -49,7 +49,7 @@ class HelpCommand(BaseCommand):
             if not command:
                 continue
 
-            # Get command details dynamically (exact TS logic with fallbacks)
+            # Get command details dynamically
             cmd_name = (
                 command.get_name()
                 if hasattr(command, "get_name")
@@ -69,12 +69,12 @@ class HelpCommand(BaseCommand):
                 else []
             )
 
-            # Don't add slash to cmd_name - TS doesn't do this
+            # Don't add slash to cmd_name
             alias_str = ""
             if aliases:
                 alias_str = f" (alias: {', '.join(['/' + a for a in aliases])})"
 
-            # Pad alias string to align descriptions (exact TS logic)
+            # Pad alias string to align descriptions
             padded_alias = alias_str.ljust(20)
             line = f"  {Config.colors['green']}/{cmd_name}{Config.colors['reset']}{padded_alias} - {description}"
             command_lines.append(line)

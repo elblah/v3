@@ -1,6 +1,6 @@
 """
 Load command implementation
-Ported exactly from TypeScript version
+
 """
 
 from typing import List
@@ -28,7 +28,7 @@ class LoadCommand(BaseCommand):
         return self._description
 
     def execute(self, args: List[str] = None) -> CommandResult:
-        """Load session from file - ported exactly from TS"""
+        """Load session from file"""
         if args is None:
             args = []
 
@@ -39,19 +39,16 @@ class LoadCommand(BaseCommand):
                 LogUtils.error(f"Session file not found: {filename}")
                 return CommandResult(should_quit=False, run_api_call=False)
 
-            # Use json_utils.read_file like TypeScript
             session_data = read_file(filename)
 
             # Handle both formats: direct array of messages or object with messages property
-            messages_raw = (
+            messages = (
                 session_data
                 if isinstance(session_data, list)
                 else session_data.get("messages", [])
             )
 
-            if messages_raw and isinstance(messages_raw, list):
-                # Convert dictionaries to Message objects (required for Python)
-                messages = self._convert_to_message_objects(messages_raw)
+            if messages and isinstance(messages, list):
                 self.context.message_history.set_messages(messages)
                 LogUtils.success(f"Session loaded from {filename}")
             else:
@@ -60,43 +57,3 @@ class LoadCommand(BaseCommand):
             LogUtils.error(f"Error loading session: {e}")
 
         return CommandResult(should_quit=False, run_api_call=False)
-
-    def _convert_to_message_objects(self, messages_raw):
-        """Convert dictionary messages to Message objects"""
-
-        messages = []
-        for msg_dict in messages_raw:
-            role_str = msg_dict.get("role")
-            if not role_str:
-                continue
-
-            # Validate role is one of the allowed values
-            valid_roles = ["system", "user", "assistant", "tool"]
-            if role_str not in valid_roles:
-                continue
-
-            role = role_str
-
-            # Handle tool calls if present
-            tool_calls = None
-            if "tool_calls" in msg_dict and msg_dict["tool_calls"]:
-                tool_calls = []
-                for tc in msg_dict["tool_calls"]:
-                    tool_calls.append(
-                        {
-                            "id": tc.get("id", ""),
-                            "type": tc.get("type", "function"),
-                            "function": tc.get("function", {}),
-                            "index": tc.get("index"),
-                        }
-                    )
-
-            message = {
-                "role": role,
-                "content": msg_dict.get("content"),
-                "tool_calls": tool_calls,
-                "tool_call_id": msg_dict.get("tool_call_id"),
-            }
-            messages.append(message)
-
-        return messages

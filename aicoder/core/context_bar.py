@@ -1,6 +1,6 @@
 """
 Context bar component for displaying context usage
-Ported exactly from TypeScript version
+
 """
 
 from datetime import datetime

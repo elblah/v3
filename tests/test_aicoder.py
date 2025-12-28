@@ -1,6 +1,6 @@
 """
 Test AICoder class - Synchronous version
-Tests to ensure exact behavior matches TypeScript version
+Tests for
 """
 
 import pytest

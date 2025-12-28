@@ -1,6 +1,6 @@
 """
 Edit file tool
-Following TypeScript structure exactly
+
 """
 
 import os
@@ -125,7 +125,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         # Mark file as read since user just modified it
         FileAccessTracker.record_read(path)
 
-        # Prepare friendly message matching TypeScript exactly
+        # Prepare friendly message 
         if new_string is None or new_string == "":
             friendly = (
                 f"✓ Deleted content from '{path}' ({len(old_string)} chars removed)"
@@ -301,7 +301,7 @@ def validate_arguments(args):
         raise Exception('edit_file requires "old_string" argument')
 
 
-# Tool definition matching TypeScript structure
+# Tool definition
 TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": False,  # Requires approval for safety

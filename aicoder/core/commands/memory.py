@@ -100,39 +100,8 @@ class MemoryCommand(BaseCommand):
                 edited_messages = json.load(f)
 
             if isinstance(edited_messages, list):
-                # Clear existing history
-                self.context.message_history.clear()
-
-                # Reload messages
-                for msg in edited_messages:
-                    role = msg.get("role")
-                    content = msg.get("content", "")
-                    tool_calls = msg.get("tool_calls")
-                    tool_call_id = msg.get("tool_call_id")
-
-                    if role == "system":
-                        self.context.message_history.add_system_message(content)
-                    elif role == "user":
-                        self.context.message_history.add_user_message(content)
-                    elif role == "assistant":
-
-                        self.context.message_history.add_assistant_message(
-                            {"content": content, "tool_calls": tool_calls}
-                        )
-                    elif role == "tool":
-                        self.context.message_history.add_tool_results(
-                            [
-                                {
-                                    "content": content,
-                                    "tool_call_id": tool_call_id,
-                                }
-                            ]
-                        )
-                    else:
-                        LogUtils.warn(
-                            f"Warning: Unknown message role '{role}', treating as user"
-                        )
-                        self.context.message_history.add_user_message(content)
+                # Replace messages directly - no special handling needed
+                self.context.message_history.set_messages(edited_messages)
 
                 LogUtils.success(
                     f"Reloaded {len(edited_messages)} messages from editor"

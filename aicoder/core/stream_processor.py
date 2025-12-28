@@ -41,7 +41,7 @@ class StreamProcessor:
                 if "usage" in chunk and chunk["usage"]:
                     self.streaming_client.update_token_stats(chunk["usage"])
 
-                # Process choice (TS gets first choice directly)
+                # Process choice
                 if "choices" not in chunk or not chunk["choices"]:
                     # Handle case where chunk doesn't have expected structure
                     LogUtils.debug(f"Chunk missing choices: {chunk}")
@@ -86,7 +86,7 @@ class StreamProcessor:
         tool_call: Dict[str, Any], 
         accumulated_tool_calls: Dict[int, Dict[str, Any]]
     ) -> None:
-        """Accumulate tool call from stream - matches TS accumulateToolCall exactly"""
+        """Accumulate tool call from stream"""
         # Handle case where tool_call might not be a dict (unexpected API format)
         if not isinstance(tool_call, dict):
             LogUtils.error(f"Tool call is not a dict: {type(tool_call)} - {tool_call}")

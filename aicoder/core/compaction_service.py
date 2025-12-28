@@ -1,7 +1,7 @@
 """
 Centralized compaction service - clean, simple, focused
 Takes messages, returns compacted messages. That's it.
-Ported exactly from TypeScript version - synchronous version
+ - synchronous version
 """
 
 from typing import List, Dict, Any, Optional

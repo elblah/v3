@@ -1,7 +1,7 @@
 """
 Generic AI Message Processor
 Unified way to process messages with AI for different purposes
-Ported exactly from TypeScript version
+
 """
 
 from typing import List, Dict, Any, Optional

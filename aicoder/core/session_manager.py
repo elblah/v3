@@ -180,18 +180,16 @@ class SessionManager:
         ]
 
     def _force_compaction(self) -> None:
-        """Force compaction of messages"""
+        """Force compaction of messages (compacts 1 oldest round)"""
         try:
-            if self.compaction_service:
-                self.compaction_service.force_compact(self.message_history)
+            self.message_history.force_compact_rounds(1)
         except Exception as e:
             LogUtils.error(f"Force compaction failed: {e}")
 
     def _perform_auto_compaction(self) -> None:
         """Perform automatic compaction"""
         try:
-            if self.compaction_service:
-                self.compaction_service.compact_messages(self.message_history)
+            self.message_history.compact_memory()
         except Exception as e:
             if Config.debug():
                 LogUtils.warn(f"[!] Auto-compaction failed: {e}")

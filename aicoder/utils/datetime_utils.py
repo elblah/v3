@@ -1,6 +1,6 @@
 """
 Date and time utilities
-Ported exactly from TypeScript version
+
 """
 
 from datetime import datetime

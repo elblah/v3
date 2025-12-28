@@ -1,6 +1,6 @@
 """
 Edit command - Create new message in $EDITOR
-Ported exactly from TypeScript version
+
 """
 
 import os
@@ -29,9 +29,9 @@ class EditCommand(BaseCommand):
         return ["e"]
 
     def execute(self, args: list = None) -> CommandResult:
-        """Edit prompt in tmux - ported exactly from TS"""
+        """Edit prompt in tmux"""
         try:
-            # Check if in tmux (using TMUX env var like TS, not TMUX_PANE)
+            # Check if in tmux (using TMUX env var, not TMUX_PANE)
             if not os.environ.get("TMUX"):
                 LogUtils.print(
                     f"{Config.colors['red']}This command only works inside a tmux environment.{Config.colors['reset']}"
@@ -41,14 +41,14 @@ class EditCommand(BaseCommand):
                 )
                 return CommandResult(should_quit=False, run_api_call=False)
 
-            # Get editor from environment or default to nano (like TS)
+            # Get editor from environment or default to nano
             editor = os.environ.get("EDITOR", "nano")
 
             # Create temporary file
             random_suffix = secrets.token_hex(4)
             temp_file = create_temp_file(f"aicoder-edit-{random_suffix}", ".md")
 
-            # Write empty file (like TS)
+            # Write empty file
             with open(temp_file, "w", encoding="utf-8") as f:
                 f.write("")
 
@@ -61,11 +61,11 @@ class EditCommand(BaseCommand):
                 LogOptions(color=Config.colors["dim"]),
             )
 
-            # Use tmux wait-for like TS version
+            # Use tmux wait-for
             sync_point = f"edit_done_{random_suffix}"
             window_name = f"edit_{random_suffix}"
 
-            # Create tmux command that waits for sync point (exact TS logic)
+            # Create tmux command that waits for sync point
             tmux_cmd = f'tmux new-window -n "{window_name}" \'bash -c "{editor} {temp_file}; tmux wait-for -S {sync_point}"\''
 
             # Execute tmux command
@@ -75,7 +75,7 @@ class EditCommand(BaseCommand):
             if result.returncode != 0:
                 raise Exception(f"tmux command failed: {result.stderr}")
 
-            # Wait for sync point (exact TS logic)
+            # Wait for sync point
             wait_cmd = f"tmux wait-for {sync_point}"
             result = subprocess.run(
                 wait_cmd, shell=True, capture_output=True, text=True
@@ -90,7 +90,7 @@ class EditCommand(BaseCommand):
             except FileNotFoundError:
                 raise Exception("Edit file not found")
 
-            # Clean up temp file (like TS)
+            # Clean up temp file
             try:
                 os.remove(temp_file)
             except:
@@ -109,7 +109,7 @@ class EditCommand(BaseCommand):
                 LogUtils.print(
                     "---------------", LogOptions(color=Config.colors["cyan"])
                 )
-                # Return message to trigger AI call (exact TS behavior)
+                # Return message to trigger AI call
                 return CommandResult(
                     should_quit=False, run_api_call=True, message=content
                 )
@@ -125,7 +125,7 @@ class EditCommand(BaseCommand):
             return CommandResult(should_quit=False, run_api_call=False)
 
         finally:
-            # Ensure temp file cleanup (like TS finally block)
+            # Ensure temp file cleanup
             try:
                 if "temp_file" in locals() and os.path.exists(temp_file):
                     os.remove(temp_file)

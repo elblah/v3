@@ -1,6 +1,6 @@
 """
 File Access Tracker - Enforces read-before-edit safety rule
-Class-based implementation matching TypeScript pattern
+Class-based implementation
 """
 
 from typing import Set
@@ -9,7 +9,7 @@ from typing import Set
 class FileAccessTracker:
     """Tracks which files have been read to enforce safety"""
     
-    _read_files: Set[str] = set()  # Class variable matching TypeScript
+    _read_files: Set[str] = set()  # Class variable
     
     @classmethod
     def record_read(cls, path: str) -> None:

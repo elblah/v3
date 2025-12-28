@@ -40,7 +40,7 @@ class Response:
         return 200 <= self.status < 300
 
     def json(self) -> Dict[str, Any]:
-        """Parse response as JSON - simple like TypeScript"""
+        """Parse response as JSON - simple"""
         try:
             # Use cached content or read it
             if self._content is None:
@@ -93,7 +93,7 @@ class Response:
 
 def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     """
-    Simple fetch-like function - just like TypeScript version
+    Simple fetch-like function - just 
     """
     if options is None:
         options = {}
@@ -115,7 +115,7 @@ def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
         response = urllib.request.urlopen(req, timeout=timeout)
         return Response(response)
     except urllib.error.HTTPError as e:
-        # Return error as Response object - just like TypeScript fetch
+        # Return error as Response object
         return Response(e)
     except Exception as e:
         # For connection errors etc., raise as exception
