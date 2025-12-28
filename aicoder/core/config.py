@@ -128,17 +128,9 @@ class Config:
     def set_sandbox_disabled(disabled: bool) -> None:
         """
         Set sandbox disabled state
-        
+
         """
         Config._sandbox_disabled = disabled
-        if disabled:
-            print(
-                f"{Config.colors['yellow']}[*] Sandbox temporarily disabled for this session{Config.colors['reset']}"
-            )
-        else:
-            print(
-                f"{Config.colors['green']}[*] Sandbox re-enabled for this session{Config.colors['reset']}"
-            )
 
     # API Configuration
     @staticmethod
