@@ -55,13 +55,22 @@ def create_plugin(ctx):
     Called when plugin loads.
 
     ctx provides:
+
+    Registration methods (elegant abstractions):
     - ctx.register_tool(name, fn, description, parameters, auto_approved=False)
     - ctx.register_command(name, handler, description=None)
     - ctx.register_hook(event_name, handler)
-    - ctx.run_shell(command, timeout=30) -> str
-    - ctx.run_shell_async(command)
-    - ctx.add_user_message(message)
-    - ctx.log(message)
+
+    Direct app access (bureaucracy-free):
+    - ctx.app - Full AICoder instance with direct access to all components:
+      - ctx.app.message_history - Message history management
+      - ctx.app.tool_manager - Tool manager (execute tools directly)
+      - ctx.app.streaming_client - AI client for making API calls
+      - ctx.app.stats - Statistics tracking
+      - ctx.app.session_manager - Session management
+      - ctx.app.command_handler - Command registry
+      - ctx.app.input_handler - User input handling
+      - ctx.app.context_bar - Context bar display
     """
 
     # Register tool for AI (must return dict like internal tools)
@@ -83,6 +92,9 @@ def create_plugin(ctx):
     def on_event():
         print("Event triggered!")
     ctx.register_hook('before_user_prompt', on_event)
+
+    # Add a message to the conversation (direct access, no bureaucracy)
+    ctx.app.message_history.add_user_message("Plugin message")
 
     # Optional: return cleanup function
     def cleanup():
@@ -109,6 +121,7 @@ def my_tool(args):
 - `before_approval_prompt` - Before showing tool approval
 - `before_file_write(path, content)` - Before writing file (can return modified content)
 - `after_file_write(path, content)` - After file is written (file exists at this point)
+- `after_tool_results(tool_results)` - After tool results are added to message history (safe time to add plugin messages)
 
 ## Available Plugins
 

@@ -31,8 +31,15 @@ class ToolManager:
         self._register_internal_tools()
 
     def set_plugin_system(self, plugin_system) -> None:
-        """Set plugin system reference"""
+        """Set plugin system reference and initialize tools that need it"""
         self.plugin_system = plugin_system
+
+        # Initialize internal tools that need plugin system access
+        from aicoder.tools.internal.write_file import set_plugin_system as write_file_set_plugin_system
+        write_file_set_plugin_system(plugin_system)
+
+        from aicoder.tools.internal.edit_file import set_plugin_system as edit_file_set_plugin_system
+        edit_file_set_plugin_system(plugin_system)
 
     def _register_internal_tools(self):
         """Register all internal tools"""

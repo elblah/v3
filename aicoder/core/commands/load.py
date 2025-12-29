@@ -27,6 +27,9 @@ class LoadCommand(BaseCommand):
         """Command description"""
         return self._description
 
+    def get_aliases(self) -> List[str]:
+        return ["l"]
+
     def execute(self, args: List[str] = None) -> CommandResult:
         """Load session from file"""
         if args is None:

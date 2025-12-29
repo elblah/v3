@@ -50,12 +50,12 @@ def test_validate_tool_path():
     # Safe path should return True and not log
     result = validate_tool_path("safe/path", "test_tool")
     assert result == True
-    assert "Sandbox-fs" not in captured_output.getvalue()
+    assert "Sandbox" not in captured_output.getvalue()
 
     # Unsafe path should return False and log
     result = validate_tool_path("../dangerous", "test_tool")
     assert result == False
-    assert "Sandbox-fs" in captured_output.getvalue()
+    assert "Sandbox" in captured_output.getvalue()
 
     # Restore stdout
     sys.stdout = sys.__stdout__

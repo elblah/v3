@@ -97,22 +97,42 @@ class EditCommand(BaseCommand):
                 pass
 
             if content:
-                # Save editor content to history
-                prompt_history.save_prompt(content)
-                LogUtils.print(
-                    "Message composed.", LogOptions(color=Config.colors["green"])
-                )
-                LogUtils.print(
-                    "--- Message ---", LogOptions(color=Config.colors["cyan"])
-                )
-                LogUtils.print(content, LogOptions())
-                LogUtils.print(
-                    "---------------", LogOptions(color=Config.colors["cyan"])
-                )
-                # Return message to trigger AI call
-                return CommandResult(
-                    should_quit=False, run_api_call=True, message=content
-                )
+                # Check if content starts with a command (starts with /)
+                if content.strip().startswith("/"):
+                    # It's a command - execute it instead of sending to AI
+                    LogUtils.print(
+                        "Command composed.", LogOptions(color=Config.colors["green"])
+                    )
+                    LogUtils.print(
+                        "--- Command ---", LogOptions(color=Config.colors["cyan"])
+                    )
+                    LogUtils.print(content, LogOptions())
+                    LogUtils.print(
+                        "---------------", LogOptions(color=Config.colors["cyan"])
+                    )
+                    # Return special flag to indicate this is a command to execute
+                    return CommandResult(
+                        should_quit=False,
+                        run_api_call=False,
+                        command_to_execute=content
+                    )
+                else:
+                    # It's a regular message - send to AI
+                    prompt_history.save_prompt(content)
+                    LogUtils.print(
+                        "Message composed.", LogOptions(color=Config.colors["green"])
+                    )
+                    LogUtils.print(
+                        "--- Message ---", LogOptions(color=Config.colors["cyan"])
+                    )
+                    LogUtils.print(content, LogOptions())
+                    LogUtils.print(
+                        "---------------", LogOptions(color=Config.colors["cyan"])
+                    )
+                    # Return message to trigger AI call
+                    return CommandResult(
+                        should_quit=False, run_api_call=True, message=content
+                    )
             else:
                 LogUtils.print(
                     "Empty message - cancelled.",

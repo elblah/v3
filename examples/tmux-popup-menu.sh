@@ -126,6 +126,10 @@ show_menu() {
         "Toggle YOLO (${yolo_enabled})"          y "run-shell -b 'echo yolo > ${response_file}'" \
         "Toggle Detail (${detail_enabled})"      d "run-shell -b 'echo detail > ${response_file}'" \
         "Toggle Sandbox-FS (${sandbox_enabled})" f "run-shell -b 'echo sandbox > ${response_file}'" \
+        "Toggle Sandbox-NET (snet)"              n "run-shell -b 'echo snet > ${response_file}'" \
+        "Toggle Sandbox-Disk (sdisk)"            d "run-shell -b 'echo sdisk > ${response_file}'" \
+        "Force Compact (1 round)" C  "run-shell -b 'echo forcecompact > ${response_file}'" \
+        "Unlimited Retries" u  "run-shell -b 'echo unlimitedretries > ${response_file}'" \
         "Inject Message"    i  "run-shell -b 'echo inject > ${response_file}'" \
         "Save Session"      s  "run-shell -b 'echo save > ${response_file}'" \
         "Kill"              K  "run-shell -b 'echo kill > ${response_file}'" \
@@ -207,6 +211,23 @@ execute_action() {
             cmd="save"
             display_msg="Session saved"
             ;;
+        "unlimitedretries"*)
+            cmd="command /retry limit 0"
+            display_msg="Unlimited retries"
+            ;;
+        "forcecompact"*)
+            cmd="command /compact force 1"
+            display_msg="Force Compact 1 Round"
+            ;;
+        "snet"*)
+            cmd="command /snet toggle"
+            display_msg="Sandbox Metwork (snet) Toggle"
+            ;;
+        "sdisk"*)
+            cmd="command /sdisk toggle"
+            display_msg="Sandbox Disk (sdisk) Toggle"
+            ;;
+
         "stats"*)
             # Get stats and format for display
             local stats_json=$(send_command "$socket" "stats")

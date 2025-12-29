@@ -21,14 +21,38 @@ except ImportError as e:
 
 # Check that SocketServer class has expected methods
 server_methods = [m for m in dir(SocketServer)]
-expected_methods = ['start', 'stop', '_cmd_is_processing', '_cmd_stop', '_cmd_yolo', '_cmd_stats', '_cmd_status', '_cmd_help']
 
-for method in expected_methods:
+# Core methods
+core_methods = ['start', 'stop']
+for method in core_methods:
     if method not in server_methods:
         print(f"✗ SocketServer missing method: {method}")
         sys.exit(1)
 
-print(f"✓ SocketServer has all expected methods ({len(expected_methods)} found)")
+# Command handlers
+cmd_methods = [
+    '_cmd_command',      # Main command handler
+    '_cmd_detail',        # Toggle detail mode
+    '_cmd_inject',        # Inject message with tools
+    '_cmd_inject_text',   # Inject text message
+    '_cmd_is_processing',  # Check if processing
+    '_cmd_kill',          # Kill current process
+    '_cmd_messages',       # Get message count
+    '_cmd_process',        # Process command
+    '_cmd_quit',          # Quit
+    '_cmd_sandbox',       # Toggle sandbox
+    '_cmd_save',          # Save state
+    '_cmd_status',         # Get status
+    '_cmd_stop',          # Stop
+    '_cmd_yolo',          # Toggle YOLO mode
+]
+
+for method in cmd_methods:
+    if method not in server_methods:
+        print(f"✗ SocketServer missing method: {method}")
+        sys.exit(1)
+
+print(f"✓ SocketServer has all expected methods ({len(core_methods) + len(cmd_methods)} found)")
 
 print("\n" + "="*50)
 print("All tests passed! Socket API is ready to use.")

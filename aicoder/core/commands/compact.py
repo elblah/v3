@@ -25,6 +25,9 @@ class CompactCommand(BaseCommand):
         """Command description"""
         return self._description
 
+    def get_aliases(self) -> List[str]:
+        return ["c"]
+
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute compact command"""
         if args is None:

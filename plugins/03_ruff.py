@@ -7,6 +7,7 @@ Features:
 - Configurable via /ruff command
 - Graceful fallback when ruff not installed
 - Default: serious-only mode (ignores minor linting issues)
+- Messages added AFTER tool results to avoid breaking conversation flow
 
 Commands:
 - /ruff - Show status
@@ -15,6 +16,7 @@ Commands:
 """
 
 import os
+import subprocess
 
 
 def create_plugin(ctx):
@@ -25,6 +27,7 @@ def create_plugin(ctx):
         "enabled": True,
         "serious_only": True,  # Default: only check serious issues
         "check_args": "",
+        "pending_files": [],  # Files to check after tool results
     }
 
     def get_effective_args() -> str:
@@ -44,8 +47,13 @@ def create_plugin(ctx):
 
         # Check if ruff exists
         try:
-            result = ctx.run_shell("which ruff", timeout=5)
-            if "not found" in result.lower() or result.strip() == "":
+            result = subprocess.run(
+                ["which", "ruff"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if "not found" in result.stdout.lower() or result.stdout.strip() == "":
                 return None  # ruff not installed, silently skip
         except:
             return None
@@ -53,19 +61,35 @@ def create_plugin(ctx):
         args = get_effective_args()
         cmd = f'ruff check {args} "{filepath}"'
 
-        result = ctx.run_shell(cmd, timeout=10)
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
 
-        if result and ("error" in result.lower() or "found" in result.lower()):
-            return f"Ruff issues in {filepath}:\n{result}"
+        if result.stdout and ("error" in result.stdout.lower() or "found" in result.stdout.lower()):
+            return f"Ruff issues in {filepath}:\n{result.stdout}"
         return None
 
     def after_file_write(path: str, content: str) -> None:
-        """Hook: After file write - run ruff check"""
-        issues = run_ruff_check(path)
-        if issues:
-            ctx.log(issues)
-            # Add message for AI to fix (this will be AFTER tool result)
-            ctx.add_user_message(f"\n{issues}\n")
+        """Hook: After file write - queue file for ruff check"""
+        # Just queue the file, don't check yet
+        # This ensures tool results are added before any plugin messages
+        if path.endswith(".py"):
+            state["pending_files"].append(path)
+
+    def after_tool_results(tool_results) -> None:
+        """Hook: After tool results added - check queued files"""
+        # Check all queued files
+        while state["pending_files"]:
+            filepath = state["pending_files"].pop(0)
+            issues = run_ruff_check(filepath)
+            if issues:
+                print(f"[plugin] {issues}")
+                # Add message for AI to fix (this will be AFTER tool result)
+                ctx.app.message_history.add_user_message(f"\n{issues}\n")
 
     def handle_ruff_command(args_str: str) -> str:
         """Handle /ruff command"""
@@ -106,7 +130,9 @@ Commands:
 
     # Register hooks and command
     ctx.register_hook("after_file_write", after_file_write)
+    ctx.register_hook("after_tool_results", after_tool_results)
     ctx.register_command("/ruff", handle_ruff_command, description="Ruff code quality checks")
 
     print("  - after_file_write hook")
+    print("  - after_tool_results hook")
     print("  - /ruff command")

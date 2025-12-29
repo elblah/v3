@@ -7,6 +7,8 @@ Design principles:
 - Per-project: Plugins live in .aicoder/plugins/ (not global)
 - No dependencies: Pure Python stdlib only
 - Closure state: Plugin state in closures, no complex state mgmt
+- Direct access: Plugins get ctx.app for direct component access
+- Elegant indirections: Only registration methods (register_tool, etc.) are bridged
 """
 
 import os
@@ -14,20 +16,32 @@ import sys
 import importlib.util
 import threading
 import subprocess
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from aicoder.core.aicoder import AICoder
 
 
 class PluginContext:
-    """Context object passed to plugins - minimal API surface"""
+    """
+    Context object passed to plugins - minimal API surface
+
+    Plugins get direct access to the main AICoder app via ctx.app,
+    allowing them to interact with all components without bureaucracy.
+
+    Registration methods are provided as elegant abstractions for
+    registering tools, commands, and hooks.
+    """
 
     def __init__(self):
-        # Callbacks set by plugin system
+        # Direct reference to the main AICoder app (set by PluginSystem)
+        self.app: Optional['AICoder'] = None
+
+        # Registration callbacks (elegant indirections)
         self._register_tool_fn: Optional[Callable] = None
         self._register_command_fn: Optional[Callable] = None
         self._register_hook_fn: Optional[Callable] = None
-        self._run_shell_fn: Optional[Callable] = None
-        self._add_user_message_fn: Optional[Callable] = None
 
     def register_tool(
         self,
@@ -38,52 +52,36 @@ class PluginContext:
         auto_approved: bool = False,
         format_arguments: Optional[Callable] = None,
     ) -> None:
-        """Register a tool for AI to use"""
+        """
+        Register a tool for AI to use
+
+        This is an elegant abstraction - plugins shouldn't need to know
+        the internal details of how tools are registered.
+        """
         if self._register_tool_fn:
             self._register_tool_fn(name, fn, description, parameters, auto_approved, format_arguments)
 
     def register_command(
         self, name: str, handler: Callable, description: Optional[str] = None
     ) -> None:
-        """Register a user command (e.g., /ruff, /web)"""
+        """
+        Register a user command (e.g., /ruff, /web)
+
+        This is an elegant abstraction - plugins shouldn't need to know
+        the internal details of how commands are registered.
+        """
         if self._register_command_fn:
             self._register_command_fn(name, handler, description)
 
     def register_hook(self, event_name: str, handler: Callable) -> None:
-        """Register an event hook"""
+        """
+        Register an event hook
+
+        This is an elegant abstraction - plugins shouldn't need to know
+        the internal details of how hooks are registered.
+        """
         if self._register_hook_fn:
             self._register_hook_fn(event_name, handler)
-
-    def run_shell(self, command: str, timeout: int = 30) -> str:
-        """Run shell command and return output"""
-        if self._run_shell_fn:
-            return self._run_shell_fn(command, timeout)
-        # Fallback implementation
-        try:
-            result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=timeout
-            )
-            return result.stdout or result.stderr
-        except subprocess.TimeoutExpired:
-            return f"Command timed out after {timeout}s"
-        except Exception as e:
-            return f"Error running command: {e}"
-
-    def run_shell_async(self, command: str) -> None:
-        """Run shell command in background, don't wait"""
-        try:
-            subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass  # Silent failure - notifications aren't critical
-
-    def add_user_message(self, message: str) -> None:
-        """Add a message for the AI to see"""
-        if self._add_user_message_fn:
-            self._add_user_message_fn(message)
-
-    def log(self, message: str) -> None:
-        """Plugin logging"""
-        print(f"[plugin] {message}")
 
 
 class PluginSystem:
@@ -96,6 +94,7 @@ class PluginSystem:
     - Duck-typed: just create_plugin(context) function
     - Hook system for events
     - Closure-based state management
+    - Direct app access: plugins get ctx.app for full component access
     """
 
     def __init__(self, plugins_dir: str = ".aicoder/plugins"):
@@ -106,38 +105,19 @@ class PluginSystem:
         self.hooks: Dict[str, List[Callable]] = {}
         self.cleanup_handlers: List[Callable] = []
 
-        # Context object with callbacks
+        # Context object with registration callbacks
         self.context = PluginContext()
         self.context._register_tool_fn = self._register_tool
         self.context._register_command_fn = self._register_command
         self.context._register_hook_fn = self._register_hook
-        self.context._run_shell_fn = self._run_shell
-        self.context._add_user_message_fn = self._add_user_message
 
-        # Callbacks set by main app
-        self._add_user_message_fn = None
+        # App reference (set by AICoder)
+        self._app = None
 
-    def set_message_callback(self, fn: Callable) -> None:
-        """Set callback for adding user messages"""
-        self._add_user_message_fn = fn
-        self.context._add_user_message_fn = fn
-
-    def _add_user_message(self, message: str) -> None:
-        """Internal: add user message via callback"""
-        if self._add_user_message_fn:
-            self._add_user_message_fn(message)
-
-    def _run_shell(self, command: str, timeout: int = 30) -> str:
-        """Internal: run shell command"""
-        try:
-            result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=timeout
-            )
-            return result.stdout or result.stderr
-        except subprocess.TimeoutExpired:
-            return f"Command timed out after {timeout}s"
-        except Exception as e:
-            return f"Error: {e}"
+    def set_app(self, app: 'AICoder') -> None:
+        """Set the main AICoder app reference"""
+        self._app = app
+        self.context.app = app
 
     def _register_tool(
         self,

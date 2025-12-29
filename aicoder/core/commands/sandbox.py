@@ -25,6 +25,9 @@ class SandboxCommand(BaseCommand):
         """Command description"""
         return self._description
 
+    def get_aliases(self) -> List[str]:
+        return ["sfs"]
+
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute sandbox command"""
         if args is None:
@@ -82,6 +85,7 @@ class SandboxCommand(BaseCommand):
                 LogUtils.print("  aicoder-mini", color=Config.colors["cyan"])
             elif Config.sandbox_disabled():
                 Config.set_sandbox_disabled(False)
+                LogUtils.success("Sandbox-fs is now enabled")
             else:
                 LogUtils.warn("Sandbox-fs is already enabled")
         elif action in ["off", "0"]:
@@ -89,6 +93,7 @@ class SandboxCommand(BaseCommand):
                 LogUtils.error("Sandbox-fs is already disabled")
             else:
                 Config.set_sandbox_disabled(True)
+                LogUtils.success("Sandbox-fs is now disabled")
         else:
             LogUtils.error("Invalid argument. Use: /sandbox-fs [on|off]")
 
