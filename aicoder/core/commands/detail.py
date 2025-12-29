@@ -25,7 +25,7 @@ class DetailCommand(BaseCommand):
         return self._description
 
     def get_aliases(self) -> List[str]:
-        return []
+        return ["d"]
 
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute detail command"""

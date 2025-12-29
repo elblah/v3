@@ -25,7 +25,7 @@ class HelpCommand(BaseCommand):
         return self._description
 
     def get_aliases(self) -> List[str]:
-        return ["?"]
+        return ["?", "h"]
 
     def execute(self, args: List[str] = None) -> CommandResult:
         """Display help for all commands"""

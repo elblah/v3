@@ -33,6 +33,7 @@ class AICoder:
         # State
         self.is_running = True
         self.is_processing = False
+        self.next_prompt = None
 
         # Core components
         self.stats = Stats()
@@ -51,15 +52,7 @@ class AICoder:
         # Extracted components (need to be initialized after core services)
         self.tool_executor = ToolExecutor(self.tool_manager, self.message_history, self.plugin_system)
         self.stream_processor = StreamProcessor(self.streaming_client)
-        self.session_manager = SessionManager(
-            self.message_history,
-            self.streaming_client,
-            self.stream_processor,
-            self.tool_executor,
-            self.context_bar,
-            self.stats,
-            self.compaction_service
-        )
+        self.session_manager = SessionManager(self)
 
         # Command system
         self.command_handler = CommandHandler(
@@ -74,6 +67,20 @@ class AICoder:
         # Hooks
         self.notify_hooks = None
 
+    def set_next_prompt(self, prompt: str) -> None:
+        """Set next prompt to execute (for auto-council)"""
+        self.next_prompt = prompt
+
+    def get_next_prompt(self) -> str:
+        """Get and clear next prompt"""
+        prompt = self.next_prompt
+        self.next_prompt = None
+        return prompt
+
+    def has_next_prompt(self) -> bool:
+        """Check if next prompt is set"""
+        return self.next_prompt is not None
+
     def initialize(self) -> None:
         """Initialize AI Coder components"""
         Config.validate_config()
@@ -83,12 +90,9 @@ class AICoder:
         self.message_history.set_api_client(self.streaming_client)
 
         # Load plugins (ultra-fast: only if .aicoder/plugins/ exists)
-        self.plugin_system.set_message_callback(self.add_plugin_message)
+        # Set app reference so plugins can access components directly via ctx.app
+        self.plugin_system.set_app(self)
         self.tool_manager.set_plugin_system(self.plugin_system)
-
-        # Set plugin system reference in write_file tool
-        from aicoder.tools.internal.write_file import set_plugin_system
-        set_plugin_system(self.plugin_system)
 
         self.plugin_system.load_plugins()
 
@@ -155,7 +159,9 @@ class AICoder:
                 # Get user input
                 self.call_notify_hook("on_before_user_prompt")
                 self.plugin_system.call_hooks("before_user_prompt")
-                user_input = self.input_handler.get_user_input()
+
+                # Use next_prompt if set (auto-council trigger)
+                user_input = self.get_next_prompt() if self.has_next_prompt() else self.input_handler.get_user_input()
 
                 if not user_input.strip():
                     continue
@@ -167,6 +173,11 @@ class AICoder:
                         self.is_running = False
                         break
                     if not result.run_api_call:
+                        # Check if command wants to execute another command
+                        if result.command_to_execute:
+                            # Set as next prompt to be processed
+                            self.set_next_prompt(result.command_to_execute)
+                            continue
                         continue
                     if result.message:
                         self.add_user_input(result.message)
@@ -179,7 +190,7 @@ class AICoder:
             except KeyboardInterrupt:
                 continue
             except EOFError:
-                break
+                continue
             except Exception as e:
                 LogUtils.error(f"Error: {e}")
 

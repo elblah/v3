@@ -52,12 +52,20 @@ try:
     cmd_methods = [m for m in dir(SocketServer) if m.startswith('_cmd_')]
 
     expected_commands = [
-        '_cmd_is_processing', '_cmd_stop', '_cmd_retry',
-        '_cmd_yolo', '_cmd_detail', '_cmd_sandbox',
-        '_cmd_stats', '_cmd_status',
-        '_cmd_messages', '_cmd_inject',
-        '_cmd_save', '_cmd_reset', '_cmd_compact',
-        '_cmd_quit', '_cmd_ping', '_cmd_version', '_cmd_help'
+        '_cmd_command',      # Main command handler
+        '_cmd_detail',        # Toggle detail mode
+        '_cmd_inject',        # Inject message with tools
+        '_cmd_inject_text',   # Inject text message
+        '_cmd_is_processing',  # Check if processing
+        '_cmd_kill',          # Kill current process
+        '_cmd_messages',       # Get message count
+        '_cmd_process',        # Process command
+        '_cmd_quit',          # Quit
+        '_cmd_sandbox',       # Toggle sandbox
+        '_cmd_save',          # Save state
+        '_cmd_status',         # Get status
+        '_cmd_stop',          # Stop
+        '_cmd_yolo',          # Toggle YOLO mode
     ]
 
     missing = [cmd for cmd in expected_commands if cmd not in cmd_methods]

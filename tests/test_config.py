@@ -50,22 +50,20 @@ def test_yolo_mode():
         with patch.dict(os.environ, {}, clear=True):
             assert Config.yolo_mode() == False
 
-        # Test runtime setting
-        Config.set_yolo_mode(True)
-        assert Config.yolo_mode() == True
+            # Test runtime setting (needs clean env)
+            Config.set_yolo_mode(True)
+            assert Config.yolo_mode() == True
 
-        Config.set_yolo_mode(False)
-        assert Config.yolo_mode() == False
+            Config.set_yolo_mode(False)
+            assert Config.yolo_mode() == False
 
         # Test environment variable
-        with patch.dict(os.environ, {"YOLO_MODE": "1"}):
+        with patch.dict(os.environ, {"YOLO_MODE": "1"}, clear=True):
             assert Config.yolo_mode() == True
     finally:
         # Restore original YOLO_MODE
         if original_yolo is not None:
             os.environ["YOLO_MODE"] = original_yolo
-        elif "YOLO_MODE" in os.environ:
-            del os.environ["YOLO_MODE"]
 
 
 def test_sandbox_disabled():
@@ -84,7 +82,7 @@ def test_sandbox_disabled():
     assert Config.sandbox_disabled() == False
 
     # Test environment variable
-    with patch.dict(os.environ, {"MINI_SANDBOX": "0"}):
+    with patch.dict(os.environ, {"MINI_SANDBOX": "0"}, clear=True):
         assert Config.sandbox_disabled() == True
 
 
@@ -106,13 +104,13 @@ def test_detail_mode():
 
 def test_api_config():
     """Test API configuration"""
-    # Test with no environment variables
+    # Test with no environment variables (need clear=True for each test)
     with patch.dict(os.environ, {}, clear=True):
         assert Config.api_key() == ""
         assert Config.base_url() == ""
         assert Config.api_endpoint() == ""
         assert Config.model() == ""
-        assert Config.temperature() == 0.0
+        assert Config.temperature() is None  # Returns None when not set
         assert Config.max_tokens() is None
 
     # Test with OPENAI variables
@@ -125,6 +123,7 @@ def test_api_config():
             "TEMPERATURE": "0.7",
             "MAX_TOKENS": "2048",
         },
+        clear=True,
     ):
         assert Config.api_key() == "test-key"
         assert Config.base_url() == "https://api.openai.com/v1"
@@ -142,6 +141,7 @@ def test_api_config():
             "API_MODEL": "fallback-model",
             "TEMPERATURE": "0.5",
         },
+        clear=True,
     ):
         assert Config.api_key() == "fallback-key"
         assert Config.base_url() == "https://fallback.com/v1"
@@ -165,6 +165,7 @@ def test_streaming_config():
             "STREAMING_READ_TIMEOUT": "60",
             "TOTAL_TIMEOUT": "120",
         },
+        clear=True,
     ):
         assert Config.streaming_timeout() == 600
         assert Config.streaming_read_timeout() == 60
@@ -181,13 +182,14 @@ def test_context_config():
         assert Config.auto_compact_enabled() == False
 
     # Test with compact percentage
-    with patch.dict(os.environ, {"CONTEXT_COMPACT_PERCENTAGE": "75"}):
+    with patch.dict(os.environ, {"CONTEXT_COMPACT_PERCENTAGE": "75"}, clear=True):
         assert Config.context_compact_percentage() == 75
-        assert Config.auto_compact_threshold() == 96000  # 128000 * 0.75
+        expected_threshold = int(128000 * 0.75)  # 96000
+        assert Config.auto_compact_threshold() == expected_threshold
         assert Config.auto_compact_enabled() == True
 
     # Test with over 100% (should be capped)
-    with patch.dict(os.environ, {"CONTEXT_COMPACT_PERCENTAGE": "150"}):
+    with patch.dict(os.environ, {"CONTEXT_COMPACT_PERCENTAGE": "150"}, clear=True):
         assert Config.auto_compact_threshold() == 128000  # Capped at 100%
 
 
@@ -209,6 +211,7 @@ def test_compaction_config():
             "MIN_SUMMARY_LENGTH": "200",
             "FORCE_COMPACT_SIZE": "10",
         },
+        clear=True,
     ):
         assert Config.tmux_prune_percentage() == 75
         assert Config.compact_protect_rounds() == 3
@@ -223,7 +226,7 @@ def test_tool_config():
         assert Config.max_tool_result_size() == 300000
 
     # Test custom values
-    with patch.dict(os.environ, {"MAX_TOOL_RESULT_SIZE": "500000"}):
+    with patch.dict(os.environ, {"MAX_TOOL_RESULT_SIZE": "500000"}, clear=True):
         assert Config.max_tool_result_size() == 500000
 
 
@@ -234,7 +237,7 @@ def test_debug():
         assert Config.debug() == False
 
     # Test enabled
-    with patch.dict(os.environ, {"DEBUG": "1"}):
+    with patch.dict(os.environ, {"DEBUG": "1"}, clear=True):
         assert Config.debug() == True
 
 
@@ -253,16 +256,17 @@ def test_reset():
     # Reset
     Config.reset()
 
-    # Check all are reset
-    assert Config.yolo_mode() == False
-    assert Config.sandbox_disabled() == False
-    assert Config.detail_mode() == False
+    # Check all are reset (need clean env since they check env vars first)
+    with patch.dict(os.environ, {}, clear=True):
+        assert Config.yolo_mode() == False
+        assert Config.sandbox_disabled() == False
+        assert Config.detail_mode() == False
 
 
 def test_validate_config_no_exit():
     """Test validate_config without actually exiting"""
     # Test with valid config
-    with patch.dict(os.environ, {"OPENAI_BASE_URL": "https://test.com"}):
+    with patch.dict(os.environ, {"OPENAI_BASE_URL": "https://test.com"}, clear=True):
         # Should not raise an error
         Config.validate_config()
 
@@ -272,6 +276,7 @@ def test_print_startup_info(capsys):
     with patch.dict(
         os.environ,
         {"OPENAI_BASE_URL": "https://test.com/v1", "OPENAI_MODEL": "test-model"},
+        clear=True,
     ):
         Config.print_startup_info()
         captured = capsys.readouterr()

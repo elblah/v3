@@ -48,6 +48,10 @@ class ToolExecutor:
             # Add all tool results to message history
             self.message_history.add_tool_results(tool_results)
 
+            # Call plugin hook after tool results are added
+            if self.plugin_system:
+                self.plugin_system.call_hooks("after_tool_results", tool_results)
+
         except Exception as e:
             LogUtils.error(f"Tool execution error: {e}")
 

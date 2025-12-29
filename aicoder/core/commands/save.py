@@ -26,6 +26,9 @@ class SaveCommand(BaseCommand):
         """Command description"""
         return self._description
 
+    def get_aliases(self) -> List[str]:
+        return ["s"]
+
     def execute(self, args: List[str] = None) -> CommandResult:
         """Save session to file"""
         if args is None:

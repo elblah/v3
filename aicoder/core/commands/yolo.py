@@ -24,6 +24,9 @@ class YoloCommand(BaseCommand):
         """Command description"""
         return self._description
 
+    def get_aliases(self) -> List[str]:
+        return ["y"]
+
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute YOLO command"""
         if args is None:

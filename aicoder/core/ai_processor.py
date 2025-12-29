@@ -39,27 +39,19 @@ class AIProcessor:
         self,
         messages: List[Dict[str, Any]],
         prompt: str,
-        additional_config: Optional[Dict[str, Any]] = None,
+        send_tools: bool = True,
     ) -> str:
         """
         Process messages with a custom prompt
         This is the core method that all features use
         """
-        # Merge configs
-        final_config = {**self.config, **(additional_config or {})}
-
-        # Build message list with optional system prompt
+        # Build message list
         all_messages = []
-
-        if final_config.get("systemPrompt"):
-            all_messages.append(
-                {"role": "system", "content": final_config["systemPrompt"]}
-            )
 
         # Add existing messages
         all_messages.extend(messages)
 
-        # Add the processing prompt
+        # Add processing prompt
         all_messages.append({"role": "user", "content": prompt})
 
         # Process with retry logic - using streaming client's built-in retry
@@ -67,9 +59,10 @@ class AIProcessor:
 
         try:
             response = self.streaming_client.stream_request(
-                all_messages,
-                False,  # Non-streaming for complete response
-                True,  # Throw on error
+                messages=all_messages,
+                stream=False,
+                throw_on_error=True,
+                send_tools=send_tools,
             )
 
             for chunk in response:

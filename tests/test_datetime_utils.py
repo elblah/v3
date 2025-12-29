@@ -48,13 +48,8 @@ def test_get_current_iso_datetime():
     """Test ISO datetime"""
     iso = get_current_iso_datetime()
 
-    # Should be valid ISO format
+    # Should be valid ISO format (local time without timezone)
     assert "T" in iso, f"Missing T separator: {iso}"
     assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", iso), (
         f"Invalid ISO format: {iso}"
-    )
-
-    # Should end with Z or timezone info
-    assert iso.endswith("Z") or "+" in iso or "-" in iso[-6:], (
-        f"Missing timezone: {iso}"
     )

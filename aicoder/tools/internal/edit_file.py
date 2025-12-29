@@ -11,6 +11,15 @@ from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file, write_file
 from aicoder.utils.diff_utils import generate_unified_diff_with_status
 
+# Global reference to plugin system (will be set by aicoder)
+_plugin_system = None
+
+
+def set_plugin_system(plugin_system):
+    """Set plugin system reference"""
+    global _plugin_system
+    _plugin_system = plugin_system
+
 
 def _check_sandbox(path: str, print_message: bool = True) -> bool:
     """Check if path is within allowed directory"""
@@ -121,7 +130,12 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
         # Write the new content
         write_file(path, new_content)
-        
+
+        # Call plugin hook after file write (for ruff, etc.)
+        global _plugin_system
+        if _plugin_system:
+            _plugin_system.call_hooks("after_file_write", path, new_content)
+
         # Mark file as read since user just modified it
         FileAccessTracker.record_read(path)
 

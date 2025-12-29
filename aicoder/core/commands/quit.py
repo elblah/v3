@@ -25,7 +25,7 @@ class QuitCommand(BaseCommand):
         return self._description
 
     def get_aliases(self) -> List[str]:
-        return ["q", "x"]
+        return ["q"]
 
     def execute(self, args: List[str] = None) -> CommandResult:
         """Exit the application"""

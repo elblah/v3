@@ -35,6 +35,7 @@ class CommandResult:
     should_quit: bool = False
     run_api_call: bool = True
     message: Optional[str] = None
+    command_to_execute: Optional[str] = None
 
 
 class BaseCommand(ABC):

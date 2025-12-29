@@ -12,15 +12,16 @@ from aicoder.utils.log import LogUtils, LogOptions
 class SessionManager:
     """Handles the main AI session processing workflow"""
 
-    def __init__(self, message_history, streaming_client, stream_processor, tool_executor, 
-                 context_bar, stats, compaction_service):
-        self.message_history = message_history
-        self.streaming_client = streaming_client
-        self.stream_processor = stream_processor
-        self.tool_executor = tool_executor
-        self.context_bar = context_bar
-        self.stats = stats
-        self.compaction_service = compaction_service
+    def __init__(self, app):
+        self.app = app
+        self.message_history = app.message_history
+        self.streaming_client = app.streaming_client
+        self.stream_processor = app.stream_processor
+        self.tool_executor = app.tool_executor
+        self.context_bar = app.context_bar
+        self.stats = app.stats
+        self.compaction_service = app.compaction_service
+        self.plugin_system = app.plugin_system
         self.is_processing = False
 
     def process_with_ai(self) -> None:
@@ -143,6 +144,14 @@ class SessionManager:
             LogUtils.success("[*] Guidance mode: Your turn - tell the AI how to proceed")
             self.tool_executor.clear_guidance_mode()
             return
+
+        # Call plugin hooks after AI processing
+        if self.plugin_system:
+            hook_results = self.plugin_system.call_hooks("after_ai_processing", has_tool_calls)
+            if hook_results:
+                for result in hook_results:
+                    if result and isinstance(result, str):
+                        self.app.set_next_prompt(result)
 
         if has_tool_calls and self.is_processing and self.message_history.should_auto_compact():
             self._perform_auto_compaction()

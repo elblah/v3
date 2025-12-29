@@ -18,12 +18,14 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         raise Exception("Command is required")
 
     try:
-        # Execute command
+        # Execute command with UTF-8 decoding and error handling for binary output
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",  # Replace un-decodable bytes with � instead of failing
             timeout=timeout,
             cwd=cwd,
         )

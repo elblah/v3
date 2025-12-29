@@ -68,6 +68,9 @@ class InputHandler:
         except KeyboardInterrupt:
             print()  # New line after Ctrl+C
             raise  # Re-raise, let caller handle it
+        except EOFError:
+            print()  # New line after Ctrl+D
+            raise  # Re-raise, let caller handle it (now continues like Ctrl+C)
 
     def _load_prompt_history(self):
         """Load prompt history"""
@@ -98,17 +101,31 @@ class InputHandler:
 
             # Only complete commands if text starts with / or is not empty
             if text.startswith("/") or text:
-                # Get available commands
+                # Get available commands including aliases
                 commands = [
                     "/help",
+                    "/h",
+                    "/?",
                     "/quit",
                     "/stats",
                     "/save",
+                    "/s",
                     "/load",
+                    "/l",
                     "/memory",
                     "/new",
                     "/n",
+                    "/yolo",
+                    "/y",
+                    "/detail",
+                    "/d",
+                    "/compact",
+                    "/c",
+                    "/sandbox-fs",
+                    "/sfs",
+                    "/edit",
                     "/e",
+                    "/retry",
                 ]
 
                 # Filter commands that match

@@ -177,6 +177,8 @@ class SocketServer:
                 except socket.timeout:
                     continue
 
+
+
                 # Handle client
                 self._handle_client(client_socket)
 
