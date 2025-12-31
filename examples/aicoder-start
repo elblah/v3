@@ -1,0 +1,158 @@
+#!/bin/bash
+
+export OPTS=""
+
+stty echo
+
+AI_TMP_DIR=/mnt/cacho/storage/ai-tmp
+
+WORK_DIR=${WORKDIR:-${PWD}}
+
+AICODER_CMD="python $HOME/poc/aicoder/v2/aicoder.py"
+
+if [[ -z "$STABLE" && -z "$MINI" && -z "$V2" && -z "$V2_REFACT" ]]; then
+    # Defaults to V3
+    V3=1
+fi
+
+if [[ "$STABLE" == 1 ]]; then
+    AICODER_CMD="aicoder"
+fi
+
+if [[ "$MINI" == 1 ]]; then
+    AICODER_MINI_HOME="$HOME/poc/aicoder/tsv"
+    AICODER_CMD="bun $AICODER_MINI_HOME/src/index.ts"
+    export AICODER_MODELS_BIN="$AICODER_MINI_HOME/bin/models-selector.sh"
+fi
+
+if [[ "$V3" == 1 ]]; then
+    AICODER_V3_HOME="$HOME/poc/aicoder/v3"
+    AICODER_CMD="python $AICODER_V3_HOME/main.py"
+    export AICODER_MODELS_BIN="$AICODER_V3_HOME/bin/models-selector.sh"
+    export AICODER_SOCKET_DIR="$TMP/aicoder-sockets"
+    mkdir -p "$AICODER_SOCKET_DIR"
+    OPTS+=" --bind $AICODER_SOCKET_DIR $AICODER_SOCKET_DIR "
+fi
+
+if [[ "$V2" == 1 ]]; then
+    AICODER_CMD="python $HOME/poc/aicoder/v2/aicoder.py"
+fi
+
+if [[ "$V2_REFACT" == 1 ]]; then
+    echo "V2_REFACT!"
+    AICODER_CMD="python $HOME/poc/aicoder/v2_refact/aicoder.py"
+fi
+
+WORKTREE_STORAGE="$EXT_DIR/ai-worktree-storage"
+if [[ -n "$WORKTREE" ]]; then
+    if [[ ! -d .git ]]; then
+        echo "Warning: not a git dir... no worktree support... abort!"
+        exit 1
+    fi
+
+    echo ""
+    if [[ ! -d "$WORKTREE_STORAGE" ]]; then
+        echo "Warning: worktrees storage dirs does not exist!"
+        read -p "Create? [Y/n]:"
+        if [[ "$REPLY" =~ [nN] ]]; then
+            echo "Directory not created... abort..."
+            exit 1
+        fi
+        if ! mkdir "$WORKTREE_STORAGE"; then
+            echo "Error creating dir... abort..."
+            exit 1
+        fi
+    fi
+
+    echo -e "\e[33m======================\e[0m"
+    echo -e "\e[33m WORKTREE MODE\e[0m"
+    echo -e "\e[33m======================\e[0m"
+
+    NOW=$(date +%Y%m%d_%H%M%S)
+    
+    WORKTREE_BRANCH=$(echo "$WORKTREE" | sed 's/[^a-zA-Z0-9]/_/g')
+    export WORKTREE_BRANCH="${WORKTREE_BRANCH}__${NOW}"
+
+    export WORKTREE_PATH="${WORKTREE_STORAGE}/${WORKTREE_BRANCH}" 
+
+    if ! git worktree add -b $WORKTREE_BRANCH "$WORKTREE_PATH" $COMMIT_ISH; then
+        echo "Worktree creation failed..."
+        exit 1
+    fi
+
+    echo "Worktree path: $WORKTREE_PATH"
+    export WORK_DIR=$WORKTREE_PATH
+
+    OPTS+=" --bind $PWD $PWD "
+
+    echo ""
+fi
+
+share_dir() {
+    local SHARE_DIR=$1
+    local SHARE_DIR_MOUNT=$2
+    [[ ! -d "$SHARE_DIR" ]] && return
+    [[ -z "$SHARE_DIR_MOUNT" ]] && SHARE_DIR_MOUNT=$SHARE_DIR
+    echo "Sharing dir: ${SHARE_DIR} -> ${SHARE_DIR_MOUNT}"
+    OPTS+=" --ro-bind ${SHARE_DIR} ${SHARE_DIR_MOUNT} "
+}
+
+export AICODER_START_TIME=$EPOCHREALTIME
+if [[ "$SANDBOX" = 0 ]]; then
+    exec bash -c "$AICODER_CMD"
+else
+
+    if [[ "$ALLOW_PID" != 1 ]]; then
+        echo "Allowing PIDs..."
+    else
+        OPTS+=" --unshare-pid "
+    fi
+
+    if [[ "$ALLOW_TMP" != 1 ]]; then
+        if [[ -d "$AI_TMP_DIR" ]]; then
+            echo "Sharing AI tmp dir..."
+            exclusive_tmp_dir=$(mktemp -d --tmpdir=$AI_TMP_DIR)
+            OPTS+=" --bind $exclusive_tmp_dir /tmp "
+            OPTS+=" --setenv TMPDIR /tmp "
+        else
+            echo "NO TMP: real /tmp will not be available in the sandbox"
+            OPTS+=" --tmpfs /tmp "
+        fi
+    else
+        echo "SHARING /TMP: real /tmp IS available in the sandbox"
+        OPTS+=" --ro-bind /tmp /tmp "
+    fi
+
+    share_dir $HOME/.bun
+    share_dir /mnt/cacho/storage/github /mnt/gh
+
+    exec bwrap \
+        --tmpfs "$HOME" \
+        --ro-bind "$HOME/.config/aicoder" "$HOME/.config/aicoder" \
+        --ro-bind "$HOME/.config/aicoder-mini" "$HOME/.config/aicoder-mini" \
+        --ro-bind "$HOME/.config/aicoder-v3" "$HOME/.config/aicoder-v3" \
+        --ro-bind "$HOME/poc/aicoder/tsv" "$HOME/poc/aicoder/tsv" \
+        --ro-bind "$HOME/poc/aicoder/v2" "$HOME/poc/aicoder/v2" \
+        --ro-bind "$HOME/poc/aicoder/v2_refact" "$HOME/poc/aicoder/v2_refact" \
+        --ro-bind "$HOME/poc/aicoder/v3" "$HOME/poc/aicoder/v3" \
+        --ro-bind "$HOME/.local/bin" "$HOME/.local/bin" \
+        --ro-bind "$HOME/.local/maven" "$HOME/.local/maven" \
+        --bind "$HOME/.m2" "$HOME/.m2" \
+        --ro-bind /etc /etc \
+        --ro-bind /bin /bin \
+        --ro-bind /usr /usr \
+        --ro-bind /lib /lib \
+        --bind $TMP $TMP \
+        --bind "$WORK_DIR" "$WORK_DIR" \
+        --dev /dev \
+        --proc /proc \
+        --die-with-parent \
+        --ro-bind /tmp/.X11-unix /tmp/.X11-unix \
+        --ro-bind /run/user/${UID} /run/user/${UID} \
+        --setenv DBUS_SESSION_BUS_ADDRESS "unix:path=/run/user/${UID}/bus" \
+        $OPTS \
+        --chdir "$WORK_DIR" \
+        -- \
+            bash -ic "$AICODER_CMD"
+
+fi
