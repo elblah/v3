@@ -2,9 +2,10 @@
 Ultra-fast plugin system for AI Coder v3
 
 Design principles:
-- Startup speed: Load plugins only when .aicoder/plugins/ exists
+- Startup speed: Load plugins only when .aicoder/plugins/ or ~/.config/aicoder-v3/plugins/ exists
 - Minimalism: Single create_plugin(context) function (duck typing)
-- Per-project: Plugins live in .aicoder/plugins/ (not global)
+- Priority: Local .aicoder/plugins/ takes precedence over global plugins
+- Fallback: Global plugins in ~/.config/aicoder-v3/plugins/ for worktree support
 - No dependencies: Pure Python stdlib only
 - Closure state: Plugin state in closures, no complex state mgmt
 - Direct access: Plugins get ctx.app for direct component access
@@ -89,7 +90,8 @@ class PluginSystem:
     Ultra-fast plugin loader
 
     Features:
-    - Only loads if .aicoder/plugins/ directory exists
+    - Prioritizes .aicoder/plugins/ if it exists (project-specific)
+    - Falls back to ~/.config/aicoder-v3/plugins/ for global plugins
     - Single file per plugin
     - Duck-typed: just create_plugin(context) function
     - Hook system for events
@@ -97,8 +99,9 @@ class PluginSystem:
     - Direct app access: plugins get ctx.app for full component access
     """
 
-    def __init__(self, plugins_dir: str = ".aicoder/plugins"):
+    def __init__(self, plugins_dir: str = ".aicoder/plugins", global_plugins_dir: Optional[str] = None):
         self.plugins_dir = plugins_dir
+        self.global_plugins_dir = global_plugins_dir or os.path.expanduser("~/.config/aicoder-v3/plugins")
         self.plugins: List[Any] = []
         self.tools: Dict[str, Dict] = {}
         self.commands: Dict[str, Callable] = {}
@@ -151,17 +154,35 @@ class PluginSystem:
 
     def load_plugins(self) -> None:
         """
-        Load plugins from .aicoder/plugins/
+        Load plugins from .aicoder/plugins/ or ~/.config/aicoder-v3/plugins/
 
-        Ultra-fast: returns immediately if directory doesn't exist.
+        Priority order:
+        1. Local .aicoder/plugins/ (if exists) - takes precedence
+        2. Global ~/.config/aicoder-v3/plugins/ (fallback)
+
+        Ultra-fast: returns immediately if no plugins directory exists.
         """
+        # Determine which directory to use
+        plugins_dir_to_use = None
+        source_name = None
+
+        if os.path.exists(self.plugins_dir):
+            plugins_dir_to_use = self.plugins_dir
+            source_name = "local"
+        elif os.path.exists(self.global_plugins_dir):
+            plugins_dir_to_use = self.global_plugins_dir
+            source_name = "global"
+
         # Fast exit - no plugins directory
-        if not os.path.exists(self.plugins_dir):
+        if not plugins_dir_to_use:
             return
+
+        if source_name == "global":
+            print(f"[i] Loading plugins from global directory: {self.global_plugins_dir}")
 
         # Get plugin files sorted numerically then alphabetically
         plugin_files = []
-        for filename in os.listdir(self.plugins_dir):
+        for filename in os.listdir(plugins_dir_to_use):
             if filename.endswith(".py") and not filename.startswith("_"):
                 plugin_files.append(filename)
 
@@ -177,7 +198,7 @@ class PluginSystem:
 
         # Load each plugin
         for filename in plugin_files:
-            self._load_single_plugin(os.path.join(self.plugins_dir, filename))
+            self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
 
     def _load_single_plugin(self, plugin_path: str) -> None:
         """Load a single plugin file"""
