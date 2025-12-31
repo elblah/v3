@@ -18,7 +18,7 @@ class RalphService:
     # Static loop state (persists across sessions)
     _active: bool = False
     _prompt: str = ""
-    _completion_promise: str = "IMPLEMENTATION_FINISHED"
+    _completion_promise: str = "DONE"
     _max_iterations: int = 0
     _iteration: int = 0
 
@@ -32,12 +32,12 @@ class RalphService:
         cls,
         prompt: str,
         completion_promise: Optional[str] = None,
-        max_iterations: int = 0
+        max_iterations: int = 10
     ) -> None:
         """Start Ralph loop"""
         cls._active = True
         cls._prompt = prompt
-        cls._completion_promise = completion_promise or "IMPLEMENTATION_FINISHED"
+        cls._completion_promise = completion_promise or "DONE"
         cls._max_iterations = max_iterations
         cls._iteration = 1
 
@@ -46,7 +46,7 @@ class RalphService:
         """Stop Ralph loop"""
         cls._active = False
         cls._prompt = ""
-        cls._completion_promise = "IMPLEMENTATION_FINISHED"
+        cls._completion_promise = "DONE"
         cls._max_iterations = 0
         cls._iteration = 0
 
@@ -106,8 +106,8 @@ Commands:
   /ralph-cancel             Cancel active Ralph loop
 
 Options:
-  --max-iterations N        Stop after N iterations (default: unlimited/forever)
-  --completion-promise TEXT Phrase that signals completion (default: IMPLEMENTATION_FINISHED)
+  --max-iterations N        Stop after N iterations (default: 10)
+  --completion-promise TEXT Phrase that signals completion (default: DONE)
 
 How it works:
   1. Run /ralph "Your task description"
@@ -147,7 +147,7 @@ Examples:
 
         # Show startup message
         max_iter_str = str(args["max_iterations"]) if args["max_iterations"] > 0 else "unlimited"
-        promise_str = args["completion_promise"] or "IMPLEMENTATION_FINISHED"
+        promise_str = args["completion_promise"] or "DONE"
 
         LogUtils.print("🔄 Ralph loop activated!", LogOptions(color=Config.colors["green"]))
         LogUtils.print(f"  Iteration: {RalphService.get_iteration()}", LogOptions(color=Config.colors["white"]))
@@ -215,7 +215,7 @@ The loop will continue indefinitely until this phrase is detected.
         result = {
             "prompt": "",
             "completion_promise": None,
-            "max_iterations": 0
+            "max_iterations": 10
         }
 
         parts = args_str.split()
