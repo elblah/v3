@@ -1,7 +1,20 @@
 #!/bin/bash
 # AI Coder Popup Menu for TMUX
-
-#set -euo pipefail
+#
+# HOW TO INSTALL
+# Append something like this to your .tmux.conf
+#
+# AICODER_MENU_BIN="/home/blah/poc/aicoder/v3/examples/tmux-popup-menu.sh"
+# bind-key b run-shell -b "$AICODER_MENU_BIN"
+# bind -n M-z run-shell -b "$AICODER_MENU_BIN"
+# bind -n M-y run-shell -b "$AICODER_MENU_BIN yolo"
+# bind -n M-d run-shell -b "$AICODER_MENU_BIN detail"
+# bind -n M-f run-shell -b "$AICODER_MENU_BIN sandbox"
+# bind -n M-s run-shell -b "$AICODER_MENU_BIN save"
+# bind -n M-i run-shell -b "$AICODER_MENU_BIN inject"
+# bind -n M-x run-shell -b "$AICODER_MENU_BIN stop"
+# bind -n M-k run-shell -b "$AICODER_MENU_BIN kill"
+# bind -n M-q run-shell -b "$AICODER_MENU_BIN quit"
 
 # Socket directory (uses TMPDIR or /tmp)
 SOCKET_DIR="${TMPDIR:-/tmp}/aicoder-sockets"
