@@ -3,7 +3,7 @@ Markdown colorization component for streaming responses.
 Handles colorized output of markdown content with proper state management.
 """
 
-from aicoder.utils.log import Colors
+from aicoder.core.config import Config
 
 
 class MarkdownColorizer:
@@ -51,16 +51,16 @@ class MarkdownColorizer:
                 self._at_line_start = True
                 # Reset header mode
                 if self._in_header:
-                    result.append(Colors.reset)
+                    result.append(Config.colors["reset"])
                     self._in_header = False
                 # Reset star mode on newline
                 if self._in_star:
-                    result.append(Colors.reset)
+                    result.append(Config.colors["reset"])
                     self._in_star = False
                     self._star_count = 0
                 # Reset bold mode on newline
                 if self._in_bold:
-                    result.append(Colors.reset)
+                    result.append(Config.colors["reset"])
                     self._in_bold = False
                 # Reset can_be_bold on newline
                 self._can_be_bold = False
@@ -74,7 +74,7 @@ class MarkdownColorizer:
                 if char == "`":
                     self._code_tick_count -= 1
                     if self._code_tick_count == 0:
-                        result.append(Colors.reset)
+                        result.append(Config.colors["reset"])
                         self._in_code = False
                 i += 1
                 continue
@@ -86,7 +86,7 @@ class MarkdownColorizer:
                     self._star_count -= 1
                     if self._star_count == 0:
                         # Reset everything at the end of star sequence
-                        result.append(Colors.reset)
+                        result.append(Config.colors["reset"])
                         self._in_star = False
 
                         # Handle bold mode toggle
@@ -96,7 +96,7 @@ class MarkdownColorizer:
                             else:
                                 self._in_bold = True
                                 # Apply bold after reset
-                                result.append(Colors.bold)
+                                result.append(Config.colors["bold"])
 
                         # Reset counters when sequence ends
                         self._consecutive_count = 0
@@ -114,7 +114,7 @@ class MarkdownColorizer:
                     j += 1
 
                 # Start code block
-                result.append(Colors.green)
+                result.append(Config.colors["green"])
                 result.append("`" * tick_count)
                 self._in_code = True
                 self._code_tick_count = tick_count
@@ -132,7 +132,7 @@ class MarkdownColorizer:
                     j += 1
 
                 # Start star block with GREEN + BOLD (correct order)
-                result.append(Colors.green + Colors.bold)
+                result.append(Config.colors["green"] + Config.colors["bold"])
                 result.append("*" * star_count)
 
                 self._in_star = True
@@ -143,7 +143,7 @@ class MarkdownColorizer:
 
             # Precedence 5: Check for header # at line start (lowest precedence)
             if self._at_line_start and char == "#":
-                result.append(Colors.red)
+                result.append(Config.colors["red"])
                 self._in_header = True
                 result.append(char)
                 self._at_line_start = False

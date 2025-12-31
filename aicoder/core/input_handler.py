@@ -9,7 +9,6 @@ import signal
 from typing import List, Optional
 import readline
 from aicoder.core.config import Config
-from aicoder.utils.log import Colors
 from aicoder.core import prompt_history
 
 

@@ -209,20 +209,34 @@ def generate_preview(args):
                 temp_old.name, temp_new.name
             )
             diff_content = diff_result.get("diff", "")
+            has_changes = diff_result.get("has_changes", False)
+            
+            # If no changes detected, no approval needed
+            if not has_changes:
+                return {
+                    "tool": "write_file",
+                    "content": diff_content,
+                    "can_approve": False
+                }
             
             # Colorize diff in the tool (not system)
             colorized_diff = colorize_diff(diff_content) if diff_content else ""
+
+            # Get relative path for display
+            relative_path = get_relative_path(path)
 
             # Normal preview - format content based on file status
             if exists:
                 preview_content = (
                     f"Existing file will be updated:\n\n"
-                    f"{colorized_diff}"
+                    f"{colorized_diff}\n\n"
+                    f"Path: {relative_path}"
                 )
             else:
                 preview_content = (
                     f"New file will be created:\n\n"
-                    f"{colorized_diff}"
+                    f"{colorized_diff}\n\n"
+                    f"Path: {relative_path}"
                 )
 
             return {
