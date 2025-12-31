@@ -39,15 +39,13 @@ def test_colors():
 
 def test_yolo_mode():
     """Test YOLO mode functionality"""
-    # Reset state
-    Config.reset()
-
     # Save original YOLO_MODE
     original_yolo = os.environ.get("YOLO_MODE")
 
     try:
         # Test default with clean environment
         with patch.dict(os.environ, {}, clear=True):
+            Config.reset()  # Re-read from env vars
             assert Config.yolo_mode() == False
 
             # Test runtime setting (needs clean env)
@@ -59,6 +57,7 @@ def test_yolo_mode():
 
         # Test environment variable
         with patch.dict(os.environ, {"YOLO_MODE": "1"}, clear=True):
+            Config.reset()  # Re-read from env vars
             assert Config.yolo_mode() == True
     finally:
         # Restore original YOLO_MODE
@@ -68,11 +67,10 @@ def test_yolo_mode():
 
 def test_sandbox_disabled():
     """Test sandbox disabled functionality"""
-    # Reset state
-    Config.reset()
-
     # Test default
-    assert Config.sandbox_disabled() == False
+    with patch.dict(os.environ, {}, clear=True):
+        Config.reset()  # Re-read from env vars
+        assert Config.sandbox_disabled() == False
 
     # Test runtime setting
     Config.set_sandbox_disabled(True)
@@ -83,6 +81,7 @@ def test_sandbox_disabled():
 
     # Test environment variable
     with patch.dict(os.environ, {"MINI_SANDBOX": "0"}, clear=True):
+        Config.reset()  # Re-read from env vars
         assert Config.sandbox_disabled() == True
 
 
@@ -234,10 +233,12 @@ def test_debug():
     """Test debug configuration"""
     # Test default
     with patch.dict(os.environ, {}, clear=True):
+        Config.reset()  # Re-read from env vars
         assert Config.debug() == False
 
     # Test enabled
     with patch.dict(os.environ, {"DEBUG": "1"}, clear=True):
+        Config.reset()  # Re-read from env vars
         assert Config.debug() == True
 
 
@@ -253,11 +254,9 @@ def test_reset():
     Config.set_sandbox_disabled(True)
     Config.set_detail_mode(True)
 
-    # Reset
-    Config.reset()
-
-    # Check all are reset (need clean env since they check env vars first)
+    # Reset inside clean env - re-reads from env vars
     with patch.dict(os.environ, {}, clear=True):
+        Config.reset()
         assert Config.yolo_mode() == False
         assert Config.sandbox_disabled() == False
         assert Config.detail_mode() == False

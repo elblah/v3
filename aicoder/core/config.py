@@ -67,9 +67,10 @@ class Config:
         """
         Config._yolo_mode = enabled
 
-    # Sandbox and detail mode state
-    _sandbox_disabled = False
-    _detail_mode = False
+    # Sandbox and detail mode state - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    _sandbox_disabled = os.environ.get("MINI_SANDBOX") == "0"
+    _detail_mode = os.environ.get("DETAIL") == "1"
 
     @staticmethod
     def detail_mode() -> bool:
@@ -116,10 +117,11 @@ class Config:
     def sandbox_disabled() -> bool:
         """
         Check if sandbox is disabled
-        
+
         """
-        # Check both environment variable and runtime state
-        return os.environ.get("MINI_SANDBOX") == "0" or Config._sandbox_disabled
+        # Environment variable only affects initial state (set at module load)
+        # After initialization, only runtime state is used
+        return Config._sandbox_disabled
 
     @staticmethod
     def set_sandbox_disabled(disabled: bool) -> None:
@@ -285,14 +287,26 @@ class Config:
         """
         return int(os.environ.get("MAX_TOOL_RESULT_SIZE", "300000"))
 
-    # Debug and Development
+    # Debug and Development - initialize from env var ONCE at module load time
+    _debug_enabled = os.environ.get("DEBUG") == "1"
+
     @staticmethod
     def debug() -> bool:
         """
         Check if debug mode is enabled
-        
+
         """
-        return os.environ.get("DEBUG") == "1"
+        # Environment variable only affects initial state (set at module load)
+        # After initialization, only runtime state is used
+        return Config._debug_enabled
+
+    @classmethod
+    def set_debug(cls, enabled: bool) -> None:
+        """
+        Set debug mode state
+
+        """
+        cls._debug_enabled = enabled
 
     # No fallbacks - use only configured provider
     @staticmethod
@@ -380,11 +394,12 @@ class Config:
     def reset() -> None:
         """
         Reset all runtime state to defaults (for testing)
-        
+
         """
-        Config._yolo_mode = False
-        Config._sandbox_disabled = False
-        Config._detail_mode = False
+        Config._yolo_mode = os.environ.get("YOLO_MODE") == "1"
+        Config._sandbox_disabled = os.environ.get("MINI_SANDBOX") == "0"
+        Config._detail_mode = os.environ.get("DETAIL") == "1"
+        Config._debug_enabled = os.environ.get("DEBUG") == "1"
 
     @staticmethod
     def in_tmux() -> bool:
