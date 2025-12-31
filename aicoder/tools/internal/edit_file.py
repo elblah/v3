@@ -245,17 +245,27 @@ def generate_preview(args):
                 temp_old.name, temp_new.name
             )
             diff_content = diff_result.get("diff", "")
+            has_changes = diff_result.get("has_changes", False)
             
             # Colorize the diff and remove headers
             from aicoder.utils.file_utils import get_relative_path
             relative_path = get_relative_path(path)
+            
+            # If no changes detected, no approval needed
+            if not has_changes:
+                return {
+                    "tool": "edit_file",
+                    "content": diff_content,
+                    "can_approve": False
+                }
+            
             if can_approve:
                 # Normal case: show colored diff with path before approval
                 from aicoder.utils.diff_utils import colorize_diff
                 colorized_diff = colorize_diff(diff_content)
                 
-                # Combine path and colored diff for preview
-                preview_content = f"Path: {relative_path}\n\n{colorized_diff}"
+                # Combine path and colored diff for preview (path at both top and bottom)
+                preview_content = f"Path: {relative_path}\n\n{colorized_diff}\n\nPath: {relative_path}"
             else:
                 # Safety violation: already contains path and warning
                 preview_content = safety_violation_content

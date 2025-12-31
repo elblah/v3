@@ -1,8 +1,24 @@
-"""Minimal logging utility for consistent output formatting"""
+"""Minimal logging utility for consistent output formatting
+
+Colors are imported from Config.colors to maintain single source of truth.
+"""
 
 import os
 from typing import Optional
 from dataclasses import dataclass
+
+
+# Import colors from Config (single source of truth)
+# This is deferred to avoid circular imports
+def _get_colors():
+    """Get colors from Config (deferred import to avoid circular dependency)"""
+    from aicoder.core.config import Config
+    return Config.colors
+
+
+def _is_debug() -> bool:
+    """Check if debug mode is enabled"""
+    return os.environ.get("DEBUG") == "1"
 
 
 @dataclass
@@ -14,37 +30,10 @@ class LogOptions:
     bold: bool = False
 
 
-# ANSI color codes
-class Colors:
-    reset = "\x1b[0m"
-    bold = "\x1b[1m"
-    dim = "\x1b[2m"
-    black = "\x1b[30m"
-    red = "\x1b[31m"
-    green = "\x1b[32m"
-    yellow = "\x1b[33m"
-    blue = "\x1b[34m"
-    magenta = "\x1b[35m"
-    cyan = "\x1b[36m"
-    white = "\x1b[37m"
-    bright_green = "\x1b[92m"
-    bright_red = "\x1b[91m"
-    bright_yellow = "\x1b[93m"
-    bright_blue = "\x1b[94m"
-    bright_magenta = "\x1b[95m"
-    bright_cyan = "\x1b[96m"
-    bright_white = "\x1b[97m"
-
-
-def _is_debug() -> bool:
-    """Check if debug mode is enabled"""
-    return os.environ.get("DEBUG") == "1"
-
-
 class LogUtils:
     """
     Minimal logging utility for consistent output formatting
-    
+    All colors come from Config.colors for consistency.
     """
 
     @staticmethod
@@ -72,33 +61,39 @@ class LogUtils:
         if debug and not _is_debug():
             return
 
+        colors = _get_colors()
+
         if color:
-            format_code = f"{Colors.bold}{color}" if bold else color
-            print(f"{format_code}{message}{Colors.reset}")
+            format_code = f"{colors['bold']}{color}" if bold else color
+            print(f"{format_code}{message}{colors['reset']}")
         elif bold:
-            print(f"{Colors.bold}{message}{Colors.reset}")
+            print(f"{colors['bold']}{message}{colors['reset']}")
         else:
             print(message)
 
     @staticmethod
     def error(message: str) -> None:
         """Print error message (always shows, red by default)"""
-        LogUtils.print(message, LogOptions(color=Colors.red))
+        colors = _get_colors()
+        LogUtils.print(message, LogOptions(color=colors["red"]))
 
     @staticmethod
     def success(message: str) -> None:
         """Print success message (always shows, green by default)"""
-        LogUtils.print(message, LogOptions(color=Colors.green))
+        colors = _get_colors()
+        LogUtils.print(message, LogOptions(color=colors["green"]))
 
     @staticmethod
     def warn(message: str) -> None:
         """Print warning message (always shows, yellow by default)"""
-        LogUtils.print(message, LogOptions(color=Colors.yellow))
+        colors = _get_colors()
+        LogUtils.print(message, LogOptions(color=colors["yellow"]))
 
     @staticmethod
     def debug(message: str, color: Optional[str] = None) -> None:
         """Print debug message (only shows when debug enabled)"""
-        LogUtils.print(message, LogOptions(color=color or Colors.yellow, debug=True))
+        colors = _get_colors()
+        LogUtils.print(message, LogOptions(color=color or colors["yellow"], debug=True))
 
 
 # Standalone convenience functions
@@ -124,4 +119,5 @@ def debug(message: str, color: Optional[str] = None) -> None:
 
 def info(message: str) -> None:
     """Print info message"""
-    LogUtils.print(message, LogOptions(color=Colors.blue))
+    colors = _get_colors()
+    LogUtils.print(message, LogOptions(color=colors["blue"]))

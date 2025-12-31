@@ -6,6 +6,7 @@ Tool manager for AI Coder - Internal tools only
 import json
 from typing import Dict, Any, Optional, List, Set
 
+from aicoder.core.config import Config
 from aicoder.core.stats import Stats
 from aicoder.core.tool_formatter import ToolFormatter
 from aicoder.tools.internal.read_file import TOOL_DEFINITION as READ_FILE_DEF
@@ -165,8 +166,8 @@ class ToolManager:
         self, content: str, tool_def: Dict[str, Any], tool_name: str
     ) -> str:
         """Check if content is too large and truncate if needed"""
-        max_size = 10000  # Default max size
-        max_len = max_size - 200  # Leave room for error message
+        max_size = Config.max_tool_result_size()
+        max_len = max_size - (max_size // 100)  # Leave 1% room for error message
 
         if len(content) > max_len:
             warning = f"\n\nWARNING: Content for {tool_name} is too large ({len(content)} bytes). Truncating to {max_len} bytes."
