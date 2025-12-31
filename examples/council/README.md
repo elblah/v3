@@ -9,7 +9,9 @@ Get expert opinions from multiple AI perspectives on your code and work.
    ./examples/council/install.sh
    ```
 
-   This creates council member definitions in `.aicoder/council/` (project-specific)
+   This creates council member definitions in `.aicoder/council/` (project-specific).
+
+   **Tip:** You can also install globally to `~/.config/aicoder-v3/council/` to share council members across all projects. The plugin will use global members when `.aicoder/council/` doesn't exist.
 
 2. **Or create your own:**
    ```bash
@@ -127,11 +129,17 @@ Environment variables:
 
 ## Project-Specific Council
 
-Council members are always project-specific in `.aicoder/council/`. Each project can have its own set of members.
+Council members can be project-specific or shared globally:
+
+- **Project-specific**: Create `.aicoder/council/` in your project directory (takes priority)
+- **Global**: Install members to `~/.config/aicoder-v3/council/` (used when local doesn't exist)
+
+This lets you have specialized councils per project while maintaining a default set of members for new projects.
 
 To set up council for a project:
-1. Run `./examples/council/install.sh` in the project root
-2. Or manually create `.aicoder/council/` and add member files
+1. Run `./examples/council/install.sh` in the project root (creates local council)
+2. Or manually create `.aicoder/council/` and add member files (local)
+3. Or install globally to `~/.config/aicoder-v3/council/` for reuse across projects
 
 ## Examples
 
