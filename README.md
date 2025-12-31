@@ -22,6 +22,68 @@ export API_MODEL="your-model"
 python main.py
 ```
 
+## Script Integration (Stdin Message Passing)
+
+Pass messages to AI Coder via stdin using pipes. Combined with `YOLO_MODE=1`, the AI will execute the request and exit automatically after completing the task.
+
+```bash
+# Simple greeting - AI responds and exits
+echo "hello" | YOLO_MODE=1 python main.py
+
+# Execute a command and return the result
+echo "exec uname -a" | YOLO_MODE=1 python main.py
+
+# Multiple operations in one prompt
+echo "list_directory and read_file /etc/hostname" | YOLO_MODE=1 python main.py
+```
+
+### How It Works
+
+1. The message is passed via stdin pipe
+2. `YOLO_MODE=1` auto-approves all tool calls (no confirmation needed)
+3. AI processes the request and executes tools
+4. After the first `stop` reason (finish), the program exits automatically
+
+### Commands in Piped Input
+
+Commands can also be passed via stdin:
+
+```bash
+# Show help and exit immediately (no AI call)
+echo "/help" | python main.py
+
+# Run council command which posts to AI for expert opinions
+echo "/council review this code" | YOLO_MODE=1 python main.py
+
+# Run ralph iterative loop
+echo "/ralph implement feature x" | YOLO_MODE=1 python main.py
+```
+
+**Command Behavior:**
+
+| Command Type | Examples | AI Call? | Description |
+|--------------|----------|----------|-------------|
+| **Local Commands** | `/help`, `/stats`, `/new`, `/save` | ❌ No | Execute locally and exit |
+| **AI Commands** | `/council`, `/ralph`, regular messages | ✅ Yes | Post to AI for processing |
+| **YOLO Mode** | `YOLO_MODE=1 echo "..." \| python main.py` | Auto-approve | All tool calls approved automatically |
+
+### Use Cases
+
+- **CI/CD pipelines**: Run AI tasks as part of build processes
+- **Script automation**: Integrate AI into shell scripts
+- **Quick queries**: One-off AI commands without interactive mode
+- **Pipeline chaining**: Pipe AI output to other commands
+
+```bash
+# Get system info and save to file
+echo "exec uname -a and exec whoami" | YOLO_MODE=1 python main.py > system_info.txt
+
+# Use in a script
+#!/bin/bash
+RESULT=$(echo "exec df -h" | YOLO_MODE=1 python main.py)
+echo "Disk usage: $RESULT"
+```
+
 ## Configuration
 
 Configure using environment variables:
