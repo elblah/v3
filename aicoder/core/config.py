@@ -35,8 +35,9 @@ class Config:
         "brightWhite": "\x1b[97m",
     }
 
-    # YOLO mode state
-    _yolo_mode = False
+    # YOLO mode state - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    _yolo_mode = os.environ.get("YOLO_MODE") == "1"
 
     @staticmethod
     def yolo_mode() -> bool:
