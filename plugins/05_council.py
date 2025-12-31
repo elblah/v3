@@ -172,8 +172,28 @@ class CouncilService:
         self.session: Optional[Dict[str, Any]] = None
 
     def get_council_directory(self) -> str:
-        """Get council directory path (project-specific only)"""
-        return os.path.join(os.getcwd(), ".aicoder/council")
+        """
+        Get council directory path with priority logic.
+
+        Priority order:
+        1. Local .aicoder/council (if exists) - project-specific takes precedence
+        2. Global ~/.config/aicoder-v3/council (fallback for worktrees)
+
+        Returns the path that should be used, or None if neither exists.
+        """
+        local_dir = os.path.join(os.getcwd(), ".aicoder/council")
+        global_dir = os.path.expanduser("~/.config/aicoder-v3/council")
+
+        # Local directory takes priority if it exists
+        if os.path.exists(local_dir):
+            return local_dir
+
+        # Fall back to global directory
+        if os.path.exists(global_dir):
+            return global_dir
+
+        # Neither exists - return None
+        return None
 
     def natural_sort(self, files: List[str]) -> List[str]:
         """Natural sort: numbered first (1_, 2_, ...) then alphabetical"""
@@ -191,11 +211,20 @@ class CouncilService:
         auto_mode: bool = False,
         include_disabled: bool = False
     ) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """Load council members from filesystem"""
+        """
+        Load council members from filesystem with priority logic.
+
+        Priority:
+        1. Local .aicoder/council (if exists)
+        2. Global ~/.config/aicoder-v3/council (fallback)
+        """
         council_dir = self.get_council_directory()
-        if not os.path.exists(council_dir):
+
+        if not council_dir:
             LogUtils.error("Council directory not found")
-            LogUtils.print("Create ~/.config/aicoder/council/ with member .txt files")
+            LogUtils.print("Create either:")
+            LogUtils.print("  - .aicoder/council/ (project-specific)", LogOptions(color=Config.colors["dim"]))
+            LogUtils.print("  - ~/.config/aicoder-v3/council/ (global)", LogOptions(color=Config.colors["dim"]))
             return [], None
 
         files = os.listdir(council_dir)
@@ -796,9 +825,11 @@ Write your specification here...
         """List available council members"""
         council_dir = self.service.get_council_directory()
 
-        if not os.path.exists(council_dir):
+        if not council_dir:
             LogUtils.error("Council directory not found")
-            LogUtils.print("Run: mkdir -p .aicoder/council && add member files", LogOptions(color=Config.colors["dim"]))
+            LogUtils.print("Create either:", LogOptions(color=Config.colors["dim"]))
+            LogUtils.print("  - .aicoder/council/ (project-specific)", LogOptions(color=Config.colors["dim"]))
+            LogUtils.print("  - ~/.config/aicoder-v3/council/ (global)", LogOptions(color=Config.colors["dim"]))
             return ""
 
         files = os.listdir(council_dir)
@@ -835,7 +866,7 @@ Write your specification here...
         identifier = args[0]
         council_dir = self.service.get_council_directory()
 
-        if not os.path.exists(council_dir):
+        if not council_dir:
             LogUtils.error("Council directory not found")
             return ""
 
@@ -875,7 +906,7 @@ Write your specification here...
         identifier = args[0]
         council_dir = self.service.get_council_directory()
 
-        if not os.path.exists(council_dir):
+        if not council_dir:
             LogUtils.error("Council directory not found")
             return ""
 
@@ -935,7 +966,7 @@ Write your specification here...
         """Show help message"""
         council_dir = self.service.get_council_directory()
 
-        council_dir_path = council_dir if os.path.exists(council_dir) else "Not found (.aicoder/council)"
+        council_dir_path = council_dir if council_dir else "Not found"
 
         help_text = f"""
 Council Command Help:

@@ -23,7 +23,9 @@ Ask questions and get expert opinions:
 ```
 
 **How it works:**
-1. Loads council members from `.aicoder/council/` directory
+1. Loads council members from `.aicoder/council/` directory (project-specific)
+   - Falls back to `~/.config/aicoder-v3/council/` if local doesn't exist
+   - Local directory takes priority if both exist
 2. Each member (e.g., code reviewer, security expert) gives their opinion
 3. If `moderator.txt` exists, it synthesizes opinions into a summary
 4. Otherwise, all opinions go directly to the AI
@@ -58,9 +60,18 @@ Iterative implementation with validation until all experts approve:
 
 ## Council Members
 
+### Directory Locations
+
+Council members are loaded from one of two locations with priority:
+
+1. **Project-specific**: `.aicoder/council/` (takes priority if exists)
+2. **Global fallback**: `~/.config/aicoder-v3/council/` (used if local doesn't exist)
+
+This allows you to have project-specific councils while maintaining a global set of members for new projects.
+
 ### File Naming
 
-Members are plain text files in `.aicoder/council/`:
+Members are plain text files:
 
 - `01_code_reviewer.txt` - Normal mode member
 - `01_code_reviewer_auto.txt` - Auto-council member (ends with `_auto`)
