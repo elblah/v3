@@ -249,6 +249,12 @@ class AICoder:
 
             # Process with AI only if new messages were added OR next_prompt is set
             if has_new_messages or has_next_prompt:
+                # If next_prompt is set, get it and add to history (like interactive mode does)
+                if has_next_prompt:
+                    next_prompt = self.get_next_prompt()
+                    if next_prompt:
+                        self.add_user_input(next_prompt)
+                
                 self.session_manager.process_with_ai()
         except Exception as e:
             LogUtils.error(f"Error: {e}")
