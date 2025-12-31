@@ -45,22 +45,18 @@ class Config:
         Get YOLO mode state
         
         """
-        # Check environment variable first
-        if os.environ.get("YOLO_MODE") == "1":
-            return True
-        # Fall back to runtime state
+        # Environment variable only affects initial state (set at module load)
+        # After initialization, only runtime state is used
         return Config._yolo_mode
 
     @staticmethod
     def get_yolo_mode() -> bool:
         """
-        Get YOLO mode state
+        Get YOLO mode state (backward compatibility)
         
         """
-        # Check environment variable first
-        if os.environ.get("YOLO_MODE") == "1":
-            return True
-        # Fall back to runtime state
+        # Environment variable only affects initial state (set at module load)
+        # After initialization, only runtime state is used
         return Config._yolo_mode
 
     @staticmethod
