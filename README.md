@@ -39,7 +39,10 @@ Configure using environment variables:
 
 - `/help` - Show available commands
 - `/save` - Save conversation
+- `/retry` - Retry the last message
+- `/retry limit` - Show current retry limit
 - `/retry limit <n>` - Set retry limit (0 = unlimited)
+- `/retry help` - Show help for retry command
 - `/exit` - Exit the application
 
 ## tmux Integration
