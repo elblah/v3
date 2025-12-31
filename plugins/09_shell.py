@@ -3,14 +3,10 @@ Shell Plugin - Execute shell commands
 
 Features:
 - Direct command execution via /shell command
-- Tool for AI to run shell commands
 - Useful for checking current directory (pwd), file operations, etc.
 
 Commands:
 - /shell <command> - Execute a shell command directly
-
-Tools:
-- shell_exec - Execute shell commands (for AI use)
 """
 
 import subprocess
@@ -21,7 +17,7 @@ from typing import Dict, Any
 def create_plugin(ctx):
     """Shell command execution plugin"""
 
-    DEFAULT_TIMEOUT = 30
+    DEFAULT_TIMEOUT = 600  # 10 minutes - generous timeout with safety net
     DEFAULT_CWD = None  # Uses current working directory
 
     def execute_shell(command: str, timeout: int = DEFAULT_TIMEOUT, cwd: str = DEFAULT_CWD) -> str:
@@ -88,84 +84,14 @@ Examples:
     /shell whoami           - Show current user
     /shell date             - Show current date/time
 
-Note: Commands are executed with a 30-second timeout.
+Note: Commands have a 10-minute timeout (use Ctrl+C to cancel earlier).
 """
 
         command = args_str.strip()
         output = execute_shell(command, DEFAULT_TIMEOUT)
         return output
 
-    def shell_exec(args: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Tool for AI to execute shell commands
-
-        Parameters:
-            command (required): Shell command to execute
-            timeout (optional): Timeout in seconds (default: 30)
-            cwd (optional): Working directory (default: current dir)
-        """
-        command = args.get("command", "")
-        timeout = args.get("timeout", DEFAULT_TIMEOUT)
-        cwd = args.get("cwd", None)
-
-        if not command:
-            return {
-                "tool": "shell_exec",
-                "friendly": "Error: Command cannot be empty",
-                "detailed": "Command cannot be empty",
-            }
-
-        try:
-            timeout = int(timeout)
-        except (ValueError, TypeError):
-            timeout = DEFAULT_TIMEOUT
-
-        output = execute_shell(command, timeout, cwd)
-
-        return {
-            "tool": "shell_exec",
-            "friendly": f"Executed: {command}",
-            "detailed": output,
-        }
-
-    # Format function for shell_exec (shows command during approval)
-    def format_shell_exec(args):
-        """Format arguments for shell_exec"""
-        command = args.get("command", "")
-        timeout = args.get("timeout", DEFAULT_TIMEOUT)
-        cwd = args.get("cwd", "current dir")
-        return f"Command: {command}\nTimeout: {timeout}s\nWorking dir: {cwd}"
-
     # Register the /shell command
     ctx.register_command("/shell", handle_shell_command, description="Execute shell commands")
 
-    # Register the shell_exec tool (NOT auto-approved - requires user confirmation)
-    ctx.register_tool(
-        name="shell_exec",
-        fn=shell_exec,
-        description="Execute shell commands (e.g., pwd, ls, cp, etc.)",
-        parameters={
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "Shell command to execute"
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "Timeout in seconds (default: 30)",
-                    "default": 30
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Working directory (default: current directory)"
-                }
-            },
-            "required": ["command"]
-        },
-        auto_approved=False,
-        format_arguments=format_shell_exec
-    )
-
     print("  - /shell command")
-    print("  - shell_exec tool")
