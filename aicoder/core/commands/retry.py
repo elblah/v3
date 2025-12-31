@@ -32,9 +32,17 @@ class RetryCommand(BaseCommand):
         if args is None:
             args = []
 
-        # Handle /retry limit <n>
-        if len(args) >= 2 and args[0].lower() == "limit":
-            self.handle_limit(args[1])
+        # Handle /retry help
+        if len(args) >= 1 and args[0].lower() == "help":
+            self.show_help()
+            return CommandResult(should_quit=False, run_api_call=False)
+
+        # Handle /retry limit [n]
+        if len(args) >= 1 and args[0].lower() == "limit":
+            if len(args) >= 2:
+                self.handle_limit(args[1])
+            else:
+                self.show_current_limit()
             return CommandResult(should_quit=False, run_api_call=False)
 
         # Default: retry last request
@@ -61,3 +69,27 @@ class RetryCommand(BaseCommand):
             LogUtils.print(f"[*] Max retries set to: {display}")
         except ValueError:
             LogUtils.error("[*] Invalid number. Use: /retry limit <number> (0 = unlimited)")
+
+    def show_current_limit(self) -> None:
+        """Show current retry limit"""
+        current = Config.effective_max_retries()
+        display = "UNLIMITED" if current == 0 else str(current)
+        LogUtils.print(f"[*] Current retry limit: {display}")
+
+    def show_help(self) -> None:
+        """Show retry command help"""
+        help_text = """Usage:
+  /retry              Retry the last message
+  /retry limit        Show current retry limit
+  /retry limit <n>    Set retry limit (0 = unlimited)
+  /retry help         Show this help message
+
+Examples:
+  /retry              Retry last message
+  /retry limit        Show current limit
+  /retry limit 3      Set max retries to 3
+  /retry limit 0      Unlimited retries
+
+The retry limit controls how many times AI Coder will retry failed API calls.
+Exponential backoff is used: 2s, 4s, 8s, 16s, 32s, 64s between retries."""
+        LogUtils.print(help_text)
