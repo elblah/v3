@@ -42,8 +42,21 @@ class HelpCommand(BaseCommand):
         sorted_names = [name for name in command_names if name != "help"]
         sorted_names.sort()
 
-        # Format command list dynamically from actual command instances
-        command_lines = []
+        # Build all command entries first to calculate alignment
+        command_entries = []
+
+        # Add help command entry
+        help_aliases = self.get_aliases()
+        help_alias_str = ""
+        if help_aliases:
+            help_alias_str = f" (alias: {', '.join(['/' + a for a in help_aliases])})"
+        command_entries.append({
+            "name": self.get_name(),
+            "alias_str": help_alias_str,
+            "description": self.get_description()
+        })
+
+        # Add all other commands
         for name in sorted_names:
             command = commands.get(name)
             if not command:
@@ -69,21 +82,38 @@ class HelpCommand(BaseCommand):
                 else []
             )
 
-            # Don't add slash to cmd_name
             alias_str = ""
             if aliases:
                 alias_str = f" (alias: {', '.join(['/' + a for a in aliases])})"
 
-            # Pad alias string to align descriptions
-            padded_alias = alias_str.ljust(20)
-            line = f"  {Config.colors['green']}/{cmd_name}{Config.colors['reset']}{padded_alias} - {description}"
+            command_entries.append({
+                "name": cmd_name,
+                "alias_str": alias_str,
+                "description": description
+            })
+
+        # Calculate maximum width for command + alias (excluding colors)
+        max_width = 0
+        for entry in command_entries:
+            width = len(f"/{entry['name']}{entry['alias_str']}")
+            max_width = max(max_width, width)
+
+        # Sort all entries alphabetically (help will now be in proper position)
+        command_entries.sort(key=lambda x: x['name'])
+
+        # Format command lines with aligned dashes
+        command_lines = []
+        for entry in command_entries:
+            # Calculate padding needed for this entry
+            cmd_full = f"/{entry['name']}{entry['alias_str']}"
+            padding = " " * (max_width - len(cmd_full) + 2)  # +2 for spacing before "-"
+            line = f"  {Config.colors['green']}{cmd_full}{Config.colors['reset']}{padding}- {entry['description']}"
             command_lines.append(line)
 
         command_list = "\n".join(command_lines)
 
         help_text = f"""
 {Config.colors["bold"]}Available Commands:{Config.colors["reset"]}
-  {Config.colors["green"]}/help{Config.colors["reset"]} (alias: /?)        - {self.get_description()}
 {command_list}
 """
 

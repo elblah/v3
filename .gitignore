@@ -92,3 +92,5 @@ plugins/__pycache__/
 *_original
 
 tmp/
+
+PROMPT-OVERRIDE.md
