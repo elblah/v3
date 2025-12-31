@@ -50,22 +50,16 @@ class SandboxCommand(BaseCommand):
             )
 
             if Config.sandbox_disabled():
-                LogUtils.warn(
-                    "Sandbox-fs is disabled via MINI_SANDBOX=0 environment variable"
-                )
+                LogUtils.warn("Sandbox-fs is DISABLED")
                 LogUtils.warn("File operations can access any path on the system")
             else:
-                LogUtils.success("Sandbox-fs is enforcing path restrictions")
+                LogUtils.success("Sandbox-fs is ENABLED")
                 LogUtils.success(
                     "File operations for internal tools are limited to current directory and subdirectories"
                 )
 
             LogUtils.print(
-                "To disable sandbox-fs: export MINI_SANDBOX=0",
-                color=Config.colors["dim"],
-            )
-            LogUtils.print(
-                "To enable sandbox-fs: unset MINI_SANDBOX or export MINI_SANDBOX=1",
+                "Use /sandbox-fs on|off to toggle at runtime",
                 color=Config.colors["dim"],
             )
 
@@ -73,17 +67,7 @@ class SandboxCommand(BaseCommand):
 
         action = args[0].lower()
         if action in ["on", "1"]:
-            if Config.sandbox_disabled() and os.environ.get("MINI_SANDBOX") == "0":
-                LogUtils.warn(
-                    "Sandbox-fs disabled via MINI_SANDBOX=0 environment variable"
-                )
-                LogUtils.print(
-                    "To enable, restart without MINI_SANDBOX=0:",
-                    color=Config.colors["cyan"],
-                )
-                LogUtils.print("  unset MINI_SANDBOX", color=Config.colors["cyan"])
-                LogUtils.print("  aicoder-mini", color=Config.colors["cyan"])
-            elif Config.sandbox_disabled():
+            if Config.sandbox_disabled():
                 Config.set_sandbox_disabled(False)
                 LogUtils.success("Sandbox-fs is now enabled")
             else:

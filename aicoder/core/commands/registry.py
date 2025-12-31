@@ -61,6 +61,7 @@ class CommandRegistry:
         from .yolo import YoloCommand
         from .detail import DetailCommand
         from .new import NewCommand
+        from .debug import DebugCommand
 
         commands = [
             HelpCommand(self.context),
@@ -76,6 +77,7 @@ class CommandRegistry:
             YoloCommand(self.context),
             DetailCommand(self.context),
             NewCommand(self.context),
+            DebugCommand(self.context),
         ]
 
         for command in commands:
