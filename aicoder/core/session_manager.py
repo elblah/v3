@@ -29,6 +29,9 @@ class SessionManager:
         if Config.debug():
             LogUtils.debug("*** process_with_ai called")
 
+        # Ensure all tool calls have corresponding responses before making API call
+        self._ensure_tool_calls_have_responses()
+
         self.is_processing = True
 
         try:
@@ -202,3 +205,50 @@ class SessionManager:
         except Exception as e:
             if Config.debug():
                 LogUtils.warn(f"[!] Auto-compaction failed: {e}")
+
+    def _ensure_tool_calls_have_responses(self) -> None:
+        """Ensure all tool calls have corresponding tool responses.
+        
+        This fixes corrupted message history when tool execution is interrupted
+        (e.g., user presses Ctrl+C or sends 'stop' via socket). Without this check,
+        incomplete tool call/response pairs can cause models to stop responding.
+        """
+        messages = self.message_history.messages
+        i = 0
+        
+        while i < len(messages):
+            msg = messages[i]
+            
+            # Look for assistant messages with tool_calls
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                tool_call_ids = {tc.get("id") for tc in msg["tool_calls"]}
+                
+                # Collect tool_call_ids that have responses
+                response_ids = set()
+                j = i + 1
+                while j < len(messages):
+                    msg_j = messages[j]
+                    
+                    # Stop when we hit another assistant or user message
+                    if msg_j.get("role") in ("user", "assistant"):
+                        break
+                    
+                    # Check for tool response
+                    tool_id = msg_j.get("tool_call_id")
+                    if tool_id:
+                        response_ids.add(tool_id)
+                    
+                    j += 1
+                
+                # Add missing responses
+                missing_ids = tool_call_ids - response_ids
+                for tool_id in missing_ids:
+                    # Insert right after the assistant message
+                    self.message_history.messages.insert(i + 1, {
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": "TOOL CALL WAS CANCELLED BY THE USER",
+                    })
+                    i += 1  # Account for inserted message
+            
+            i += 1
