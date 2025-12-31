@@ -211,6 +211,9 @@ class AICoder:
                     LogUtils.debug("*** no stdin input, returning")
                 return
 
+            # Get message count before processing to detect if commands added messages
+            initial_message_count = len(self.message_history.get_messages())
+
             # Process each line for commands
             lines = user_input.strip().split("\n")
             for line in lines:
@@ -222,16 +225,30 @@ class AICoder:
                 if line.startswith("/"):
                     result = self.command_handler.handle_command(line)
                     if result.should_quit:
+                        # Command requested exit (e.g., /help, /quit)
+                        # Don't process further, exit now
+                        self.shutdown()
                         return
                     if not result.run_api_call:
+                        # Command executed locally (e.g., /help) or added its own message
+                        # (/council, /ralph) - skip adding message but continue
                         continue
                     if result.message:
                         self.add_user_input(result.message)
                 else:
                     self.add_user_input(line)
 
-            # Process with AI only if there are messages to send
-            if self.message_history.get_messages():
+            # Check if there are messages to process:
+            # - Direct user messages added
+            # - Commands that added their own messages (like /council)
+            # - Commands that set next_prompt (like /ralph)
+            # But NOT initial system messages that were already there
+            current_message_count = len(self.message_history.get_messages())
+            has_new_messages = current_message_count > initial_message_count
+            has_next_prompt = self.has_next_prompt()
+
+            # Process with AI only if new messages were added OR next_prompt is set
+            if has_new_messages or has_next_prompt:
                 self.session_manager.process_with_ai()
         except Exception as e:
             LogUtils.error(f"Error: {e}")
