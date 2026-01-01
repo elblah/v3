@@ -6,7 +6,7 @@ Input handler for AI Coder using readline
 import os
 import sys
 import signal
-from typing import List, Optional
+from typing import List, Optional, Callable
 import readline
 from aicoder.core.config import Config
 from aicoder.core import prompt_history
@@ -29,6 +29,9 @@ class InputHandler:
         self.message_history = message_history
         self.is_interactive = sys.stdin.isatty()
 
+        # Completer registry for plugins
+        self.completers: List[Callable[[str, int], Optional[str]]] = []
+
         # Only setup readline in interactive mode
         if self.is_interactive:
             self._setup_readline()
@@ -47,6 +50,12 @@ class InputHandler:
         # Setup completion
         readline.set_completer(self._completer)
         readline.parse_and_bind("tab: complete")
+
+        # Remove @ from word delimiters so @@snippet completion works
+        # Default delimiters: \t\n\"\\'`@$><=;|&{( (tab, newline, quote, backtick, $, @, >, <, =, ;, |, &, {, ()
+        # We want to keep most but remove @ to allow @@prefix to be completed as one word
+        delims = readline.get_completer_delims().replace('@', '')
+        readline.set_completer_delims(delims)
 
     def get_user_input(self) -> str:
         """Get user input with context display"""
@@ -130,14 +139,33 @@ class InputHandler:
                 # Filter commands that match
                 options = [cmd for cmd in commands if cmd.startswith(text)]
 
-            # For non-command input, could add file path completion here
-            # (left as future enhancement)
+            # Call registered completers for additional completions
+            for completer in self.completers:
+                try:
+                    # State machine: call with state=0 to collect all matches,
+                    # then iterate through states until completer returns None
+                    c_state = 0
+                    while True:
+                        result = completer(text, c_state)
+                        if result is None:
+                            break
+                        if result not in options:  # Avoid duplicates
+                            options.append(result)
+                        c_state += 1
+                except Exception as e:
+                    if Config.debug():
+                        import warnings
+                        warnings.warn(f"Completer failed: {e}")
 
             self.completion_matches = options
 
         if state < len(self.completion_matches):
             return self.completion_matches[state]
         return None
+
+    def register_completer(self, completer: Callable[[str, int], Optional[str]]) -> None:
+        """Register a completer function for Tab completion"""
+        self.completers.append(completer)
 
     def setup_signal_handlers(self):
         """Setup signal handlers for clean exit"""

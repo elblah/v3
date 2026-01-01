@@ -43,6 +43,7 @@ class PluginContext:
         self._register_tool_fn: Optional[Callable] = None
         self._register_command_fn: Optional[Callable] = None
         self._register_hook_fn: Optional[Callable] = None
+        self._register_completer_fn: Optional[Callable] = None
 
     def register_tool(
         self,
@@ -84,6 +85,16 @@ class PluginContext:
         if self._register_hook_fn:
             self._register_hook_fn(event_name, handler)
 
+    def register_completer(self, completer: Callable) -> None:
+        """
+        Register a completer function for Tab completion
+
+        This is an elegant abstraction - plugins shouldn't need to know
+        the internal details of how completers are registered.
+        """
+        if self._register_completer_fn:
+            self._register_completer_fn(completer)
+
 
 class PluginSystem:
     """
@@ -113,6 +124,7 @@ class PluginSystem:
         self.context._register_tool_fn = self._register_tool
         self.context._register_command_fn = self._register_command
         self.context._register_hook_fn = self._register_hook
+        self.context._register_completer_fn = self._register_completer
 
         # App reference (set by AICoder)
         self._app = None
@@ -151,6 +163,11 @@ class PluginSystem:
         if event_name not in self.hooks:
             self.hooks[event_name] = []
         self.hooks[event_name].append(handler)
+
+    def _register_completer(self, completer: Callable) -> None:
+        """Internal: register a completer function"""
+        if self._app and self._app.input_handler:
+            self._app.input_handler.register_completer(completer)
 
     def load_plugins(self) -> None:
         """
@@ -247,6 +264,27 @@ class PluginSystem:
                 print(f"[!] Hook {event_name} failed: {e}")
 
         return results if results else None
+
+    def call_hooks_with_return(self, event_name: str, value: Any, *args, **kwargs) -> Any:
+        """
+        Call hooks for an event, passing value through chain.
+
+        Each hook receives the value and returns transformed value (or original).
+        The last hook's result is returned.
+        """
+        if event_name not in self.hooks:
+            return value
+
+        current_value = value
+        for hook in self.hooks[event_name]:
+            try:
+                result = hook(current_value, *args, **kwargs)
+                if result is not None:
+                    current_value = result
+            except Exception as e:
+                print(f"[!] Hook {event_name} failed: {e}")
+
+        return current_value
 
     def cleanup(self) -> None:
         """Cleanup all plugins"""
