@@ -161,9 +161,18 @@ class Config:
     def model() -> str:
         """
         Get model name
-        
+
         """
         return os.environ.get("OPENAI_MODEL") or os.environ.get("API_MODEL") or ""
+
+    @staticmethod
+    def system_prompt() -> str:
+        """
+        Get system prompt override from environment variable
+        Takes precedence over PROMPT-OVERRIDE.md file
+
+        """
+        return os.environ.get("AICODER_SYSTEM_PROMPT") or ""
 
     @staticmethod
     def temperature() -> float:
@@ -355,6 +364,9 @@ class Config:
                 f"{Config.colors['yellow']}  export MAX_TOKENS=4096{Config.colors['reset']}"
             )
             print(f"{Config.colors['yellow']}  export DEBUG=1{Config.colors['reset']}")
+            print(
+                f'{Config.colors["yellow"]}  export AICODER_SYSTEM_PROMPT="your-custom-prompt"{Config.colors["reset"]}'
+            )
             sys.exit(1)
 
     # Print configuration info at startup
@@ -383,6 +395,11 @@ class Config:
         if os.environ.get("MAX_TOKENS"):
             print(
                 f"{Config.colors['green']}  Max tokens: {Config.max_tokens()}{Config.colors['reset']}"
+            )
+
+        if Config.system_prompt():
+            print(
+                f"{Config.colors['green']}  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable{Config.colors['reset']}"
             )
 
         if Config.auto_compact_enabled():
