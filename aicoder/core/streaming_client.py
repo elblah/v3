@@ -335,7 +335,7 @@ class StreamingClient:
                     continue
 
                 if Config.debug() and "tool_calls" in line:
-                    LogUtils.debug(f"Tool call detected in stream")
+                    LogUtils.debug(f"Tool call detected in stream: {line[:100]}")
 
                 if line.startswith("data:"):
                     data_str = line[
@@ -375,14 +375,10 @@ class StreamingClient:
                             "usage": self._create_usage(chunk_data.get("usage")),
                         }
 
-                        if (
-                            Config.debug()
-                            and chunk.choices
-                            and chunk.choices[0].delta.tool_calls
-                        ):
-                            LogUtils.debug(
-                                f"Tool call chunk: {len(chunk.choices[0].delta.tool_calls)} calls"
-                            )
+                        if Config.debug():
+                            tool_calls = chunk.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
+                            if tool_calls:
+                                LogUtils.debug(f"Tool call chunk: {len(tool_calls)} calls")
                         yield chunk
                     except Exception as error:
                         LogUtils.error(f"SSE Parse Error: {error}")
