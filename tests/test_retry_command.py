@@ -110,9 +110,9 @@ def test_retry_limit_set_zero():
     # Check result
     assert not result.should_quit
     assert not result.run_api_call
-    
+
     # Verify the limit was set to 0 (unlimited)
-    assert Config.max_retries() == 0
+    assert Config.effective_max_retries() == 0
 
 
 def test_retry_limit_invalid_negative():
