@@ -289,14 +289,22 @@ class AICoder:
 
     def add_user_input(self, user_input: str) -> None:
         """Add user input to conversation"""
-        user_input = user_input.strip()
-        self.message_history.add_user_message(user_input)
+        # Apply plugin transformations (snippets, etc.)
+        transformed_input = self.plugin_system.call_hooks_with_return(
+            "after_user_prompt", user_input
+        )
+
+        # Use transformed input (or original if hook returned None)
+        final_input = transformed_input if transformed_input is not None else user_input
+
+        final_input = final_input.strip()
+        self.message_history.add_user_message(final_input)
         self.stats.increment_user_interactions()
 
         # Save to prompt history ()
         from aicoder.core import prompt_history
 
-        prompt_history.save_prompt(user_input)
+        prompt_history.save_prompt(final_input)
 
     def add_plugin_message(self, message: str) -> None:
         """Add a message from plugins to conversation"""

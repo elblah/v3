@@ -1,0 +1,29 @@
+When implementing code changes:
+
+1. **Start Simple**
+   - Implement the core feature first
+   - Don't optimize prematurely
+   - Make it work, then make it right
+
+2. **Code Quality**
+   - Follow existing code style
+   - Use descriptive names
+   - Keep functions small and focused
+   - Handle errors appropriately
+
+3. **Testing**
+   - Write tests alongside code
+   - Test edge cases
+   - Verify the fix works
+
+4. **Documentation**
+   - Update relevant docs
+   - Add comments only for complex logic
+   - Keep it minimal
+
+5. **Verification**
+   - Run tests
+   - Manual test if needed
+   - Ensure no regressions
+
+Remember: Working code > Perfect code.
