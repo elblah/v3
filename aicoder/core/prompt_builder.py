@@ -166,9 +166,16 @@ search (grep), shell command execution, and more via API request."""
         # Load additional content
         context.agents_content = cls.load_agents_content()
 
-        # Load prompt override if exists
+        # Load prompt override: env var takes precedence over file
         options = PromptOptions()
-        options.override_prompt = cls.load_prompt_override()
+        from .config import Config
+
+        env_prompt = Config.system_prompt()
+        if env_prompt:
+            print("[i] Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
+            options.override_prompt = env_prompt
+        else:
+            options.override_prompt = cls.load_prompt_override()
 
         # Build and return prompt
         return cls.build_prompt(context, options)
