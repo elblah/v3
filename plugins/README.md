@@ -16,8 +16,8 @@ Ultra-fast, minimalist plugin system using duck typing.
 
 ```bash
 # Copy only plugins you want
-cp plugins/01_web_search.py .aicoder/plugins/
-cp plugins/02_notify_prompt.py .aicoder/plugins/
+cp plugins/web_search.py .aicoder/plugins/
+cp plugins/notify_prompt.py .aicoder/plugins/
 
 # Or copy all available plugins
 cp plugins/*.py .aicoder/plugins/
@@ -31,20 +31,20 @@ You're already good - `.aicoder/plugins/` is populated.
 
 ```bash
 # Option 1: Remove file
-rm .aicoder/plugins/03_ruff.py
+rm .aicoder/plugins/ruff.py
 
 # Option 2: Rename with _ prefix (files starting with _ are ignored)
-mv .aicoder/plugins/03_ruff.py .aicoder/plugins/_03_ruff.py
+mv .aicoder/plugins/ruff.py .aicoder/plugins/_ruff.py
 ```
 
 ### Re-enabling a Plugin
 
 ```bash
 # Copy from available plugins
-cp plugins/03_ruff.py .aicoder/plugins/
+cp plugins/ruff.py .aicoder/plugins/
 
 # Or rename back
-mv .aicoder/plugins/_03_ruff.py .aicoder/plugins/03_ruff.py
+mv .aicoder/plugins/_ruff.py .aicoder/plugins/ruff.py
 ```
 
 ## Plugin API
@@ -125,22 +125,22 @@ def my_tool(args):
 
 ## Available Plugins
 
-- `01_web_search.py` - Web search and URL content fetching
+- `web_search.py` - Web search and URL content fetching
   - Tools: `web_search` (auto-approved), `get_url_content`
   - Requires: lynx browser
   - Uses: DuckDuckGo Lite with correct URL and user agent
 
-- `02_notify_prompt.py` - Audio notifications for prompts/approvals
+- `notify_prompt.py` - Audio notifications for prompts/approvals
   - Hooks: `before_user_prompt`, `before_approval_prompt`
   - Requires: espeak, pulseaudio/pipewire
   - Features: HDMI audio sink detection
 
-- `03_ruff.py` - Python code quality checks
+- `ruff.py` - Python code quality checks
   - Commands: `/ruff on/off`, `/ruff check-serious on/off`
   - Hooks: `after_file_write` (runs after file is created/updated)
   - Requires: ruff linter
 
-- `04_luna_theme.py` - Luna color theme
+- `luna_theme.py` - Luna color theme
   - Applies Luna color palette with soft pink/magenta, lime green, gold, and light cyan tones
   - Updates `Config.colors` with Luna's true color RGB values
   - No dependencies - pure Python stdlib

@@ -14,7 +14,7 @@ This plugin provides network sandboxing for shell commands using seccomp, allowi
 
 1. Copy the plugin to your AI Coder plugins directory:
    ```bash
-   cp plugins/05_sandbox_network.py .aicoder/plugins/
+   cp plugins/sandbox_network.py .aicoder/plugins/
    ```
 
 2. Install system requirements (Ubuntu/Debian):
