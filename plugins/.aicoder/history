@@ -1,0 +1,1 @@
+{"prompt": "the plugins dir has plugins with numbers in order to guarantee some loading order... but may they are not necessary... can you just keep the plugin name and remove the number and update the documentation if exists?"}
