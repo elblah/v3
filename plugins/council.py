@@ -166,6 +166,7 @@ class CouncilService:
     _auto_council_enabled: bool = False
     _auto_council_iteration: int = 0
     _auto_council_reset_context: bool = True
+    _prompt_append_enabled: bool = os.getenv("COUNCIL_DISABLE_PROMPT_APPEND", "0") != "1"  # Default to enabled unless disabled by env var
 
     def __init__(self, app):
         self.app = app
@@ -313,11 +314,12 @@ class CouncilService:
         # Build system prompt
         system_prompt = f"You are {member['name']}.\n\n{member['prompt']}"
 
-        # Add generic instructions based on member type
-        if member.get("is_auto_member", False):
-            system_prompt += AUTO_MEMBER_INSTRUCTIONS
-        else:
-            system_prompt += NORMAL_MEMBER_INSTRUCTIONS
+        # Add generic instructions based on member type (if append enabled)
+        if CouncilService._prompt_append_enabled:
+            if member.get("is_auto_member", False):
+                system_prompt += AUTO_MEMBER_INSTRUCTIONS
+            else:
+                system_prompt += NORMAL_MEMBER_INSTRUCTIONS
 
         # Build full context from message history
         # Filter out system messages, include tool calls
@@ -588,6 +590,24 @@ Provide a prioritized list of improvements and a clear summary."""
 
         return "\n".join(feedback)
 
+    # Prompt append management (static methods)
+    @staticmethod
+    def enable_prompt_append() -> None:
+        """Enable prompt append"""
+        CouncilService._prompt_append_enabled = True
+        LogUtils.print("Prompt append enabled", LogOptions(color=Config.colors["green"]))
+
+    @staticmethod
+    def disable_prompt_append() -> None:
+        """Disable prompt append"""
+        CouncilService._prompt_append_enabled = False
+        LogUtils.print("Prompt append disabled", LogOptions(color=Config.colors["yellow"]))
+
+    @staticmethod
+    def is_prompt_append_enabled() -> bool:
+        """Check if prompt append is enabled"""
+        return CouncilService._prompt_append_enabled
+
     def cleanup(self) -> None:
         """Cleanup resources"""
         CouncilService.clear_spec()
@@ -626,6 +646,8 @@ class CouncilCommand:
             return self.toggle_member(args[1:], False)
         elif subcommand == "cancel":
             return self.cancel(args_str)
+        elif subcommand == "prompt-append":
+            return self.toggle_prompt_append(args[1:])
         elif subcommand == "help":
             return self.show_help()
         else:
@@ -947,6 +969,24 @@ Write your specification here...
 
         return ""
 
+    def toggle_prompt_append(self, args: List[str]) -> str:
+        """Toggle prompt append on/off"""
+        if not args:
+            status = "enabled" if CouncilService.is_prompt_append_enabled() else "disabled"
+            LogUtils.print(f"Prompt append is currently {status}", LogOptions(color=Config.colors["cyan"]))
+            return ""
+
+        action = args[0].lower()
+        if action in ["on", "enable", "1", "true"]:
+            CouncilService.enable_prompt_append()
+        elif action in ["off", "disable", "0", "false"]:
+            CouncilService.disable_prompt_append()
+        else:
+            LogUtils.print("Usage: /council prompt-append on|off (enable|disable)", LogOptions(color=Config.colors["yellow"]))
+            return ""
+
+        return ""
+
     def cancel(self, args_str: str = "") -> str:
         """Cancel council session and clear all state"""
         # Clear any active session
@@ -988,10 +1028,14 @@ Usage:
   /council edit <number|name>                      Edit member file
   /council enable <number|name>                    Enable member
   /council disable <number|name>                   Disable member
+  /council prompt-append on|off                    Toggle prompt append
   /council help                                    Show this help
 
 Council Directory:
   {council_dir_path}
+
+Environment Variables:
+  COUNCIL_DISABLE_PROMPT_APPEND=1                 Disable prompt append at startup
 
 Member files should be named:
   member_name_auto.txt, member_name.txt
@@ -1002,6 +1046,11 @@ Auto-Mode:
   Council members vote: IMPLEMENTATION_FINISHED or NOT_FINISHED
   Unanimous FINISHED = task complete
   Any NOT_FINISHED = continue with feedback
+
+Prompt Append:
+  Controls whether generic instructions are appended to council member prompts
+  Can be controlled via: /council prompt-append on|off
+  Or via environment variable: COUNCIL_DISABLE_PROMPT_APPEND=1
 """
 
         LogUtils.print(help_text)
