@@ -51,10 +51,10 @@ class InputHandler:
         readline.set_completer(self._completer)
         readline.parse_and_bind("tab: complete")
 
-        # Remove @ from word delimiters so @@snippet completion works
+        # Remove @ and - from word delimiters so @@snippet completion works with hyphens
         # Default delimiters: \t\n\"\\'`@$><=;|&{( (tab, newline, quote, backtick, $, @, >, <, =, ;, |, &, {, ()
-        # We want to keep most but remove @ to allow @@prefix to be completed as one word
-        delims = readline.get_completer_delims().replace('@', '')
+        # We want to keep most but remove @ and - to allow @@prefix-hyphen to be completed as one word
+        delims = readline.get_completer_delims().replace('@', '').replace('-', '')
         readline.set_completer_delims(delims)
 
     def get_user_input(self) -> str:
