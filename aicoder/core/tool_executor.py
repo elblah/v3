@@ -123,9 +123,6 @@ class ToolExecutor:
 
     def _should_show_preview(self, tool_def: Dict[str, Any], arguments: Dict[str, Any]) -> bool:
         """Check if preview should be shown"""
-        # Force True for testing write_file
-        if tool_def and tool_def.get("name") == "write_file":
-            return True
         return tool_def and tool_def.get("generatePreview")
 
     def _handle_preview_display(self, tool_def: Dict[str, Any], arguments: Dict[str, Any], tool_call_id: str) -> Union[bool, Dict[str, Any]]:
