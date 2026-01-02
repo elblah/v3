@@ -109,6 +109,9 @@ class AICoder:
             # Add formatArguments if provided
             if tool_data.get("formatArguments"):
                 tool_def["formatArguments"] = tool_data["formatArguments"]
+            # Add generatePreview if provided
+            if tool_data.get("generatePreview"):
+                tool_def["generatePreview"] = tool_data["generatePreview"]
             self.tool_manager.tools[tool_name] = tool_def
 
         # Register plugin commands
