@@ -1,3 +1,6 @@
+<temporary_mode duration="single_response">
+RETHINK MODE ACTIVATED - This response only:
+
 Take a step back and reconsider the approach:
 
 1. **Question Assumptions**
@@ -17,3 +20,4 @@ Take a step back and reconsider the approach:
    - Have the requirements changed?
 
 Don't get stuck in one way of thinking. Step back and rethink.
+</temporary_mode>
