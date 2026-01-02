@@ -92,3 +92,7 @@ plugins/__pycache__/
 *_original
 
 tmp/
+
+.aicoder/council/
+.aicoder/snippets
+.aicoder
