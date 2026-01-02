@@ -95,4 +95,5 @@ tmp/
 
 .aicoder/council/
 .aicoder/snippets
-.aicoder
+.aicoder/
+**/.aicoder/
