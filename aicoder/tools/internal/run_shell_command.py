@@ -4,8 +4,63 @@ Run shell command tool
 """
 
 import subprocess
+import signal
+import os
+import time
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
+
+
+def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
+    """Execute command with proper process group termination"""
+    # Create process group for the entire process tree
+    proc = subprocess.Popen(
+        command,
+        shell=True,
+        preexec_fn=os.setsid,  # Create new process group
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=cwd,
+    )
+    
+    try:
+        # Wait for timeout with communicate
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=proc.returncode,
+            stdout=stdout,
+            stderr=stderr
+        )
+        
+    except subprocess.TimeoutExpired:
+        # Kill entire process group (all children)
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass  # Process already dead
+        
+        # Give it a moment to cleanup gracefully
+        time.sleep(2)
+        
+        # Force kill if still running
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # Already dead
+        
+        # Get remaining output
+        stdout, stderr = proc.communicate()
+        
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=-1,  # Custom code for timeout
+            stdout=stdout,
+            stderr=stderr
+        )
 
 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -18,21 +73,14 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         raise Exception("Command is required")
 
     try:
-        # Execute command with UTF-8 decoding and error handling for binary output
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",  # Replace un-decodable bytes with � instead of failing
-            timeout=timeout,
-            cwd=cwd,
-        )
+        # Execute command with proper process group termination
+        result = execute_with_process_group(command, timeout, cwd)
 
         # Create friendly message
         if result.returncode == 0:
             friendly = f"✓ Command completed (exit code: {result.returncode})"
+        elif result.returncode == -1:
+            friendly = f"✗ Command timed out after {timeout}s (process group terminated)"
         elif result.returncode == 124:
             friendly = (
                 f"✗ Command timed out after {timeout}s (exit code: {result.returncode})"
@@ -54,6 +102,8 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             "detailed": f"Command: {command}\nExit code: {result.returncode}\nTimeout: {timeout}s\nWorking directory: {cwd or '.'}\n\nOutput:\n{output}"
         }
 
+    # Timeout is now handled in execute_with_process_group
+    # This exception should not be reached anymore
     except subprocess.TimeoutExpired:
         return {
             "tool": "run_shell_command",
