@@ -15,6 +15,7 @@ Commands:
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 
 def _parse_yaml_frontmatter(text: str) -> dict:
@@ -47,12 +48,43 @@ class SkillsManager:
     """Skills management - all state in closure"""
 
     def __init__(self):
-        self.skills_dir = ".aicoder/skills"
+        self.skills_dir = None
+        self.skills_source = None
         self.skills: dict = {}
+
+    def get_skills_directory(self) -> Optional[str]:
+        """
+        Get skills directory - exclusive: local OR global, never both
+        
+        Priority order:
+        1. Local .aicoder/skills (if exists) - project-specific takes precedence
+        2. Global ~/.config/aicoder-v3/skills (fallback)
+        """
+        local_dir = os.path.join(os.getcwd(), ".aicoder/skills")
+        global_dir = os.path.expanduser("~/.config/aicoder-v3/skills")
+        
+        if os.path.exists(local_dir):
+            return local_dir
+        elif os.path.exists(global_dir):
+            return global_dir
+        return None
+
+    def get_skills_source(self) -> Optional[str]:
+        """Return 'local', 'global', or None"""
+        if not self.skills_dir:
+            return None
+        if self.skills_dir.endswith(".aicoder/skills"):
+            return "local"
+        elif self.skills_dir.endswith("skills") and "aicoder-v3" in self.skills_dir:
+            return "global"
+        return "unknown"
 
     def discover_skills(self) -> int:
         """Discover all skills from skills directory"""
-        if not os.path.exists(self.skills_dir):
+        self.skills_dir = self.get_skills_directory()
+        self.skills_source = self.get_skills_source()
+        
+        if not self.skills_dir:
             return 0
 
         count = 0
@@ -91,16 +123,30 @@ class SkillsManager:
     def generate_skills_message(self) -> str:
         """Generate [SKILLS] message with available skills"""
         if not self.skills:
-            return "[SKILLS] No skills available."
+            if self.skills_dir:
+                return f"[SKILLS] No skills available in {self.skills_dir}."
+            else:
+                return "[SKILLS] No skills available (no skills directory found)."
 
         skills_list = []
         for skill_name, skill_info in sorted(self.skills.items()):
+            # Use relative path for cleaner display
+            display_path = skill_info['path']
+            if self.skills_source == "global" and display_path.startswith(os.path.expanduser("~/.config/aicoder-v3/skills/")):
+                display_path = display_path[len(os.path.expanduser("~/.config/aicoder-v3/skills/")):]
+            elif self.skills_source == "local" and display_path.startswith(".aicoder/skills/"):
+                display_path = display_path[len(".aicoder/skills/"):]
+            
             skills_list.append(
-                f"- {skill_name} ({skill_info['path']}): {skill_info['description']}"
+                f"- {skill_name} ({display_path}): {skill_info['description']}"
             )
 
-        return """[SKILLS] You have access to these skills. Load a skill by reading its SKILL.md file when the task requires it.
+        source_info = ""
+        if self.skills_dir:
+            source_info = f"\nLoading from: {self.skills_dir} ({len(self.skills)} skills found)\n"
 
+        return """[SKILLS] You have access to these skills. Load a skill by reading its SKILL.md file when the task requires it.
+""" + source_info + """
 Available Skills:
 
 """ + "\n".join(skills_list) + """
@@ -157,35 +203,50 @@ def create_plugin(ctx):
         if not args:
             # Show user-friendly summary
             if not manager.skills:
-                return "No skills available in .aicoder/skills/"
+                if manager.skills_dir:
+                    return f"No skills available in {manager.skills_dir}"
+                else:
+                    return "No skills directory found (.aicoder/skills or ~/.config/aicoder-v3/skills)"
 
-            output = "Available Skills (AI can load these when needed):\n\n"
+            # Show source directory
+            source_display = ""
+            if manager.skills_source == "local":
+                source_display = ".aicoder/skills"
+            elif manager.skills_source == "global":
+                source_display = os.path.expanduser("~/.config/aicoder-v3/skills")
+            
+            output = f"Available Skills (loading from {source_display}):\n\n"
             for skill_name, skill_info in sorted(manager.skills.items()):
                 output += f"  • {skill_name}\n"
                 output += f"    {skill_info['description']}\n\n"
 
             output += f"Total: {len(manager.skills)} skill(s)\n"
-            output += "\nUse /skills reload to update this list."
+            output += "\nUse /skills reload to refresh this list."
             return output
 
-        if args[0] == "message":
-            # Show raw [SKILLS] message from history
-            for msg in ctx.app.message_history.messages:
-                content = msg.get("content", "")
-                if msg.get("role") == "user" and content.startswith("[SKILLS]"):
-                    return content
-            return "No [SKILLS] message found in history."
+        
 
         if args[0] == "help":
-            return """Skills Commands:
+            help_text = """Skills Commands:
 
 /skills          - Show available skills (user-friendly summary)
-/skills message   - Show raw [SKILLS] message (what AI sees)
 /skills reload   - Reload skills from disk (updates [SKILLS] message)
+/skills help     - Show this help
 
 The [SKILLS] message is automatically maintained before each user prompt.
-Skills are listed with their SKILL.md paths - use read_file() to load one.
+Skills are loaded from either .aicoder/skills (local) or ~/.config/aicoder-v3/skills (global), never both.
 """
+            
+            # Add source info to help
+            if manager.skills_dir:
+                if manager.skills_source == "global":
+                    help_text += f"\nCurrently loading from: ~/.config/aicoder-v3/skills\n"
+                else:
+                    help_text += f"\nCurrently loading from: .aicoder/skills\n"
+            else:
+                help_text += "\nNo skills directory found.\n"
+                
+            return help_text
 
         if args[0] == "reload":
             old_count = len(manager.skills)
@@ -194,10 +255,18 @@ Skills are listed with their SKILL.md paths - use read_file() to load one.
             # Update [SKILLS] message immediately
             manager.ensure_skills_message(ctx.app.message_history)
 
+            # Show source in reload message
+            source_display = ""
+            if manager.skills_dir:
+                if manager.skills_source == "global":
+                    source_display = " from ~/.config/aicoder-v3/skills"
+                else:
+                    source_display = " from .aicoder/skills"
+
             if new_count == old_count:
-                return f"Skills reloaded. Found {new_count} skills (unchanged)."
+                return f"Skills reloaded. Found {new_count} skills{source_display} (unchanged)."
             else:
-                return f"Skills reloaded. Found {new_count} skills (was {old_count})."
+                return f"Skills reloaded. Found {new_count} skills{source_display} (was {old_count})."
 
         return f"Unknown command: {args[0]}. Use /skills help for usage."
 
@@ -207,7 +276,18 @@ Skills are listed with their SKILL.md paths - use read_file() to load one.
     # Register command
     ctx.register_command("skills", handle_skills_command, description="Manage Claude Skills")
 
-    print(f"[+] Skills plugin loaded ({count} skills found)")
+    if count > 0:
+        source_display = manager.skills_dir
+        if manager.skills_source == "global":
+            # Show shortened path for global
+            source_display = "~/.config/aicoder-v3/skills"
+        
+        print(f"[+] Skills plugin loaded ({count} skills found)")
+        print(f"  - Loading from: {source_display}")
+    else:
+        print("[+] Skills plugin loaded (0 skills found)")
+        print("  - No skills directory found")
+    
     print("  - [SKILLS] message auto-maintained")
     print("  - /skills reload command")
 
