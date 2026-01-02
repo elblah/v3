@@ -1,0 +1,205 @@
+"""
+Python Runtime Plugin - Execute code inline in AI Coder process
+
+Features:
+- run_inline_python tool: Execute Python code with full AI Coder context
+- /python_runtime command: Enable/disable the feature
+- Safety: Never auto-approved, starts disabled
+
+Use Cases:
+- Debug AI Coder as it runs
+- Monkey patch behavior
+- Change working directory
+- Modify system prompt
+- Inspect state
+
+Safety:
+- Feature starts DISABLED by default
+- Each execution requires user approval
+- Clear warnings in approval prompt
+"""
+
+from typing import Dict, Any
+from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.core.config import Config
+
+
+def create_plugin(ctx):
+    """
+    Create Python Runtime plugin
+
+    ctx.app provides access to all components:
+    - ctx.app.message_history
+    - ctx.app.tool_manager
+    - ctx.app.streaming_client
+    - ctx.app.input_handler
+    - ctx.app.plugin_system
+    - etc.
+    """
+
+    # State storage in closure
+    _state = {
+        "enabled": False,
+        "ctx": ctx
+    }
+
+    # ==================== Tool: run_inline_python ====================
+
+    def run_inline_python(args: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute Python code in AI Coder's runtime context"""
+        code = args.get("code", "").strip()
+
+        if not code:
+            return {
+                "tool": "run_inline_python",
+                "friendly": "Error: Code cannot be empty",
+                "detailed": "Code cannot be empty"
+            }
+
+        if not _state["enabled"]:
+            return {
+                "tool": "run_inline_python",
+                "friendly": "Runtime Python is disabled",
+                "detailed": "Runtime Python is disabled. Enable with /python_runtime on"
+            }
+
+        # Prepare execution context with full access
+        execution_globals = {
+            "app": _state["ctx"].app,
+            "ctx": _state["ctx"],
+            "print": print,  # Make print available
+            "__name__": "__runtime__",  # Identify as runtime context
+        }
+
+        try:
+            # Execute the code
+            exec(code, execution_globals)
+
+            # Collect any variables defined (exclude built-ins)
+            output_parts = []
+            for key in execution_globals:
+                if key not in ["app", "ctx", "print", "__builtins__", "__name__"]:
+                    value = execution_globals[key]
+                    output_parts.append(f"{key} = {repr(value)}")
+
+            output = "\n".join(output_parts) if output_parts else "[code executed successfully, no output]"
+
+            return {
+                "tool": "run_inline_python",
+                "friendly": "✓ Code executed successfully",
+                "detailed": f"Code:\n{code}\n\nOutput:\n{output}"
+            }
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            return {
+                "tool": "run_inline_python",
+                "friendly": f"✗ Execution failed: {e}",
+                "detailed": f"Code:\n{code}\n\nError: {type(e).__name__}: {e}\n\nTraceback:\n{tb}"
+            }
+
+    # Format function for approval display
+    def format_run_inline_python(args: Dict[str, Any]) -> str:
+        """Format for approval display"""
+        code = args.get("code", "")
+        lines = code.split("\n")
+
+        # Show first 10 lines as preview
+        preview_lines = lines[:10]
+        preview = "\n".join(preview_lines)
+
+        if len(lines) > 10:
+            preview += f"\n... ({len(lines) - 10} more lines)"
+
+        status = "ENABLED" if _state["enabled"] else "DISABLED"
+        status_color = Config.colors['green'] if _state["enabled"] else Config.colors['red']
+
+        return (
+            f"Runtime Python: {status}\n\n"
+            f"Available in code:\n"
+            f"  app  - AICoder instance (full access to all components)\n"
+            f"  ctx  - PluginContext instance\n"
+            f"  print - print function\n\n"
+            f"Code to execute:\n{preview}"
+        )
+
+    # Register the tool (NEVER auto-approved - always requires approval)
+    ctx.register_tool(
+        name="run_inline_python",
+        fn=run_inline_python,
+        description="Execute Python code in AI Coder's runtime context (requires /python_runtime on)",
+        parameters={
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python code to execute (has access to 'app' = AICoder instance, 'ctx' = PluginContext, 'print')"
+                }
+            },
+            "required": ["code"]
+        },
+        auto_approved=False,  # ALWAYS requires approval for safety
+        format_arguments=format_run_inline_python
+    )
+
+    # ==================== Commands ====================
+
+    def handle_python_runtime_command(args_str: str) -> str:
+        """Handle /python_runtime command"""
+        args_str = args_str.strip()
+
+        if not args_str:
+            # Show help
+            help_text = """Python Runtime Plugin
+
+Execute Python code inline in AI Coder's process with full access to internal state.
+
+Commands:
+    /python_runtime on     - Enable Runtime Python (AI can use run_inline_python tool)
+    /python_runtime off    - Disable Runtime Python
+    /python_runtime status - Show current status
+
+Tool:
+    run_inline_python - Execute Python code with full access to AI Coder context
+
+Available in code:
+    app  - AICoder instance (access all components: message_history, tool_manager, etc.)
+    ctx  - PluginContext instance
+    print - print function
+
+⚠️  WARNING: When enabled, AI can modify AI Coder's behavior, corrupt sessions,
+   remove guards, or break the instance. Each execution requires approval.
+
+Examples:
+    /python_runtime on
+    /python_runtime status
+"""
+            return help_text
+
+        if args_str == "on":
+            _state["enabled"] = True
+            LogUtils.print("[*] Runtime Python ENABLED", LogOptions(color=Config.colors['yellow']))
+            LogUtils.print("    AI can now use run_inline_python tool (each execution requires approval)")
+            return ""
+        elif args_str == "off":
+            _state["enabled"] = False
+            LogUtils.print("[*] Runtime Python DISABLED", LogOptions(color=Config.colors['red']))
+            return ""
+        elif args_str == "status":
+            status = "ENABLED" if _state["enabled"] else "DISABLED"
+            status_color = Config.colors['green'] if _state["enabled"] else Config.colors['red']
+            LogUtils.print(f"[*] Runtime Python: {status}", LogOptions(color=status_color))
+            return ""
+        else:
+            return f"Unknown subcommand: {args_str}\nUsage: /python_runtime [on|off|status]"
+
+    # Register the command
+    ctx.register_command("python_runtime", handle_python_runtime_command, "Control Runtime Python feature")
+
+    # Print what was registered
+    print("  - run_inline_python tool")
+    print("  - /python_runtime command")
+
+    # No cleanup needed
+    return None
