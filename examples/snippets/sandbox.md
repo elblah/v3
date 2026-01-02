@@ -1,0 +1,1 @@
+**IMPORTANT**: You are in a sandboxed environment with write access only to the project dir. If you need to change folders or files outside of the project dir please **ASK THE USER** to do so since the user has the access and can run commands in the terminal for you.
