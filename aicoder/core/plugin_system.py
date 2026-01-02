@@ -53,6 +53,7 @@ class PluginContext:
         parameters: Dict[str, Any],
         auto_approved: bool = False,
         format_arguments: Optional[Callable] = None,
+        generate_preview: Optional[Callable] = None,
     ) -> None:
         """
         Register a tool for AI to use
@@ -61,7 +62,8 @@ class PluginContext:
         the internal details of how tools are registered.
         """
         if self._register_tool_fn:
-            self._register_tool_fn(name, fn, description, parameters, auto_approved, format_arguments)
+            self._register_tool_fn(name, fn, description, parameters, auto_approved, format_arguments,
+                generate_preview)
 
     def register_command(
         self, name: str, handler: Callable, description: Optional[str] = None
@@ -142,6 +144,7 @@ class PluginSystem:
         parameters: Dict[str, Any],
         auto_approved: bool,
         format_arguments: Optional[Callable] = None,
+        generate_preview: Optional[Callable] = None,
     ) -> None:
         """Internal: register a tool"""
         self.tools[name] = {
@@ -150,6 +153,7 @@ class PluginSystem:
             "parameters": parameters,
             "auto_approved": auto_approved,
             "formatArguments": format_arguments,
+            "generatePreview": generate_preview,
         }
 
     def _register_command(

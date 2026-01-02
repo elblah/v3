@@ -112,8 +112,42 @@ def create_plugin(ctx):
             }
 
     # Format function for approval display
-    def format_run_inline_python(args: Dict[str, Any]) -> Dict[str, Any]:
+    def format_arguments(args: Dict[str, Any]) -> Dict[str, Any]:
         """Format for approval display"""
+        code = args.get("code", "")
+        lines = code.split("\n")
+
+        status = "ENABLED" if _state["enabled"] else "DISABLED"
+        status_color = Config.colors['green'] if _state["enabled"] else Config.colors['red']
+
+        if not _state["enabled"]:
+            return {
+                "tool": "run_inline_python",
+                "content": (
+                    f"Runtime Python: {status}\n\n"
+                    f"WARNING: Runtime Python is DISABLED - execution blocked\n"
+                    f"Enable with: /python-runtime on\n\n"
+                    f"Code ({len(lines)} lines):\n{code}"
+                ),
+                "can_approve": False
+            }
+
+        # Show full code when enabled (no truncation)
+        return {
+            "tool": "run_inline_python",
+            "content": (
+                f"Runtime Python: {status}\n\n"
+                f"Available in code:\n"
+                f"  app  - AICoder instance (full access to all components)\n"
+                f"  ctx  - PluginContext instance\n"
+                f"  print - print function\n\n"
+                f"Code to execute ({len(lines)} lines):\n{code}"
+            ),
+            "can_approve": True
+        }
+
+    def generate_preview(args: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate preview"""
         code = args.get("code", "")
         lines = code.split("\n")
 
@@ -162,7 +196,8 @@ def create_plugin(ctx):
             "required": ["code"]
         },
         auto_approved=False,  # ALWAYS requires approval for safety
-        format_arguments=format_run_inline_python
+        format_arguments=format_arguments,
+        generate_preview=generate_preview,
     )
 
     # ==================== Commands ====================
