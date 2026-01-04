@@ -288,7 +288,6 @@ class StreamingClient:
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
             "User-Agent": "Mozilla/5.0",
-            "Referer": "http://localhost",
         }
 
         # Add API key if available

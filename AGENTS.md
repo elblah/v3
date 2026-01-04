@@ -78,7 +78,7 @@ MINI_SANDBOX=0                       # Disable file sandbox
 CONTEXT_SIZE=128000                  # Context window size
 CONTEXT_COMPACT_PERCENTAGE=0         # Auto-compact threshold (%)
 MAX_TOOL_RESULT_SIZE=300000          # Max tool output size
-MAX_RETRIES=3                        # API retry attempts
+MAX_RETRIES=10                       # API retry attempts
 
 # Timeouts (seconds)
 STREAMING_TIMEOUT=300                # Streaming timeout

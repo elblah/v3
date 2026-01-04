@@ -332,7 +332,7 @@ echo "All agents completed"
 
 export YOLO_MODE=1
 export MINI_SANDBOX=0
-MAX_RETRIES=3
+MAX_RETRIES=10
 
 run_resilient_agent() {
     local task="$1"

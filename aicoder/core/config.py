@@ -99,7 +99,7 @@ class Config:
     @staticmethod
     def max_retries() -> int:
         """Get max retry attempts from environment"""
-        return int(os.environ.get("MAX_RETRIES", "3"))
+        return int(os.environ.get("MAX_RETRIES", "10"))
 
     @staticmethod
     def effective_max_retries() -> int:
