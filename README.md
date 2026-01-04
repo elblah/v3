@@ -94,7 +94,7 @@ Configure using environment variables:
 - `TEMPERATURE` - Response temperature (default: 0.0)
 - `MAX_TOKENS` - Maximum tokens (optional)
 - `DEBUG=1` - Enable debug mode
-- `MAX_RETRIES` - Maximum retry attempts (default: 3)
+- `MAX_RETRIES` - Maximum retry attempts (default: 10)
 - `MINI_SANDBOX=0` - Disable sandbox restrictions
 
 ## Commands
