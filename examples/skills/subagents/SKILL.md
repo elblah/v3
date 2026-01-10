@@ -35,6 +35,99 @@ Each subagent can have:
 - Use `wait` for synchronization
 - Handle failures and partial results gracefully
 
+### ⚠️ CRITICAL: Orchestration Script Placement
+
+**IMPORTANT**: When AI creates subagent orchestration scripts, they must be **temporary objects** - never create scripts in the project root directory.
+
+**Why this matters:**
+
+Creating orchestration scripts in the project root creates:
+- **Clutter**: Random `.sh` files polluting the project
+- **Git pollution**: Scripts get accidentally committed
+- **Conflicts**: Multiple scripts with the same name overwrite each other
+- **Maintenance burden**: Scripts must be manually cleaned up
+
+**✅ CORRECT practice - Create temporary scripts:**
+
+```bash
+# Create temp directory for orchestration script
+SCRIPT_DIR="/tmp/aicoder_subagents_$(date +%s%N)"
+mkdir -p "$SCRIPT_DIR"
+
+# Write orchestration script to temp location
+SCRIPT_FILE="$SCRIPT_DIR/run_subagents.sh"
+cat > "$SCRIPT_FILE" << 'SCRIPT_EOF'
+#!/bin/bash
+# Subagent orchestration script
+# This is a temporary script that will be deleted after execution
+
+export YOLO_MODE=1
+export MINI_SANDBOX=0
+export MAX_RETRIES=10
+
+# Phase 1: Launch subagents
+echo "Task 1" | $AICODER_CMD > /tmp/output1.txt &
+PID1=$!
+echo "Task 2" | $AICODER_CMD > /tmp/output2.txt &
+PID2=$!
+wait $PID1 $PID2
+SCRIPT_EOF
+
+chmod +x "$SCRIPT_FILE"
+
+# Execute the temporary script
+"$SCRIPT_FILE"
+
+# Clean up after execution
+rm -rf "$SCRIPT_DIR"
+echo "✅ Temporary orchestration script cleaned up"
+```
+
+**Alternative: Use `.aicoder/tmp` if `/tmp` is not writable:**
+
+```bash
+# Check if /tmp is writable
+if [ -w "/tmp" ]; then
+    SCRIPT_DIR="/tmp/aicoder_subagents_$(date +%s%N)"
+else
+    # Fall back to project-specific temp directory
+    SCRIPT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.aicoder/tmp/subagents_$(date +%s%N)"
+    mkdir -p "$SCRIPT_DIR"
+fi
+```
+
+**Best practices for AI when creating orchestration scripts:**
+
+1. **Always use temp directories**: Never write scripts to project root
+2. **Use unique names**: Include timestamp/counter to avoid collisions
+3. **Clean up automatically**: Delete scripts after execution
+4. **Inform user**: Show where the script is created and that it will be cleaned up
+5. **Use trap for cleanup**: Ensure cleanup even if script fails
+
+```bash
+# Example with trap for guaranteed cleanup
+SCRIPT_DIR="/tmp/aicoder_subagents_$(date +%s%N)"
+mkdir -p "$SCRIPT_DIR"
+SCRIPT_FILE="$SCRIPT_DIR/orchestrate.sh"
+
+# Ensure cleanup on exit (normal or error)
+trap 'rm -rf "$SCRIPT_DIR"' EXIT
+
+# Create and run script...
+```
+
+**❌ NEVER do this:**
+```bash
+# WRONG: Creates clutter in project root!
+cat > run_subagents.sh << EOF
+#!/bin/bash
+echo "This script pollutes your project!"
+EOF
+chmod +x run_subagents.sh
+./run_subagents.sh
+# Now run_subagents.sh is left in your project root forever
+```
+
 ### ⚠️ CRITICAL: Environment Variable Placement
 
 **IMPORTANT**: Environment variables (`AICODER_SYSTEM_PROMPT`, `SESSION_FILE`) must be placed **AFTER** the pipe (`|`) to affect the `$AICODER_CMD` process.
@@ -246,6 +339,8 @@ Always handle scenarios where:
 - `references/TROUBLESHOOTING.md` - Debugging, recovery, and prevention
 
 ## Common Workflows
+
+> **⚠️ REMINDER**: When AI creates orchestration scripts for these workflows, they must be saved in temporary directories (see "Orchestration Script Placement" section above) - never in project root.
 
 ### Quick Code Review
 ```bash
