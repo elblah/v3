@@ -5,6 +5,14 @@
 
 set -e
 
+# Check for AICODER_CMD
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD environment variable is not set."
+    echo "This should be provided by AI Coder wrapper script."
+    exit 1
+fi
+
+
 # Export global settings for all subagents
 export YOLO_MODE=1
 export MINI_SANDBOX=0
@@ -19,16 +27,16 @@ echo "🔍 Starting comprehensive analysis workflow..."
 # Phase 1: Data Collection Agents
 echo "📊 Phase 1: Data collection..."
 
-echo "Extract all APIs and endpoints from codebase" | python main.py > "$TEMP_DIR/apis.txt" &
+echo "Extract all APIs and endpoints from codebase" | $AICODER_CMD > "$TEMP_DIR/apis.txt" &
 PID1=$!
 
-echo "List all database queries and database interactions" | python main.py > "$TEMP_DIR/queries.txt" &
+echo "List all database queries and database interactions" | $AICODER_CMD > "$TEMP_DIR/queries.txt" &
 PID2=$!
 
-echo "Identify all configuration files and settings" | python main.py > "$TEMP_DIR/config.txt" &
+echo "Identify all configuration files and settings" | $AICODER_CMD > "$TEMP_DIR/config.txt" &
 PID3=$!
 
-echo "Catalog all external dependencies and libraries" | python main.py > "$TEMP_DIR/dependencies.txt" &
+echo "Catalog all external dependencies and libraries" | $AICODER_CMD > "$TEMP_DIR/dependencies.txt" &
 PID4=$!
 
 wait $PID1 $PID2 $PID3 $PID4
@@ -39,23 +47,27 @@ echo "✅ Phase 1 completed - Data collection finished"
 echo "🔬 Phase 2: Specialized analysis..."
 
 # Security Analysis of collected data
+echo "Analyze these APIs, queries, config files, and dependencies for security issues: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | \
 AICODER_SYSTEM_PROMPT="You are a SECURITY ANALYST. Analyze the provided data for security vulnerabilities, authentication issues, input validation problems, and potential attack vectors. Focus on actionable security findings." \
-echo "Analyze these APIs, queries, config files, and dependencies for security issues: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | python main.py > "$TEMP_DIR/security_analysis.txt" &
+$AICODER_CMD > "$TEMP_DIR/security_analysis.txt" &
 PID5=$!
 
 # Performance Analysis of collected data
+echo "Analyze these APIs, queries, config files, and dependencies for performance issues: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | \
 AICODER_SYSTEM_PROMPT="You are a PERFORMANCE ANALYST. Analyze the provided data for performance bottlenecks, efficiency issues, resource usage problems, and scalability concerns. Identify specific optimization opportunities." \
-echo "Analyze these APIs, queries, config files, and dependencies for performance issues: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | python main.py > "$TEMP_DIR/performance_analysis.txt" &
+$AICODER_CMD > "$TEMP_DIR/performance_analysis.txt" &
 PID6=$!
 
 # Architecture Analysis of collected data
+echo "Analyze these APIs, queries, config files, and dependencies for architectural patterns and improvements: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | \
 AICODER_SYSTEM_PROMPT="You are an ARCHITECTURE ANALYST. Analyze the provided data for design patterns, component relationships, structural issues, and architectural improvements. Focus on system design insights." \
-echo "Analyze these APIs, queries, config files, and dependencies for architectural patterns and improvements: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | python main.py > "$TEMP_DIR/architecture_analysis.txt" &
+$AICODER_CMD > "$TEMP_DIR/architecture_analysis.txt" &
 PID7=$!
 
 # Risk Analysis of collected data
+echo "Analyze these APIs, queries, config files, and dependencies for risks and technical debt: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | \
 AICODER_SYSTEM_PROMPT="You are a RISK ANALYST. Analyze the provided data for potential risks, technical debt, maintenance challenges, and business impact. Focus on prioritized risk assessment." \
-echo "Analyze these APIs, queries, config files, and dependencies for risks and technical debt: $(cat "$TEMP_DIR/apis.txt" "$TEMP_DIR/queries.txt" "$TEMP_DIR/config.txt" "$TEMP_DIR/dependencies.txt")" | python main.py > "$TEMP_DIR/risk_analysis.txt" &
+$AICODER_CMD > "$TEMP_DIR/risk_analysis.txt" &
 PID8=$!
 
 wait $PID5 $PID6 $PID7 $PID8
@@ -65,7 +77,6 @@ echo "✅ Phase 2 completed - Analysis finished"
 # Phase 3: Synthesis Agent
 echo "📋 Phase 3: Comprehensive synthesis..."
 
-AICODER_SYSTEM_PROMPT="You are a TECHNICAL SYNTHESIS EXPERT. Create a comprehensive technical report that synthesizes security, performance, architecture, and risk analyses. Provide prioritized recommendations and executive summary. Make it actionable for technical leaders." \
 echo "Create comprehensive technical report synthesizing these analyses:
 
 === SECURITY ANALYSIS ===
@@ -80,7 +91,9 @@ $(cat "$TEMP_DIR/architecture_analysis.txt")
 === RISK ANALYSIS ===
 $(cat "$TEMP_DIR/risk_analysis.txt")
 
-Create an executive summary, prioritize findings by severity, and provide actionable recommendations. Focus on business impact and technical next steps." | python main.py > "$TEMP_DIR/final_synthesis.txt" &
+Create an executive summary, prioritize findings by severity, and provide actionable recommendations. Focus on business impact and technical next steps." | \
+AICODER_SYSTEM_PROMPT="You are a TECHNICAL SYNTHESIS EXPERT. Create a comprehensive technical report that synthesizes security, performance, architecture, and risk analyses. Provide prioritized recommendations and executive summary. Make it actionable for technical leaders." \
+$AICODER_CMD > "$TEMP_DIR/final_synthesis.txt" &
 PID9=$!
 
 wait $PID9

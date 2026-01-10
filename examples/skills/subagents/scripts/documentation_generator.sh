@@ -5,6 +5,14 @@
 
 set -e
 
+# Check for AICODER_CMD
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD environment variable is not set."
+    echo "This should be provided by AI Coder wrapper script."
+    exit 1
+fi
+
+
 # Export global settings for all subagents
 export YOLO_MODE=1
 export MINI_SANDBOX=0
@@ -17,23 +25,27 @@ mkdir -p "$TEMP_DIR"
 echo "📚 Launching parallel documentation generation..."
 
 # API Documentation Generator
+echo "Analyze this codebase and extract all APIs, endpoints, functions, and their parameters. Create comprehensive API documentation that developers can easily understand and use." | \
 AICODER_SYSTEM_PROMPT="You are an API DOCUMENTATION SPECIALIST. Focus exclusively on extracting and documenting APIs, endpoints, functions, and their parameters. Create clear, developer-friendly API reference." \
-echo "Analyze this codebase and extract all APIs, endpoints, functions, and their parameters. Create comprehensive API documentation that developers can easily understand and use." | python main.py > "$TEMP_DIR/api_documentation.txt" &
+$AICODER_CMD > "$TEMP_DIR/api_documentation.txt" &
 PID1=$!
 
 # Architecture Documentation Generator
+echo "Analyze this codebase architecture. Document the main components, their relationships, design patterns used, data flow, and overall system structure." | \
 AICODER_SYSTEM_PROMPT="You are an ARCHITECTURE DOCUMENTATION SPECIALIST. Focus exclusively on design patterns, component relationships, data flow, and system structure. Create architectural overview that helps developers understand the big picture." \
-echo "Analyze this codebase architecture. Document the main components, their relationships, design patterns used, data flow, and overall system structure." | python main.py > "$TEMP_DIR/architecture_documentation.txt" &
+$AICODER_CMD > "$TEMP_DIR/architecture_documentation.txt" &
 PID2=$!
 
 # Setup/Installation Documentation Generator
+echo "Analyze this codebase for setup and installation requirements. Document dependencies, installation steps, configuration options, and getting started instructions." | \
 AICODER_SYSTEM_PROMPT="You are a SETUP DOCUMENTATION SPECIALIST. Focus exclusively on installation procedures, dependencies, configuration, and getting started guides. Create clear step-by-step setup instructions." \
-echo "Analyze this codebase for setup and installation requirements. Document dependencies, installation steps, configuration options, and getting started instructions." | python main.py > "$TEMP_DIR/setup_documentation.txt" &
+$AICODER_CMD > "$TEMP_DIR/setup_documentation.txt" &
 PID3=$!
 
 # User Guide Documentation Generator
+echo "Analyze this codebase and create user documentation. Include getting started guide, common usage patterns, examples, and troubleshooting tips." | \
 AICODER_SYSTEM_PROMPT="You are a USER GUIDE SPECIALIST. Focus exclusively on creating user-friendly guides, tutorials, and usage examples. Make the project accessible to new users." \
-echo "Analyze this codebase and create user documentation. Include getting started guide, common usage patterns, examples, and troubleshooting tips." | python main.py > "$TEMP_DIR/user_guide.txt" &
+$AICODER_CMD > "$TEMP_DIR/user_guide.txt" &
 PID4=$!
 
 echo "📡 Documentation generators launched (PIDs: $PID1, $PID2, $PID3, $PID4)"
