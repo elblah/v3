@@ -34,6 +34,11 @@ class MessageHistory:
         self.messages: List[Dict[str, Any]] = []
         self.initial_system_prompt: Optional[Dict[str, Any]] = None
         self.is_compacting = False
+        self._plugin_system = None
+
+    def set_plugin_system(self, plugin_system) -> None:
+        """Set plugin system for hooks"""
+        self._plugin_system = plugin_system
 
     def set_api_client(self, api_client: "StreamingClient") -> None:
         """Set API client for compaction"""
@@ -52,6 +57,10 @@ class MessageHistory:
 
         if not self.initial_system_prompt:
             self.initial_system_prompt = message
+        
+        # Call plugin hook after session initialized (system prompt created)
+        if self._plugin_system:
+            self._plugin_system.call_hooks("after_session_initialized", self.messages)
 
     def add_user_message(self, content: str) -> None:
         """Add a user message"""
@@ -65,6 +74,10 @@ class MessageHistory:
         self.stats.increment_messages_sent()
         # Update context size estimate
         self.estimate_context()
+
+        # Call plugin hooks
+        if self._plugin_system:
+            self._plugin_system.call_hooks("after_user_message_added", message)
 
     def insert_user_message_at_appropriate_position(self, content: str) -> None:
         """
@@ -128,6 +141,10 @@ class MessageHistory:
         # Update context size estimate
         self.estimate_context()
 
+        # Call plugin hooks
+        if self._plugin_system:
+            self._plugin_system.call_hooks("after_assistant_message_added", assistant_message)
+
     def add_tool_results(self, tool_results) -> None:
         """Add tool results - accepts both dicts and objects"""
         # Ensure tool_results is iterable
@@ -154,6 +171,11 @@ class MessageHistory:
             cache_message(tool_message)
             
             self.messages.append(tool_message)
+            
+            # Call plugin hooks for each tool message
+            if self._plugin_system:
+                self._plugin_system.call_hooks("after_tool_results_added", tool_message)
+        
         # Update context size estimate
         self.estimate_context()
 
@@ -209,6 +231,10 @@ class MessageHistory:
             cache_message(msg)
         
         self.estimate_context()
+        
+        # Call plugin hooks for serious operations like compaction, load, /m edits
+        if self._plugin_system:
+            self._plugin_system.call_hooks("after_messages_set", messages)
 
     def get_message_count(self) -> int:
         """Get total message count"""
