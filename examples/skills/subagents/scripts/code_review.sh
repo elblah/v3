@@ -5,6 +5,14 @@
 
 set -e
 
+# Check for AICODER_CMD
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD environment variable is not set."
+    echo "This should be provided by AI Coder wrapper script."
+    exit 1
+fi
+
+
 # Export global settings for all subagents
 export YOLO_MODE=1
 export MINI_SANDBOX=0
@@ -17,23 +25,27 @@ mkdir -p "$TEMP_DIR"
 echo "🔍 Launching multi-perspective code review..."
 
 # Security Reviewer
+echo "Review the codebase for security issues and vulnerabilities. Focus on authentication, input validation, file permissions, and potential attack vectors." | \
 AICODER_SYSTEM_PROMPT="You are a SECURITY REVIEWER. Focus exclusively on security vulnerabilities, authentication issues, input validation problems, and potential attack vectors. Provide specific, actionable findings with severity levels." \
-echo "Review the codebase for security issues and vulnerabilities. Focus on authentication, input validation, file permissions, and potential attack vectors." | python main.py > "$TEMP_DIR/security_review.txt" &
+$AICODER_CMD > "$TEMP_DIR/security_review.txt" &
 PID1=$!
 
-# Performance Reviewer  
+# Performance Reviewer
+echo "Review the codebase for performance issues. Look for inefficient algorithms, memory leaks, database query problems, and scalability limitations." | \
 AICODER_SYSTEM_PROMPT="You are a PERFORMANCE REVIEWER. Focus exclusively on performance bottlenecks, efficiency issues, resource usage problems, and scalability concerns. Identify specific optimization opportunities." \
-echo "Review the codebase for performance issues. Look for inefficient algorithms, memory leaks, database query problems, and scalability limitations." | python main.py > "$TEMP_DIR/performance_review.txt" &
+$AICODER_CMD > "$TEMP_DIR/performance_review.txt" &
 PID2=$!
 
 # Code Quality Reviewer
+echo "Review the codebase for code quality issues. Examine structure, naming conventions, documentation, error handling, and adherence to best practices." | \
 AICODER_SYSTEM_PROMPT="You are a CODE QUALITY REVIEWER. Focus exclusively on maintainability, design patterns, code organization, and best practices violations. Highlight specific improvements needed." \
-echo "Review the codebase for code quality issues. Examine structure, naming conventions, documentation, error handling, and adherence to best practices." | python main.py > "$TEMP_DIR/quality_review.txt" &
+$AICODER_CMD > "$TEMP_DIR/quality_review.txt" &
 PID3=$!
 
 # Testing Reviewer
+echo "Review the codebase for testing issues. Analyze test coverage, test quality, missing edge cases, and overall testing strategy." | \
 AICODER_SYSTEM_PROMPT="You are a TESTING REVIEWER. Focus exclusively on test coverage, test quality, edge cases, and testing strategy. Identify gaps and improvements needed." \
-echo "Review the codebase for testing issues. Analyze test coverage, test quality, missing edge cases, and overall testing strategy." | python main.py > "$TEMP_DIR/testing_review.txt" &
+$AICODER_CMD > "$TEMP_DIR/testing_review.txt" &
 PID4=$!
 
 echo "📡 Code reviewers launched (PIDs: $PID1, $PID2, $PID3, $PID4)"

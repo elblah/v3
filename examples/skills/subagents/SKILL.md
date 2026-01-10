@@ -27,12 +27,45 @@ Each subagent can have:
 - Specific task instructions
 - Isolated output file for results
 - Individual timeout and retry settings
+- **Optional**: Persistent session via `SESSION_FILE` (see Session Persistence below)
 
 ### Parallel Execution
 - Launch multiple processes in background using `&`
 - Capture process IDs for coordination
 - Use `wait` for synchronization
 - Handle failures and partial results gracefully
+
+### ⚠️ CRITICAL: Environment Variable Placement
+
+**IMPORTANT**: Environment variables (`AICODER_SYSTEM_PROMPT`, `SESSION_FILE`) must be placed **AFTER** the pipe (`|`) to affect the `$AICODER_CMD` process.
+
+**Why this matters:**
+
+Environment variables set BEFORE the pipe apply only to the `echo` command, not to the `$AICODER_CMD` process that receives the piped input.
+
+**❌ INCORRECT pattern:**
+```bash
+# Variables affect ONLY the echo process, NOT $AICODER_CMD
+AICODER_SYSTEM_PROMPT="You are an expert" \
+echo "Analyze this" | $AICODER_CMD > output.txt &
+```
+
+**✅ CORRECT pattern:**
+```bash
+# Variables affect $AICODER_CMD (the intended target)
+echo "Analyze this" | \
+AICODER_SYSTEM_PROMPT="You are an expert" \
+$AICODER_CMD > output.txt &
+```
+
+**Alternative using export:**
+If you export the variable before launching, it works for both sides of the pipe:
+```bash
+export AICODER_SYSTEM_PROMPT="You are an expert"
+echo "Analyze this" | $AICODER_CMD > output.txt &
+```
+
+**Best practice:** For subagents, set environment variables immediately before `$AICODER_CMD` to ensure each agent gets its specific settings without polluting the global environment.
 
 ### Result Synthesis
 - Main agent reads all result files
@@ -47,18 +80,22 @@ Launch specialized reviewers simultaneously:
 
 ```bash
 # Security Reviewer
+echo "Review the codebase for security issues" | \
 AICODER_SYSTEM_PROMPT="You are a SECURITY REVIEWER. Focus only on security vulnerabilities, authentication issues, input validation, and potential attack vectors." \
-echo "Review the codebase for security issues" | python main.py > security_review.txt &
+$AICODER_CMD > security_review.txt &
 
-# Performance Reviewer  
+# Performance Reviewer
+echo "Review the codebase for performance issues" | \
 AICODER_SYSTEM_PROMPT="You are a PERFORMANCE REVIEWER. Focus only on performance issues, efficiency, resource usage, and scalability concerns." \
-echo "Review the codebase for performance issues" | python main.py > performance_review.txt &
+$AICODER_CMD > performance_review.txt &
 
 # Code Quality Reviewer
+echo "Review the codebase for code quality issues" | \
 AICODER_SYSTEM_PROMPT="You are a CODE QUALITY REVIEWER. Focus only on maintainability, design patterns, and best practices." \
-echo "Review the codebase for code quality issues" | python main.py > quality_review.txt &
+$AICODER_CMD > quality_review.txt &
 
 wait  # Wait for all reviews to complete
+
 ```
 
 ### Pattern 2: Parallel Documentation Generation
@@ -66,15 +103,16 @@ Generate different documentation types simultaneously:
 
 ```bash
 # API Documentation
-echo "Extract and document all APIs" | python main.py > api_docs.txt &
+echo "Extract and document all APIs" | $AICODER_CMD > api_docs.txt &
 
 # Architecture Documentation
-echo "Document architecture patterns and design" | python main.py > arch_docs.txt &
+echo "Document architecture patterns and design" | $AICODER_CMD > arch_docs.txt &
 
-# Setup Documentation  
-echo "Document installation and configuration" | python main.py > setup_docs.txt &
+# Setup Documentation
+echo "Document installation and configuration" | $AICODER_CMD > setup_docs.txt &
 
 wait  # Wait for all documentation to complete
+
 ```
 
 ### Pattern 3: Research and Synthesis
@@ -82,9 +120,9 @@ Multiple research angles with final synthesis:
 
 ```bash
 # Phase 1: Parallel research
-echo "Research technical aspects of X" | python main.py > technical_research.txt &
-echo "Research business aspects of X" | python main.py > business_research.txt &
-echo "Research user experience aspects of X" | python main.py > ux_research.txt &
+echo "Research technical aspects of X" | $AICODER_CMD > technical_research.txt &
+echo "Research business aspects of X" | $AICODER_CMD > business_research.txt &
+echo "Research user experience aspects of X" | $AICODER_CMD > ux_research.txt &
 wait
 
 # Phase 2: Synthesize all research
@@ -94,7 +132,7 @@ You are a SYNTHESIS EXPERT. Combine insights from three research perspectives:
 === TECHNICAL RESEARCH ===
 $(cat technical_research.txt)
 
-=== BUSINESS RESEARCH ===  
+=== BUSINESS RESEARCH ===
 $(cat business_research.txt)
 
 === UX RESEARCH ===
@@ -103,7 +141,8 @@ $(cat ux_research.txt)
 Create comprehensive synthesis covering all aspects.
 EOF
 
-cat synthesis_input.txt | python main.py > final_synthesis.txt
+cat synthesis_input.txt | $AICODER_CMD > final_synthesis.txt
+
 ```
 
 ## Configuration Requirements
@@ -114,14 +153,33 @@ Always set these for reliable subagent execution:
 ```bash
 export YOLO_MODE=1        # Auto-approve all tool actions
 export MINI_SANDBOX=0     # Full file access for agents
-export MAX_RETRIES=10       # Handle API issues gracefully
+export MAX_RETRIES=10     # Handle API issues gracefully
+
 ```
 
+**Required**: `AICODER_CMD` must be set by AI Coder wrapper script. Never set this in subagent scripts - it is provided externally.
+
+Check if `AICODER_CMD` is set before launching subagents:
+```bash
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD environment variable is not set."
+    echo "This should be provided by AI Coder wrapper script."
+    exit 1
+fi
+
+```
+
+Use `$AICODER_CMD` when launching subagents:
+```bash
+$AICODER_CMD ...
+
+```
 ### Optional Performance Tuning
 ```bash
 export CONTEXT_SIZE=32000          # Smaller context for faster processing
 export STREAMING_TIMEOUT=120       # Longer timeout for complex tasks
 export STREAMING_READ_TIMEOUT=30  # Per-read timeout
+
 ```
 
 ## Important Usage Guidelines
@@ -150,6 +208,7 @@ ALWAYS inform the user about:
 run_shell_command "./launch_subagents.sh" timeout=300  # 5 minutes for basic parallel tasks
 run_shell_command "./subagent_orchestrator.sh" timeout=600  # 10 minutes for complex workflows
 run_shell_command "./comprehensive_analysis.sh" timeout=900  # 15 minutes for large codebases
+
 ```
 
 **Timeout guidelines:**
@@ -172,6 +231,8 @@ Always handle scenarios where:
 4. Offer to retry full execution if user desires
 
 ## Available Scripts
+
+> **⚠️ IMPORTANT**: The scripts listed below are **examples and suggestions only**. They demonstrate the subagent patterns and workflows but are not mandatory. Feel free to modify them or create your own custom scripts based on your specific needs. The key is understanding the patterns (parallel execution, environment variable placement, session persistence) rather than copying these scripts exactly.
 
 ### Core Scripts
 - `scripts/launch_subagents.sh` - Basic 4-agent parallel launcher
@@ -198,6 +259,7 @@ Launch parallel code review:
 EOF
 
 ./scripts/subagent_runner.sh "Security-focused code review" "Performance-focused code review" "Code quality and maintainability review"
+
 ```
 
 ### Documentation Generation
@@ -205,6 +267,7 @@ EOF
 # Complete documentation package
 echo "Generate comprehensive documentation package" | 
 ./scripts/subagent_orchestrator.sh
+
 ```
 
 ### Security Audit
@@ -214,6 +277,7 @@ export AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Focus exclusively on s
 
 echo "Conduct comprehensive security audit of this codebase" | 
 ./scripts/subagent_runner.sh "Authentication and authorization review" "Input validation and injection vulnerabilities" "File system and permission security" "API security analysis"
+
 ```
 
 ## Best Practices
@@ -241,17 +305,18 @@ Multi-phase workflows where later agents depend on earlier results:
 
 ```bash
 # Phase 1: Data collection
-echo "Extract all API endpoints" | python main.py > endpoints.txt &
-echo "List all database queries" | python main.py > queries.txt &
+echo "Extract all API endpoints" | $AICODER_CMD > endpoints.txt &
+echo "List all database queries" | $AICODER_CMD > queries.txt &
 wait
 
 # Phase 2: Analysis of collected data
-echo "Analyze these endpoints for security: $(cat endpoints.txt)" | python main.py > endpoint_security.txt &
-echo "Analyze these queries for performance: $(cat queries.txt)" | python main.py > query_performance.txt &
+echo "Analyze these endpoints for security: $(cat endpoints.txt)" | $AICODER_CMD > endpoint_security.txt &
+echo "Analyze these queries for performance: $(cat queries.txt)" | $AICODER_CMD > query_performance.txt &
 wait
 
 # Phase 3: Final synthesis
-echo "Create security report from: endpoint_security.txt + query_performance.txt" | python main.py > final_security_report.txt
+echo "Create security report from: endpoint_security.txt + query_performance.txt" | $AICODER_CMD > final_security_report.txt
+
 ```
 
 ### Competitive Analysis
@@ -259,21 +324,195 @@ Multiple approaches to same problem for comparison:
 
 ```bash
 # Different architectures for same task
+echo "Design authentication system" | \
 AICODER_SYSTEM_PROMPT="You are an ENTERPRISE ARCHITECT. Focus on scalability, maintainability, and enterprise patterns." \
-echo "Design authentication system" | python main.py > enterprise_design.txt &
+$AICODER_CMD > enterprise_design.txt &
 
+echo "Design authentication system" | \
 AICODER_SYSTEM_PROMPT="You are a STARTUP ARCHITECT. Focus on speed, simplicity, and rapid development." \
-echo "Design authentication system" | python main.py > startup_design.txt &
+$AICODER_CMD > startup_design.txt &
 
+echo "Design authentication system" | \
 AICODER_SYSTEM_PROMPT="You are a SECURITY ARCHITECT. Focus on zero-trust, encryption, and defense in depth." \
-echo "Design authentication system" | python main.py > security_design.txt &
+$AICODER_CMD > security_design.txt &
 
 wait
 
 # Compare and recommend
-echo "Compare these three authentication designs and recommend best approach: enterprise_design.txt + startup_design.txt + security_design.txt" | python main.py > design_comparison.txt
+echo "Compare these three authentication designs and recommend best approach: enterprise_design.txt + startup_design.txt + security_design.txt" | $AICODER_CMD > design_comparison.txt
+
+```
+
+## Session Persistence (Advanced Feature)
+
+### Overview
+
+The `session-autosaver` plugin enables subagents to maintain persistent conversation history via the `SESSION_FILE` environment variable. This is an **optional advanced feature** - use it only when it provides clear value.
+
+### Session Autosaver Plugin
+
+**Location**: `plugins/session-autosaver.py`
+
+**What it does**:
+- Automatically loads and saves session to `SESSION_FILE` in JSONL format
+- Auto-loads existing session on startup
+- Auto-appends messages (user, assistant, tool) during execution
+- Supports both `.json` and `.jsonl` formats (detected from file extension)
+
+**Activation**: The plugin activates automatically when `SESSION_FILE` is set. No other configuration needed.
+
+**⚠️ AI Requirements**: When using SESSION_FILE, the AI must inform the user:
+> "⚠️ Using session persistence feature. This requires the `session-autosaver` plugin (auto-activates when SESSION_FILE is set)."
+
+### Minimal Session Persistence Example
+
+This is the simplest possible test of session persistence - setting a value in one call and recalling it in another:
+
+```bash
+#!/bin/bash
+# Minimal session persistence test
+
+export YOLO_MODE=1
+export MINI_SANDBOX=0
+export MAX_RETRIES=10
+export SESSION_FILE="/tmp/simple_test.jsonl"
+
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD not set"
+    exit 1
+fi
+
+# Phase 1: Store information
+echo "My name is Alex. Remember this." | \
+SESSION_FILE="$SESSION_FILE" \
+$AICODER_CMD
+
+# Phase 2: Recall information
+echo "What is my name?" | \
+SESSION_FILE="$SESSION_FILE" \
+$AICODER_CMD
+
+# Verify session file exists
+cat "$SESSION_FILE"
+```
+
+**Expected behavior:**
+- Phase 1: AI responds and creates `simple_test.jsonl` with the conversation
+- Phase 2: AI loads the session and correctly recalls "Alex"
+- Both phases use the same session file, so memory persists
+
+**Note the critical placement:** `SESSION_FILE` is set AFTER the pipe, before `$AICODER_CMD`.
+
+### When to Use Session Persistence
+
+**✅ Use when**:
+- Multi-phase workflows where later phases build on earlier work
+- Agent will be called multiple times with related tasks
+- Need to resume analysis later or debug agent behavior
+- Progressive deep-dive analysis (initial scan → detailed analysis → final report)
+
+**❌ Don't use when**:
+- Single-shot, one-time analysis
+- Independent parallel tasks that don't share context
+- Simple workflows where session overhead isn't justified
+- Performance-critical scenarios where extra I/O is problematic
+
+### Usage Pattern
+
+```bash
+# Phase 1: Initial analysis - session will be saved
+echo "Phase 1: Conduct broad security scan" | \
+AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track findings systematically." \
+SESSION_FILE="/tmp/security_session.jsonl" \
+$AICODER_CMD > phase1.txt &
+PID1=$!
+wait $PID1
+
+# Phase 2: Deep dive - session loaded, can reference Phase 1 findings
+echo "Phase 2: Deep dive analysis based on Phase 1 findings" | \
+AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track findings systematically." \
+SESSION_FILE="/tmp/security_session.jsonl" \
+$AICODER_CMD > phase2.txt &
+PID2=$!
+wait $PID2
+
+```
+
+### Session File Format
+
+**JSONL format** (recommended - one JSON per line):
+```jsonl
+{"role": "system", "content": "You are a SECURITY AUDITOR..."}
+{"role": "user", "content": "Phase 1: Conduct broad security scan"}
+{"role": "assistant", "content": "Found 3 vulnerabilities..."}
+{"role": "user", "content": "Phase 2: Deep dive analysis..."}
+
+```
+
+**JSON format** (backward compatible - array):
+```json
+[
+  {"role": "system", "content": "You are a SECURITY AUDITOR..."},
+  {"role": "user", "content": "Phase 1: Conduct broad security scan"}
+]
+
+```
+
+Format is automatically detected from file extension (`.jsonl` vs `.json`).
+
+### AI Decision Flow
+
+
+```
+Is the agent being called multiple times with related tasks?
+  ├─ YES → Will later calls need context from earlier calls?
+  │         ├─ YES → Use SESSION_FILE
+  │         └─ NO  → Don't use SESSION_FILE
+  └─ NO  → Don't use SESSION_FILE
+
+```
+
+### Example: Multi-Phase Security Audit
+
+```bash
+#!/bin/bash
+export YOLO_MODE=1
+export MINI_SANDBOX=0
+export MAX_RETRIES=10
+
+AUDIT_DIR="/tmp/security_audit_$(date +%s)"
+mkdir -p "$AUDIT_DIR"
+
+# Phase 1: Initial scan with persistent session
+echo "Conduct initial security scan focusing on authentication and authorization" | \
+AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track all findings systematically." \
+SESSION_FILE="$AUDIT_DIR/audit_session.jsonl" \
+$AICODER_CMD > "$AUDIT_DIR/phase1_initial.txt" &
+PID1=$!
+wait $PID1
+
+# Phase 2: Deep dive using previous context
+echo "Based on initial findings, conduct deep dive on input validation and SQL injection" | \
+AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track all findings systematically." \
+SESSION_FILE="$AUDIT_DIR/audit_session.jsonl" \
+$AICODER_CMD > "$AUDIT_DIR/phase2_deepdive.txt" &
+PID2=$!
+wait $PID2
+
+# Phase 3: Final synthesis
+echo "Create comprehensive security report with severity levels and remediation steps" | \
+AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track all findings systematically." \
+SESSION_FILE="$AUDIT_DIR/audit_session.jsonl" \
+$AICODER_CMD > "$AUDIT_DIR/phase3_final_report.txt" &
+PID3=$!
+wait $PID3
+
+echo "✅ Multi-phase audit complete!"
+echo "📁 Results: $AUDIT_DIR"
+echo "💾 Session history: $AUDIT_DIR/audit_session.jsonl"
+
 ```
 
 ## Keywords
 
-subagents, parallel agents, multi-agent, concurrent processing, parallel execution, simultaneous analysis, multi-perspective review, code review, security audit, performance analysis, documentation generation, research synthesis, competitive analysis, hierarchical workflow
+subagents, parallel agents, multi-agent, concurrent processing, parallel execution, simultaneous analysis, multi-perspective review, code review, security audit, performance analysis, documentation generation, research synthesis, competitive analysis, hierarchical workflow, session persistence, SESSION_FILE, session autosaver, multi-phase workflow
