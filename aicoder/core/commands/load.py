@@ -9,6 +9,8 @@ from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 from aicoder.utils.file_utils import file_exists
 from aicoder.utils.json_utils import read_file
+from aicoder.utils.jsonl_utils import read_file as read_jsonl
+from pathlib import Path
 
 
 class LoadCommand(BaseCommand):
@@ -42,20 +44,34 @@ class LoadCommand(BaseCommand):
                 LogUtils.error(f"Session file not found: {filename}")
                 return CommandResult(should_quit=False, run_api_call=False)
 
-            session_data = read_file(filename)
-
-            # Handle both formats: direct array of messages or object with messages property
-            messages = (
-                session_data
-                if isinstance(session_data, list)
-                else session_data.get("messages", [])
-            )
-
-            if messages and isinstance(messages, list):
-                self.context.message_history.set_messages(messages)
-                LogUtils.success(f"Session loaded from {filename}")
+            # Detect format based on file extension
+            is_jsonl = Path(filename).suffix.lower() == ".jsonl"
+            
+            if is_jsonl:
+                # Load JSONL format
+                messages = read_jsonl(filename)
+                if messages and isinstance(messages, list):
+                    self.context.message_history.set_messages(messages)
+                    LogUtils.success(f"Session loaded from {filename} (JSONL format)")
+                else:
+                    LogUtils.error("Invalid JSONL session file format")
             else:
-                LogUtils.error("Invalid session file format")
+                # Load JSON format (backward compatibility)
+                session_data = read_file(filename)
+
+                # Handle both formats: direct array of messages or object with messages property
+                messages = (
+                    session_data
+                    if isinstance(session_data, list)
+                    else session_data.get("messages", [])
+                )
+
+                if messages and isinstance(messages, list):
+                    self.context.message_history.set_messages(messages)
+                    LogUtils.success(f"Session loaded from {filename} (JSON format)")
+                else:
+                    LogUtils.error("Invalid JSON session file format")
+                    
         except Exception as e:
             LogUtils.error(f"Error loading session: {e}")
 

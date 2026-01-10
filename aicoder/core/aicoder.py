@@ -93,6 +93,7 @@ class AICoder:
         # Set app reference so plugins can access components directly via ctx.app
         self.plugin_system.set_app(self)
         self.tool_manager.set_plugin_system(self.plugin_system)
+        self.message_history.set_plugin_system(self.plugin_system)
 
         self.plugin_system.load_plugins()
 
