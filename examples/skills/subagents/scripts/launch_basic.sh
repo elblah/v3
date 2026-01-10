@@ -3,6 +3,14 @@
 # Basic Subagent Launcher - Runs 4 specialized agents in parallel
 # Each agent analyzes different aspects of the codebase
 
+# Check for AICODER_CMD
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD environment variable is not set."
+    echo "This should be provided by AI Coder wrapper script."
+    exit 1
+fi
+
+
 set -e
 
 # Export global settings for all subagents
@@ -17,20 +25,21 @@ mkdir -p "$TEMP_DIR"
 echo "🚀 Launching 4 subagents for basic analysis..."
 
 # Subagent 1: File Explorer (using default system prompt)
-echo "Analyze this codebase and tell me what it is in 2-3 sentences." | python main.py > "$TEMP_DIR/file_explorer.txt" &
+echo "Analyze this codebase and tell me what it is in 2-3 sentences." | $AICODER_CMD > "$TEMP_DIR/file_explorer.txt" &
 PID1=$!
 
 # Subagent 2: Documentation Analyzer (using default system prompt)  
-echo "Read the README.md file and list the top 5 key features in bullet points." | python main.py > "$TEMP_DIR/doc_analysis.txt" &
+echo "Read the README.md file and list the top 5 key features in bullet points." | $AICODER_CMD > "$TEMP_DIR/doc_analysis.txt" &
 PID2=$!
 
 # Subagent 3: Code Structure Analyzer (custom prompt for demo)
+echo "Analyze the main.py file and the aicoder/core/ directory structure. What are the main components?" | \
 AICODER_SYSTEM_PROMPT="You are a CODE STRUCTURE ANALYZER. Your only job is to analyze Python code structure and identify architectural patterns. Be brief and technical." \
-echo "Analyze the main.py file and the aicoder/core/ directory structure. What are the main components?" | python main.py > "$TEMP_DIR/code_structure.txt" &
+$AICODER_CMD > "$TEMP_DIR/code_structure.txt" &
 PID3=$!
 
 # Subagent 4: Plugin System Analyzer (using default system prompt)
-echo "Analyze the plugins/ directory and the plugin system. How do plugins work in this codebase?" | python main.py > "$TEMP_DIR/plugin_analysis.txt" &
+echo "Analyze the plugins/ directory and the plugin system. How do plugins work in this codebase?" | $AICODER_CMD > "$TEMP_DIR/plugin_analysis.txt" &
 PID4=$!
 
 echo "📡 All subagents launched (PIDs: $PID1, $PID2, $PID3, $PID4)"

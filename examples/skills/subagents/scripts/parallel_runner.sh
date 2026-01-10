@@ -5,6 +5,14 @@
 
 set -e
 
+# Check for AICODER_CMD
+if [ -z "$AICODER_CMD" ]; then
+    echo "Error: AICODER_CMD environment variable is not set."
+    echo "This should be provided by AI Coder wrapper script."
+    exit 1
+fi
+
+
 # Export global settings for all subagents
 export YOLO_MODE=1
 export MINI_SANDBOX=0
@@ -32,7 +40,7 @@ for task in "$@"; do
     OUTPUT_FILE="$TEMP_DIR/task_${TASK_COUNT}.txt"
     
     # Launch agent in background
-    echo "$task" | python main.py > "$OUTPUT_FILE" &
+    echo "$task" | $AICODER_CMD > "$OUTPUT_FILE" &
     PID=$!
     
     echo "  📡 Agent $TASK_COUNT (PID: $PID): $task"
