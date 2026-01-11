@@ -10,6 +10,7 @@ from typing import List, Optional, Callable
 import readline
 from aicoder.core.config import Config
 from aicoder.core import prompt_history
+from aicoder.tools.internal import run_shell_command
 
 
 from aicoder.utils.shell_utils import ShellResult, execute_command_sync
@@ -64,6 +65,11 @@ class InputHandler:
             return sys.stdin.readline() or ""
 
         try:
+            # Kill any orphaned subprocess from Ctrl+C before showing prompt
+            if run_shell_command._active_proc is not None:
+                print(f"[*] Killing active subprocess (PID: {run_shell_command._active_proc.pid})")
+                run_shell_command.kill_active_process()
+
             # Show context bar before user prompt (if available)
             if self.context_bar and self.stats and self.message_history:
                 self.context_bar.print_context_bar_for_user(

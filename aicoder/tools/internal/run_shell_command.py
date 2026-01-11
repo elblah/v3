@@ -11,8 +11,30 @@ from typing import Dict, Any, Optional
 from aicoder.core.config import Config
 
 
+# Global reference to active subprocess for Ctrl+C cleanup
+_active_proc: Optional[subprocess.Popen] = None
+
+
+def _kill_process_group(proc: subprocess.Popen) -> None:
+    """Kill entire process group"""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass  # Process already dead or can't access
+
+
+def kill_active_process() -> None:
+    """Kill active subprocess if exists (called before showing prompt)"""
+    global _active_proc
+    if _active_proc is not None:
+        _kill_process_group(_active_proc)
+        _active_proc = None
+
+
 def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
     """Execute command with proper process group termination"""
+    global _active_proc
+
     # Create process group for the entire process tree
     proc = subprocess.Popen(
         command,
@@ -25,7 +47,9 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
         errors="replace",
         cwd=cwd,
     )
-    
+
+    _active_proc = proc
+
     try:
         # Wait for timeout with communicate
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -35,32 +59,34 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
             stdout=stdout,
             stderr=stderr
         )
-        
+
     except subprocess.TimeoutExpired:
         # Kill entire process group (all children)
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except ProcessLookupError:
-            pass  # Process already dead
-        
-        # Give it a moment to cleanup gracefully
-        time.sleep(2)
-        
-        # Force kill if still running
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except ProcessLookupError:
-            pass  # Already dead
-        
+        _kill_process_group(proc)
+        time.sleep(2)  # Give it a moment to cleanup gracefully
+        _kill_process_group(proc)  # Force kill if still running
+
         # Get remaining output
         stdout, stderr = proc.communicate()
-        
+
         return subprocess.CompletedProcess(
             args=command,
             returncode=-1,  # Custom code for timeout
             stdout=stdout,
             stderr=stderr
         )
+
+    finally:
+        # Kill subprocess before clearing reference (handles Ctrl+C)
+        if _active_proc is not None:
+            print(f"[*] Killing active subprocess (PID: {_active_proc.pid})")
+            _kill_process_group(_active_proc)
+            # Reap the process to clean up zombies
+            try:
+                _active_proc.communicate(timeout=1)
+            except Exception:
+                pass
+            _active_proc = None
 
 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
