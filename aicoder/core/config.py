@@ -296,6 +296,60 @@ class Config:
         """
         return int(os.environ.get("MAX_TOOL_RESULT_SIZE", "300000"))
 
+    # Default directories to ignore when listing files
+    DEFAULT_IGNORE_DIRS = [
+        '.git',
+        '__pycache__',
+        '.ruff_cache',
+        '.pytest_cache',
+        '.aicoder',
+        'node_modules',
+        '.egg-info',
+        '.dist-info',
+        '.tox',
+        '.venv',
+        'venv',
+        '.mypy_cache',
+        '.hg',
+        '.svn',
+    ]
+
+    # Default file patterns to ignore (matched with endswith)
+    DEFAULT_IGNORE_PATTERNS = [
+        '.pyc',
+        '.pyo',
+        '.DS_Store',
+        '._',
+        '*~',
+        '.*.swp',
+    ]
+
+    @staticmethod
+    def ignore_dirs() -> list:
+        """
+        Get directories to ignore when listing files.
+        Returns default ignore dirs plus any user-specified via AICODER_IGNORE_DIRS.
+        """
+        env_value = os.environ.get('AICODER_IGNORE_DIRS', '')
+        if not env_value:
+            return Config.DEFAULT_IGNORE_DIRS
+
+        user_dirs = [d.strip() for d in env_value.split(',') if d.strip()]
+        return Config.DEFAULT_IGNORE_DIRS + user_dirs
+
+    @staticmethod
+    def ignore_patterns() -> list:
+        """
+        Get file patterns to ignore when listing files.
+        Returns default patterns plus any user-specified via AICODER_IGNORE_PATTERNS.
+        """
+        env_value = os.environ.get('AICODER_IGNORE_PATTERNS', '')
+        if not env_value:
+            return Config.DEFAULT_IGNORE_PATTERNS
+
+        user_patterns = [p.strip() for p in env_value.split(',') if p.strip()]
+        return Config.DEFAULT_IGNORE_PATTERNS + user_patterns
+
     # Debug and Development - initialize from env var ONCE at module load time
     _debug_enabled = os.environ.get("DEBUG") == "1"
 
