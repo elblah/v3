@@ -77,8 +77,9 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
         )
 
     finally:
-        # Kill subprocess before clearing reference (handles Ctrl+C)
-        if _active_proc is not None:
+        # Only kill if process is still running (Ctrl+C or timeout case)
+        # Normal completion already cleaned up via communicate() in try block
+        if _active_proc is not None and _active_proc.poll() is None:
             print(f"[*] Killing active subprocess (PID: {_active_proc.pid})")
             _kill_process_group(_active_proc)
             # Reap the process to clean up zombies
