@@ -24,7 +24,7 @@ def formatArguments(args: Dict[str, Any]) -> str:
 
 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
-    """List directory contents"""
+    """List directory contents using os.walk with ignore dir filtering"""
     path = args.get("path", ".")
     MAX_FILES = 100
 
@@ -35,9 +35,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         resolved_path = os.path.abspath(path)
 
         # Check sandbox restrictions
-        # Check sandbox restrictions, but don't print message (will show in result)
         if not _check_sandbox(resolved_path, print_message=False):
-            # Create sandbox message in result instead of printing
             sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
             return {
                 "tool": "list_directory",
@@ -53,23 +51,30 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
                 "detailed": f"Directory not found at '{resolved_path}'. Path does not exist or is not a directory."
             }
 
-        # Use find to list files - much faster and simpler
-        import subprocess
+        # Get directories and patterns to ignore
+        ignore_dirs = set(Config.ignore_dirs())
+        ignore_patterns = Config.ignore_patterns()
 
-        find_command = f'find "{resolved_path}" -type f -print0 | head -z -n {MAX_FILES + 1} | tr "\\0" "\\n"'
-        result = subprocess.run(
-            find_command, shell=True, capture_output=True, text=True, timeout=30
-        )
+        # Use os.walk to list files with ignore dir filtering
+        files = []
+        for root, dirs, filenames in os.walk(resolved_path):
+            # Filter dirs in-place to skip them in recursion
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
-        if result.returncode != 0:
-            raise Exception(f"find command failed: {result.stderr}")
+            for filename in filenames:
+                # Skip files matching ignore patterns
+                if any(filename.endswith(pattern) for pattern in ignore_patterns):
+                    continue
 
-        # Split and filter files
-        files = [
-            file.strip()
-            for file in result.stdout.split("\n")
-            if file.strip() and file.strip() != resolved_path
-        ]
+                full_path = os.path.join(root, filename)
+                files.append(full_path)
+
+                # Stop early if we have enough files
+                if len(files) >= MAX_FILES + 1:
+                    break
+
+            if len(files) >= MAX_FILES + 1:
+                break
 
         actual_count = len(files)
         limited_files = files[:MAX_FILES]
@@ -84,14 +89,14 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         elif actual_count > MAX_FILES:
             return {
                 "tool": "list_directory",
-                "friendly": f"Found {actual_count}+ files (limited to {MAX_FILES}) in '{resolved_path}'",
-                "detailed": f"Directory contains {actual_count} items total. Showing first {MAX_FILES}:\n\n{chr(10).join(limited_files)}"
+                "friendly": f"Found {MAX_FILES}+ files in '{resolved_path}'",
+                "detailed": f"Showing first {MAX_FILES} files:\n\n{chr(10).join(limited_files)}"
             }
         else:
             return {
                 "tool": "list_directory",
                 "friendly": f"✓ Found {actual_count} files in '{resolved_path}'",
-                "detailed": f"Directory '{resolved_path}' contents ({actual_count} items):\n\n{chr(10).join(limited_files)}"
+                "detailed": f"Directory '{resolved_path}' contents:\n\n{chr(10).join(limited_files)}"
             }
 
     except Exception as e:
