@@ -91,7 +91,7 @@ class ToolExecutor:
                 LogUtils.print(formatted_args, LogOptions(color=Config.colors["cyan"]))
 
         # Check approval
-        if not self._get_tool_approval(tool_name):
+        if not self._get_tool_approval(tool_name, arguments):
             return {
                 "tool_call_id": tool_call.get("id", ""),
                 "content": "Tool execution cancelled by user",
@@ -160,8 +160,11 @@ class ToolExecutor:
 
     
 
-    def _get_tool_approval(self, tool_name: str) -> bool:
+    def _get_tool_approval(self, tool_name: str, arguments: dict) -> bool:
         """Get user approval for tool if needed
+
+        Plugins can intercept by returning True (approve) or False (deny)
+        from the before_approval_prompt hook. Arguments are passed as (tool_name, arguments).
 
         Returns: bool indicating if tool was approved
         Note: + modifier is handled at session level for flow control
@@ -169,9 +172,22 @@ class ToolExecutor:
         if not self.tool_manager.needs_approval(tool_name) or Config.yolo_mode():
             return True
 
-        # Call plugin hook before approval prompt
+        # Call plugin hook with tool info (plugins can return True=approve, False=deny, None=ask user)
         if self.plugin_system:
-            self.plugin_system.call_hooks("before_approval_prompt")
+            results = self.plugin_system.call_hooks("before_approval_prompt", tool_name, arguments)
+            if results:
+                for result in results:
+                    if result is False:
+                        LogUtils.warn("[auto-deny] Plugin denied this tool")
+                        return False
+                # If any True returned (and no False), auto-approve
+                if any(r is True for r in results):
+                    LogUtils.print("[auto-approve] Plugin approved this tool")
+                    return True
+                # If all None but we have results, still ask user (plugins didn't decide)
+                if not any(r is True for r in results):
+                    # Plugins returned False or None, but no True - fall through to ask user
+                    pass
 
         try:
             approval = input("Approve [Y/n]: ").strip().lower()

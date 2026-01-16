@@ -118,12 +118,47 @@ def my_tool(args):
 ## Available Hooks
 
 - `before_user_prompt` - Before showing user input prompt
-- `before_approval_prompt` - Before showing tool approval
+- `before_approval_prompt` - Before showing tool approval (can return `True`=auto-approve, `False`=auto-deny, `None`=ask user)
 - `before_file_write(path, content)` - Before writing file (can return modified content)
 - `after_file_write(path, content)` - After file is written (file exists at this point)
 - `after_tool_results(tool_results)` - After tool results are added to message history (safe time to add plugin messages)
 
+### Auto-Approve/Deny with `before_approval_prompt`
+
+Plugins can intercept tool approval by returning a boolean from this hook:
+
+```python
+def before_approval_prompt(tool_name: str, arguments: dict) -> bool | None:
+    """
+    Called before approval prompt.
+
+    Returns:
+    - True  -> auto-approve (run the tool)
+    - False -> auto-deny (cancel the tool)
+    - None  -> ask user (default behavior)
+    """
+    if tool_name == "read_file":
+        return True  # Auto-approve all file reads
+
+    if tool_name == "run_shell_command":
+        cmd = arguments.get("command", "")
+        if cmd.startswith("rm "):
+            print(f"[auto-deny] Dangerous command: {cmd}")
+            return False  # Auto-deny rm commands
+
+    return None  # Ask user for everything else
+
+ctx.register_hook("before_approval_prompt", before_approval_prompt)
+```
+
+See `auto_approve.py` plugin for a regex-based implementation.
+
 ## Available Plugins
+
+- `auto_approve.py` - Auto approve/deny tools based on regex rules
+  - Hooks: `before_approval_prompt` (returns True/False/None)
+  - Rules file: `.aicoder/auto-approve-rules.json`
+  - Example: Auto-approve read_file, deny rm commands
 
 - `web_search.py` - Web search and URL content fetching
   - Tools: `web_search` (auto-approved), `get_url_content`
