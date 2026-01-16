@@ -51,8 +51,8 @@ All tools return dict with `tool`, `friendly`, and `detailed` keys:
 5. **grep** - Search text using ripgrep
    - Parameters: `text` (required), `path` (default: current), `max_results`, `context`
 
-6. **list_directory** - List files recursively
-   - Parameters: `path` (default: current directory)
+6. **list_directory** - List files recursively with optional pattern matching
+   - Parameters: `path` (default: current directory), `pattern` (optional glob like `*.py`)
 
 #### Plugin Tools
 Plugins can add additional tools. Common plugin tools:
