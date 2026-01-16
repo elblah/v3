@@ -2,6 +2,22 @@
 
 A fast, lightweight AI-assisted development tool that runs anywhere.
 
+## Installation
+
+### Official Method (Recommended)
+
+```bash
+uv tool install git+https://github.com/elblah/v3
+```
+
+### Manual Installation
+
+```bash
+git clone https://github.com/elblah/v3
+cd v3
+python main.py
+```
+
 ## Features
 
 - Built with Python standard library only (no external dependencies)
