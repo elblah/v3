@@ -125,7 +125,7 @@ def create_plugin(ctx):
     ctx.register_tool(
         name="web_search",
         fn=web_search,
-        description="Search to web for information using DuckDuckGo",
+        description="Search to web for information",
         parameters={
             "type": "object",
             "properties": {
