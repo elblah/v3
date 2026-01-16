@@ -3,8 +3,9 @@ List directory tool
 
 """
 
+import fnmatch
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from aicoder.core.config import Config
 
 
@@ -18,6 +19,9 @@ def validateArguments(args: Dict[str, Any]) -> None:
 def formatArguments(args: Dict[str, Any]) -> str:
     """Format arguments for approval display"""
     path = args.get("path", ".")
+    pattern = args.get("pattern")
+    if pattern:
+        return f"Listing '{path}' matching: {pattern}"
     if path and path != ".":
         return f"Listing directory: {path}"
     return ""
@@ -26,6 +30,7 @@ def formatArguments(args: Dict[str, Any]) -> str:
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """List directory contents using os.walk with ignore dir filtering"""
     path = args.get("path", ".")
+    pattern = args.get("pattern")
     MAX_FILES = 100
 
     try:
@@ -63,7 +68,11 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
             for filename in filenames:
                 # Skip files matching ignore patterns
-                if any(filename.endswith(pattern) for pattern in ignore_patterns):
+                if any(filename.endswith(p) for p in ignore_patterns):
+                    continue
+
+                # Skip files not matching pattern if specified
+                if pattern and not fnmatch.fnmatch(filename, pattern):
                     continue
 
                 full_path = os.path.join(root, filename)
@@ -200,13 +209,17 @@ TOOL_DEFINITION = {
     "approval_excludes_arguments": False,
     "approval_key_exclude_arguments": [],
     "hide_results": False,
-    "description": "List files and directories recursively with configurable maximum",
+    "description": "List files and directories recursively with optional pattern matching",
     "parameters": {
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
                 "description": "Directory path to list (defaults to current directory)",
+            },
+            "pattern": {
+                "type": "string",
+                "description": "Optional glob pattern to filter files (e.g., '*.py', 'test_*.json')",
             }
         },
         "additionalProperties": False,
