@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aicoder-v3"
+version = "0.2.0"
+description = "An AI-assisted coding tool"
+readme = "README.md"
+authors = [
+    {name = "DanielT"}
+]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elblah/v3"
+Repository = "https://github.com/elblah/v3"
+
+[project.scripts]
+aicoder-v3 = "main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["aicoder*"]
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.package-data]
+aicoder = ["**/*.md", "**/*.txt"]

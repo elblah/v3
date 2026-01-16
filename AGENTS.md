@@ -115,7 +115,7 @@ aicoder/
 - Early exits and guard clauses
 - Batch operations efficiently
 - Handle file errors by re-reading before editing
-- Use edit_file/write_file over shell commands when possible
+- Use edit_file/write_file over shell commands like sed, awk, custom scripts in any language with the objective to mass edit
 
 ### Plugin Context for Development
 When working with plugins:
