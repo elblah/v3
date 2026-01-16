@@ -23,7 +23,6 @@ AI Coder is a fast, lightweight AI-assisted development tool that runs anywhere.
 ### Plugin System
 Ultra-fast plugin system:
 - Available plugins in `plugins/` directory
-- Enabled plugins in `.aicoder/plugins/` (per-project)
 - Each plugin exports `create_plugin(context)` function
 - Plugins can register tools, commands, and hooks
 - Context provides access to full app via `ctx.app`
@@ -66,8 +65,6 @@ Variables that affect AI behavior:
 API_BASE_URL or OPENAI_BASE_URL     # API endpoint
 API_KEY or OPENAI_API_KEY            # Authentication (optional)
 API_MODEL or OPENAI_MODEL            # Model name
-TEMPERATURE                          # Temperature (default: 0.0)
-MAX_TOKENS                           # Max tokens (optional)
 
 # Behavior
 DEBUG=1                              # Debug mode
@@ -114,7 +111,7 @@ aicoder/
 - Single responsibility principle
 - Early exits and guard clauses
 - Batch operations efficiently
-- Handle file errors by re-reading before editing
+- When using tools, handle file errors by re-reading before editing
 - Use edit_file/write_file over shell commands like sed, awk, custom scripts in any language with the objective to mass edit
 
 ### Plugin Context for Development
@@ -131,11 +128,12 @@ def create_plugin(ctx):
     ctx.app.tool_manager.execute_tool_call(tool_call)
 ```
 
-### Sandbox Behavior
+### Sandbox Behavior (when enabled)
 - Blocks `../` path traversal by default
 - Restricts absolute paths to current directory
 - Can be disabled with `MINI_SANDBOX=0`
 - Both read_file and write_file respect sandbox
+- This mini sandbox is programmed in the tools but the aicoder is also running on another bwrap sandbox layer
 
 ### Streaming and Error Handling
 - Uses Server-Sent Events (SSE) format
