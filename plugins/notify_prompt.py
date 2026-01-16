@@ -62,7 +62,7 @@ def create_plugin(ctx):
         if should_notify():
             say("prompt available")
 
-    def on_before_approval_prompt():
+    def on_before_approval_prompt(tool_name: str = None, arguments: dict = None):
         """Hook: Called before showing tool approval prompt"""
         if should_notify():
             say("approval available")
