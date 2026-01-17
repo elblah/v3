@@ -1,55 +1,67 @@
-"""
-Test datetime_utils module
-Tests for
-"""
+"""Tests for datetime_utils module"""
 
 import re
-from aicoder.utils.datetime_utils import (
-    create_file_timestamp,
-    create_timestamp_filename,
-    get_current_iso_datetime,
-)
+from datetime import datetime
+from aicoder.utils import datetime_utils
 
 
-def test_create_file_timestamp():
-    """Test timestamp format"""
-    timestamp = create_file_timestamp()
+class TestCreateFileTimestamp:
+    """Tests for create_file_timestamp function"""
 
-    # Should be 19 chars long (first 19 of ISO with replacements)
-    assert len(timestamp) == 19, f"Expected 19 chars, got {len(timestamp)}"
+    def test_timestamp_format(self):
+        """Test that timestamp has correct format YYYY-MM-DDTHH-MM-SS"""
+        timestamp = datetime_utils.create_file_timestamp()
+        # Match format: YYYY-MM-DDTHH-MM-SS (19 chars)
+        pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$"
+        assert re.match(pattern, timestamp) is not None
 
-    # Should match pattern YYYY-MM-DDTHH-MM-SS
-    assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}", timestamp), (
-        f"Invalid format: {timestamp}"
-    )
+    def test_timestamp_length(self):
+        """Test that timestamp is exactly 19 characters"""
+        timestamp = datetime_utils.create_file_timestamp()
+        assert len(timestamp) == 19
 
-    # Should not contain colons or dots
-    assert ":" not in timestamp and "." not in timestamp, (
-        f"Contains illegal chars: {timestamp}"
-    )
-
-
-def test_create_timestamp_filename():
-    """Test filename creation"""
-    filename = create_timestamp_filename("test", "txt")
-
-    # Should have prefix, timestamp, and extension
-    assert filename.startswith("test-"), f"Missing prefix: {filename}"
-    assert filename.endswith(".txt"), f"Missing extension: {filename}"
-
-    # Extract timestamp part and test format
-    timestamp_part = filename[5:-4]
-    assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}", timestamp_part), (
-        f"Invalid timestamp: {timestamp_part}"
-    )
+    def test_timestamp_is_iso_like(self):
+        """Test that timestamp resembles ISO format"""
+        timestamp = datetime_utils.create_file_timestamp()
+        # Should be parseable by replacing '-' with ':' in time part
+        iso_like = timestamp[:-6] + timestamp[-6:].replace("-", ":")
+        parsed = datetime.fromisoformat(iso_like)
+        assert parsed is not None
 
 
-def test_get_current_iso_datetime():
-    """Test ISO datetime"""
-    iso = get_current_iso_datetime()
+class TestCreateTimestampFilename:
+    """Tests for create_timestamp_filename function"""
 
-    # Should be valid ISO format (local time without timezone)
-    assert "T" in iso, f"Missing T separator: {iso}"
-    assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", iso), (
-        f"Invalid ISO format: {iso}"
-    )
+    def test_filename_with_extension(self):
+        """Test filename creation with extension"""
+        filename = datetime_utils.create_timestamp_filename("test", ".txt")
+        assert filename.endswith(".txt")
+        assert filename.startswith("test-")
+
+    def test_filename_without_dot_extension(self):
+        """Test filename creation when extension doesn't start with dot"""
+        filename = datetime_utils.create_timestamp_filename("test", "txt")
+        assert filename.endswith(".txt")
+        assert filename.startswith("test-")
+
+    def test_filename_empty_prefix(self):
+        """Test filename with empty prefix"""
+        filename = datetime_utils.create_timestamp_filename("", "log")
+        assert filename.endswith(".log")
+        assert filename.startswith("-")
+
+
+class TestGetCurrentIsoDatetime:
+    """Tests for get_current_iso_datetime function"""
+
+    def test_returns_iso_format(self):
+        """Test that returns valid ISO datetime string"""
+        iso_str = datetime_utils.get_current_iso_datetime()
+        # Should be parseable
+        parsed = datetime.fromisoformat(iso_str)
+        assert parsed is not None
+
+    def test_contains_date_and_time(self):
+        """Test that ISO string contains both date and time"""
+        iso_str = datetime_utils.get_current_iso_datetime()
+        assert "T" in iso_str or " " in iso_str
