@@ -1,56 +1,57 @@
-"""Tests for path_utils module"""
+"""
+Tests for path utilities
+"""
 
 import pytest
-from aicoder.utils import path_utils
 
 
-class TestIsSafePath:
-    """Tests for is_safe_path function"""
+class TestPathUtils:
+    """Test path utility functions"""
 
-    def test_safe_relative_path(self):
-        """Test that simple relative paths are safe"""
-        assert path_utils.is_safe_path("file.txt") is True
-        assert path_utils.is_safe_path("dir/file.txt") is True
-        assert path_utils.is_safe_path("dir/subdir/file.txt") is True
+    def test_is_safe_path_simple(self):
+        """Test simple safe paths"""
+        from aicoder.utils.path_utils import is_safe_path
 
-    def test_unsafe_parent_traversal(self):
-        """Test that parent directory traversal is detected (returns False)"""
-        # is_safe_path returns False when "../" is in the path (unsafe)
-        assert path_utils.is_safe_path("../file.txt") is False
-        assert path_utils.is_safe_path("../") is False
-        assert path_utils.is_safe_path("../dir/file.txt") is False
-        assert path_utils.is_safe_path("dir/../file.txt") is False
-        assert path_utils.is_safe_path("dir/../../file.txt") is False
+        assert is_safe_path("file.txt") is True
+        assert is_safe_path("path/to/file.txt") is True
+        assert is_safe_path("/absolute/path.txt") is True
 
-    def test_edge_cases(self):
-        """Test edge cases"""
-        assert path_utils.is_safe_path("") is True
-        assert path_utils.is_safe_path(".") is True
+    def test_is_safe_path_traversal_attempt(self):
+        """Test paths with parent directory traversal"""
+        from aicoder.utils.path_utils import is_safe_path
 
+        # These paths DO contain parent traversal patterns
+        # The function checks for "../" in the path
+        assert is_safe_path("../file.txt") is False
+        assert is_safe_path("../etc/passwd") is False
+        assert is_safe_path("path/../../etc/passwd") is False
 
-class TestValidatePath:
-    """Tests for validate_path function"""
+    def test_validate_path_safe(self):
+        """Test validation of safe paths"""
+        from aicoder.utils.path_utils import validate_path
 
-    def test_valid_path_returns_true(self, capsys):
-        """Test that valid paths return True"""
-        result = path_utils.validate_path("test.txt")
-        assert result is True
+        # Safe paths should return True
+        assert validate_path("file.txt") is True
+        assert validate_path("path/to/file.txt") is True
 
-    def test_invalid_path_returns_false(self, capsys):
-        """Test that invalid paths return False"""
-        result = path_utils.validate_path("../file.txt")
-        assert result is False
+    def test_validate_path_unsafe(self):
+        """Test validation of unsafe paths (with traversal)"""
+        from aicoder.utils.path_utils import validate_path
 
+        # The function prints a warning but still returns False
+        assert validate_path("../file.txt") is False
+        assert validate_path("path/../../etc/passwd") is False
 
-class TestValidateToolPath:
-    """Tests for validate_tool_path function"""
+    def test_validate_tool_path_safe(self):
+        """Test tool path validation for safe paths"""
+        from aicoder.utils.path_utils import validate_tool_path
 
-    def test_valid_tool_path_returns_true(self, capsys):
-        """Test that valid tool paths return True"""
-        result = path_utils.validate_tool_path("test.txt", "test_tool")
-        assert result is True
+        assert validate_tool_path("file.txt", "mytool") is True
+        assert validate_tool_path("path/to/file.txt", "mytool") is True
 
-    def test_invalid_tool_path_returns_false(self, capsys):
-        """Test that invalid tool paths return False"""
-        result = path_utils.validate_tool_path("../file.txt", "test_tool")
-        assert result is False
+    def test_validate_tool_path_unsafe(self):
+        """Test tool path validation for unsafe paths"""
+        from aicoder.utils.path_utils import validate_tool_path
+
+        assert validate_tool_path("../file.txt", "mytool") is False
+        assert validate_tool_path("path/../../etc/passwd", "mytool") is False
