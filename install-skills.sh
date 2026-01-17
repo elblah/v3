@@ -4,6 +4,8 @@ skills=$(find examples/skills -maxdepth 1 -mindepth 1 -type d)
 
 sels=$(echo "$skills" | fzf -m -e)
 
+[ -z "$sels" ] && exit 1
+
 mkdir -p ~/.config/aicoder-v3/skills
 
 # Get the aicoder source directory
