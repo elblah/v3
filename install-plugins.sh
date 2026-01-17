@@ -6,6 +6,8 @@ plugins=$(find plugins -name "*.py" | grep -v test_)
 
 sels=$(echo "$plugins" | fzf -m -e)
 
+[ -z "$sels" ] && exit 1
+
 mkdir -p ~/.config/aicoder-v3/plugins
 
 # Get the aicoder source directory
