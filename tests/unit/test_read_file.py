@@ -133,62 +133,69 @@ class TestExecute:
 
     def test_successful_read(self, temp_file):
         """Test successful file read"""
-        result = execute({"path": temp_file})
-        assert result["tool"] == "read_file"
-        assert "Line 0" in result["detailed"]
-        assert "5 lines" in result["friendly"] or "5" in result["friendly"]
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            result = execute({"path": temp_file})
+            assert result["tool"] == "read_file"
+            assert "Line 0" in result["detailed"]
+            assert "5 lines" in result["friendly"] or "5" in result["friendly"]
 
     def test_read_with_offset(self, temp_file):
         """Test reading with offset"""
-        result = execute({"path": temp_file, "offset": 2, "limit": 2})
-        assert result["tool"] == "read_file"
-        assert "Line 2" in result["detailed"]
-        assert "Line 3" in result["detailed"]
-        assert "Line 4" not in result["detailed"]
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            result = execute({"path": temp_file, "offset": 2, "limit": 2})
+            assert result["tool"] == "read_file"
+            assert "Line 2" in result["detailed"]
+            assert "Line 3" in result["detailed"]
+            assert "Line 4" not in result["detailed"]
 
     def test_read_with_limit(self, temp_file):
         """Test reading with custom limit"""
-        result = execute({"path": temp_file, "limit": 2})
-        assert result["tool"] == "read_file"
-        assert "Line 0" in result["detailed"]
-        assert "Line 1" in result["detailed"]
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            result = execute({"path": temp_file, "limit": 2})
+            assert result["tool"] == "read_file"
+            assert "Line 0" in result["detailed"]
+            assert "Line 1" in result["detailed"]
 
     def test_offset_beyond_eof(self, temp_file):
         """Test offset beyond end of file"""
-        result = execute({"path": temp_file, "offset": 100})
-        assert result["tool"] == "read_file"
-        assert "beyond end of file" in result["friendly"] or "offset" in result["friendly"].lower()
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            result = execute({"path": temp_file, "offset": 100})
+            assert result["tool"] == "read_file"
+            assert "beyond end of file" in result["friendly"] or "offset" in result["friendly"].lower()
 
     def test_file_access_tracker_recorded(self, temp_file):
         """Test that file is recorded in FileAccessTracker"""
         # Clear tracker first
         FileAccessTracker.clear_state()
         try:
-            execute({"path": temp_file})
+            with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+                execute({"path": temp_file})
             assert FileAccessTracker.was_file_read(temp_file) is True
         finally:
             FileAccessTracker.clear_state()
 
     def test_truncates_long_lines(self, long_line_file):
         """Test that long lines are truncated"""
-        result = execute({"path": long_line_file})
-        assert result["tool"] == "read_file"
-        # Long line should be truncated - check for truncation
-        detailed = result["detailed"]
-        # Long lines get truncated to MAX_LINE_LENGTH (2000 chars)
-        # The detailed output should have shortened line
-        lines = detailed.split('\n')
-        content_lines = [line for line in lines if 'Content:' in line or line.startswith('[')]
-        # Just verify we got a result
-        assert len(detailed) > 0
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            result = execute({"path": long_line_file})
+            assert result["tool"] == "read_file"
+            # Long line should be truncated - check for truncation
+            detailed = result["detailed"]
+            # Long lines get truncated to MAX_LINE_LENGTH (2000 chars)
+            # The detailed output should have shortened line
+            lines = detailed.split('\n')
+            content_lines = [line for line in lines if 'Content:' in line or line.startswith('[')]
+            # Just verify we got a result
+            assert len(detailed) > 0
 
     def test_default_values(self, temp_file):
         """Test default offset and limit values"""
-        result = execute({"path": temp_file})
-        assert result["tool"] == "read_file"
-        # Should read all lines with default limit
-        assert "Line 0" in result["detailed"]
-        assert "Line 4" in result["detailed"]
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            result = execute({"path": temp_file})
+            assert result["tool"] == "read_file"
+            # Should read all lines with default limit
+            assert "Line 0" in result["detailed"]
+            assert "Line 4" in result["detailed"]
 
 
 class TestGeneratePreview:
@@ -300,17 +307,18 @@ class TestIntegration:
 
     def test_large_file_pagination(self, large_file):
         """Test reading large file with pagination"""
-        # Read first 10 lines
-        result1 = execute({"path": large_file, "limit": 10})
-        assert result1["tool"] == "read_file"
-        assert "Line 0" in result1["detailed"]
-        assert "Line 9" in result1["detailed"]
+        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            # Read first 10 lines
+            result1 = execute({"path": large_file, "limit": 10})
+            assert result1["tool"] == "read_file"
+            assert "Line 0" in result1["detailed"]
+            assert "Line 9" in result1["detailed"]
 
-        # Read from line 50
-        result2 = execute({"path": large_file, "offset": 50, "limit": 10})
-        assert result2["tool"] == "read_file"
-        assert "Line 50" in result2["detailed"]
-        assert "Line 59" in result2["detailed"]
+            # Read from line 50
+            result2 = execute({"path": large_file, "offset": 50, "limit": 10})
+            assert result2["tool"] == "read_file"
+            assert "Line 50" in result2["detailed"]
+            assert "Line 59" in result2["detailed"]
 
     def test_empty_file(self):
         """Test reading empty file"""
@@ -318,10 +326,11 @@ class TestIntegration:
             path = f.name
 
         try:
-            result = execute({"path": path})
-            assert result["tool"] == "read_file"
-            # Empty file still shows lines (may be 0 or 1 depending on implementation)
-            assert result["friendly"] is not None
+            with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+                result = execute({"path": path})
+                assert result["tool"] == "read_file"
+                # Empty file still shows lines (may be 0 or 1 depending on implementation)
+                assert result["friendly"] is not None
         finally:
             os.unlink(path)
 
@@ -332,9 +341,10 @@ class TestIntegration:
             path = f.name
 
         try:
-            result = execute({"path": path})
-            assert result["tool"] == "read_file"
-            assert "1 line" in result["friendly"] or "1" in result["friendly"]
-            assert "Single line content" in result["detailed"]
+            with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+                result = execute({"path": path})
+                assert result["tool"] == "read_file"
+                assert "1 line" in result["friendly"] or "1" in result["friendly"]
+                assert "Single line content" in result["detailed"]
         finally:
             os.unlink(path)
