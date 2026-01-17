@@ -418,9 +418,10 @@ Started: {format_time(job['started_at'])}
             killed = kill_all_jobs()
             print(f"[background_jobs] Killed {killed} background job(s) on shutdown")
 
-    print("[+] Background jobs plugin loaded")
-    print("    - bg_jobs tool")
-    print("    - /bg-jobs command")
+    if Config.debug():
+        print("[+] Background jobs plugin loaded")
+        print("    - bg_jobs tool")
+        print("    - /bg-jobs command")
 
     # Return cleanup handler
     return {"cleanup": cleanup_all_jobs}

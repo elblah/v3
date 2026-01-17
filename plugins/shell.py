@@ -13,6 +13,8 @@ import subprocess
 import os
 from typing import Dict, Any
 
+from aicoder.core.config import Config
+
 
 def create_plugin(ctx):
     """Shell command execution plugin"""
@@ -94,4 +96,5 @@ Note: Commands have a 10-minute timeout (use Ctrl+C to cancel earlier).
     # Register the /shell command
     ctx.register_command("/shell", handle_shell_command, description="Execute shell commands")
 
-    print("  - /shell command")
+    if Config.debug():
+        print("  - /shell command")

@@ -14,6 +14,8 @@ import tempfile
 import shutil
 from typing import Dict, Any
 
+from aicoder.core.config import Config
+
 # Plugin state
 _network_blocking_enabled = False
 _blocknet_executable_path = None
@@ -270,11 +272,12 @@ def create_plugin(ctx):
     
     # Check requirements on startup
     requirements_ok, missing = check_requirements()
-    if requirements_ok:
-        print("[+] Network sandbox plugin loaded (requirements satisfied)")
-        print("    Use /snet on to enable network blocking for shell commands")
-    else:
-        print("[+] Network sandbox plugin loaded (missing requirements):")
-        for req in missing:
-            print(f"      - {req}")
-        print("    Install requirements to use network blocking")
+    if Config.debug():
+        if requirements_ok:
+            print("[+] Network sandbox plugin loaded (requirements satisfied)")
+            print("    Use /snet on to enable network blocking for shell commands")
+        else:
+            print("[+] Network sandbox plugin loaded (missing requirements):")
+            for req in missing:
+                print(f"      - {req}")
+            print("    Install requirements to use network blocking")

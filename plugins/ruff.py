@@ -18,6 +18,8 @@ Commands:
 import os
 import subprocess
 
+from aicoder.core.config import Config
+
 
 def create_plugin(ctx):
     """Automatic Python code quality checks with ruff"""
@@ -133,6 +135,7 @@ Commands:
     ctx.register_hook("after_tool_results", after_tool_results)
     ctx.register_command("/ruff", handle_ruff_command, description="Ruff code quality checks")
 
-    print("  - after_file_write hook")
-    print("  - after_tool_results hook")
-    print("  - /ruff command")
+    if Config.debug():
+        print("  - after_file_write hook")
+        print("  - after_tool_results hook")
+        print("  - /ruff command")

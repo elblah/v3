@@ -11,6 +11,8 @@ import tempfile
 import shutil
 from typing import Dict, Any
 
+from aicoder.core.config import Config
+
 _disk_blocking_enabled = False
 _blockdisk_executable_path = None
 _compilation_in_progress = False
@@ -203,7 +205,8 @@ def create_plugin(ctx):
     patch_run_shell_command()
     
     requirements_ok, missing = check_requirements()
-    if requirements_ok:
-        print("[+] Disk sandbox plugin loaded (use /sdisk on)")
-    else:
-        print("[+] Disk sandbox plugin loaded (missing: {', '.join(missing)})")
+    if Config.debug():
+        if requirements_ok:
+            print("[+] Disk sandbox plugin loaded (use /sdisk on)")
+        else:
+            print("[+] Disk sandbox plugin loaded (missing: {', '.join(missing)})")

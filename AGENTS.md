@@ -117,15 +117,51 @@ aicoder/
 ### Plugin Context for Development
 When working with plugins:
 ```python
+from aicoder.core.config import Config
+
 def create_plugin(ctx):
     # Register tool for AI
     def my_tool(args):
         return {"tool": "mytool", "friendly": "msg", "detailed": "output"}
     ctx.register_tool('mytool', my_tool, 'Description', parameters)
-    
+
     # Access app components
     ctx.app.message_history.add_user_message("Message")
     ctx.app.tool_manager.execute_tool_call(tool_call)
+
+    # Suppress plugin loading messages unless DEBUG=1
+    if Config.debug():
+        print("[+] My plugin loaded")
+        print("    - mytool tool")
+```
+
+### Plugin Output Conventions
+Plugins should suppress verbose loading messages by default and only show them when `DEBUG=1`:
+
+```python
+from aicoder.core.config import Config
+
+def create_plugin(ctx):
+    # Only print info messages when DEBUG=1
+    if Config.debug():
+        print("[+] My plugin loaded")
+        print("    - /mycmd command")
+
+    # Always print errors (missing requirements, etc.)
+    if not requirements_ok:
+        print(f"[!] My plugin unavailable - missing requirements:")
+        for req in missing:
+            print(f"    - {req}")
+```
+
+**Why?**
+- Clean startup: No verbose "[+] Plugin X loaded" messages by default
+- Debug mode: Use `DEBUG=1 aicoder` to see all plugin loading details
+- Error visibility: Missing requirements or configuration errors are always shown
+
+**To debug plugin loading:**
+```bash
+DEBUG=1 aicoder
 ```
 
 ### Sandbox Behavior (when enabled)
