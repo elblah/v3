@@ -7,7 +7,7 @@ from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
-from aicoder.utils.log import LogUtils
+from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.utils.http_utils import fetch, Response
 
 
@@ -441,7 +441,7 @@ class StreamingClient:
                 LogUtils.warn(f"[*] Context size: {current_size:,} (threshold: {threshold:,})")
                 self._recovery_attempted = True
                 self.message_history.force_compact_rounds(1)
-                LogUtils.info("[*] Retrying request after compaction...")
+                LogUtils.print("[*] Retrying request after compaction...", LogOptions(color=Config.colors['blue']))
                 return True  # Retry with compacted context
 
         # Display attempt count (unlimited mode doesn't show max)
