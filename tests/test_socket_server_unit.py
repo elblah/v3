@@ -919,3 +919,118 @@ class TestSocketServerSaveDefault:
                 assert ".aicoder/sessions" in parsed["data"]["path"]
             finally:
                 os.chdir(old_cwd)
+
+
+class TestSocketServerInject:
+    """Test inject command (TMUX-dependent)."""
+
+    @pytest.fixture
+    def server(self):
+        """Create a server."""
+        mock_aicoder = MockAICoder()
+        mock_aicoder.message_history = MockMessageHistory()
+        return SocketServer(mock_aicoder)
+
+    def test_inject_without_tmux(self, server):
+        """Test inject returns error when not in TMUX."""
+        # Ensure TMUX is not set
+        old_tmux = os.environ.pop("TMUX", None)
+        try:
+            result = server._cmd_inject("")
+            parsed = json.loads(result)
+            assert parsed["status"] == "error"
+            assert parsed["code"] == ERR_IO_ERROR
+        finally:
+            if old_tmux:
+                os.environ["TMUX"] = old_tmux
+
+
+class TestSocketServerExecuteCommandWithArgs:
+    """Test _execute_command with arguments."""
+
+    @pytest.fixture
+    def server(self):
+        """Create a server."""
+        mock_aicoder = MockAICoder()
+        mock_aicoder.message_history = MockMessageHistory()
+        return SocketServer(mock_aicoder)
+
+    def test_execute_command_with_args_is_processing(self, server):
+        """Test is_processing command with arguments (ignored)."""
+        result = server._execute_command("is_processing extra_args")
+        parsed = json.loads(result)
+        assert parsed["status"] == "success"
+        assert parsed["data"]["processing"] is False
+
+    def test_execute_command_with_args_yolo(self, server):
+        """Test yolo command with arguments."""
+        result = server._execute_command("yolo on")
+        parsed = json.loads(result)
+        assert parsed["status"] == "success"
+        assert parsed["data"]["enabled"] is True
+
+
+class TestSocketServerReadLineTimeout:
+    """Test _read_line with timeout scenarios."""
+
+    @pytest.fixture
+    def server(self):
+        """Create a server."""
+        mock_aicoder = MockAICoder()
+        mock_aicoder.message_history = MockMessageHistory()
+        return SocketServer(mock_aicoder)
+
+    def test_read_line_timeout_exception(self, server):
+        """Test _read_line handles socket.timeout."""
+        import socket as sock
+        mock_sock = MagicMock()
+        mock_sock.recv.side_effect = socket.timeout("timed out")
+        result = server._read_line(mock_sock, timeout=1.0)
+        assert result is None
+
+
+class TestSocketServerSendLineError:
+    """Test _send_line error handling."""
+
+    @pytest.fixture
+    def server(self):
+        """Create a server."""
+        mock_aicoder = MockAICoder()
+        mock_aicoder.message_history = MockMessageHistory()
+        return SocketServer(mock_aicoder)
+
+    @patch('aicoder.core.socket_server.LogUtils.warn')
+    def test_send_line_handles_exception(self, mock_warn, server):
+        """Test _send_line handles send errors gracefully."""
+        import socket as sock
+        mock_sock = MagicMock()
+        mock_sock.sendall.side_effect = OSError("Broken pipe")
+        # Should not raise
+        server._send_line(mock_sock, '{"status":"success"}')
+
+
+class TestSocketServerHandleClient:
+    """Test _handle_client method."""
+
+    @pytest.fixture
+    def server(self):
+        """Create a server."""
+        mock_aicoder = MockAICoder()
+        mock_aicoder.message_history = MockMessageHistory()
+        return SocketServer(mock_aicoder)
+
+    def test_handle_client_empty_command(self, server):
+        """Test _handle_client with empty command."""
+        mock_client = MagicMock()
+        mock_client.recv.return_value = b""  # Empty command
+        server._handle_client(mock_client)
+        # Should send error and close
+        mock_client.sendall.assert_called()
+
+    def test_handle_client_exception(self, server):
+        """Test _handle_client handles exceptions."""
+        mock_client = MagicMock()
+        mock_client.recv.side_effect = Exception("Test error")
+        server._handle_client(mock_client)
+        # Should send error response
+        mock_client.sendall.assert_called()
