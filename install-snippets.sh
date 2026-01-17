@@ -4,6 +4,8 @@ snippets=$(find examples/snippets -type f)
 
 sels=$(echo "$snippets" | fzf -m -e)
 
+[ -z "$sels" ] && exit 1
+
 mkdir -p ~/.config/aicoder-v3/snippets
 
 # Get the aicoder source directory
