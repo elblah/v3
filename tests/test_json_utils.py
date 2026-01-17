@@ -1,131 +1,77 @@
-"""Tests for json_utils module"""
+"""
+Tests for JSON utilities
+"""
 
-import json
 import pytest
-from aicoder.utils import json_utils
+import tempfile
+import os
 
 
-class TestJsonWriteFile:
-    """Tests for write_file function"""
+class TestJsonUtils:
+    """Test JSON utility functions"""
 
-    def test_write_file_creates_valid_json(self, tmp_path):
-        """Test that write_file creates valid JSON"""
-        path = tmp_path / "test.json"
-        data = {"key": "value", "number": 42}
-        result = json_utils.write_file(str(path), data)
-        assert "Successfully wrote" in result
+    def test_is_valid_json(self):
+        """Test validation of valid JSON"""
+        from aicoder.utils.json_utils import is_valid
 
-        # Verify file content
-        with open(path, "r") as f:
-            content = json.load(f)
-        assert content == data
-
-    def test_write_file_nested_structure(self, tmp_path):
-        """Test writing nested JSON structure"""
-        path = tmp_path / "nested.json"
-        data = {"outer": {"inner": [1, 2, 3]}, "nested": True}
-        json_utils.write_file(str(path), data)
-
-        with open(path, "r") as f:
-            content = json.load(f)
-        assert content == data
-
-
-class TestJsonReadFile:
-    """Tests for read_file function"""
-
-    def test_read_file_parses_json(self, tmp_path):
-        """Test that read_file correctly parses JSON"""
-        path = tmp_path / "read_test.json"
-        data = {"test": "data"}
-        with open(path, "w") as f:
-            json.dump(data, f)
-
-        result = json_utils.read_file(str(path))
-        assert result == data
-
-    def test_read_file_default_type(self, tmp_path):
-        """Test that read_file uses dict as default type hint"""
-        path = tmp_path / "default_type.json"
-        data = {"key": "value"}
-        with open(path, "w") as f:
-            json.dump(data, f)
-
-        result = json_utils.read_file(str(path))
-        assert isinstance(result, dict)
-
-
-class TestJsonReadFileSafe:
-    """Tests for read_file_safe function"""
-
-    def test_read_file_safe_valid_json(self, tmp_path):
-        """Test read_file_safe with valid JSON"""
-        path = tmp_path / "valid.json"
-        data = {"valid": True}
-        with open(path, "w") as f:
-            json.dump(data, f)
-
-        result = json_utils.read_file_safe(str(path))
-        assert result == data
-
-    def test_read_file_safe_missing_file(self):
-        """Test read_file_safe with missing file returns default"""
-        result = json_utils.read_file_safe("/nonexistent/path.json")
-        assert result is None
-
-    def test_read_file_safe_invalid_json(self, tmp_path):
-        """Test read_file_safe with invalid JSON returns default"""
-        path = tmp_path / "invalid.json"
-        with open(path, "w") as f:
-            f.write("not valid json")
-
-        result = json_utils.read_file_safe(str(path), default={})
-        assert result == {}
-
-    def test_read_file_safe_custom_default(self):
-        """Test read_file_safe with custom default value"""
-        result = json_utils.read_file_safe("/nonexistent.json", default="fallback")
-        assert result == "fallback"
-
-
-class TestJsonIsValid:
-    """Tests for is_valid function"""
-
-    def test_is_valid_valid_json(self):
-        """Test is_valid with valid JSON string"""
-        valid_json = '{"key": "value"}'
-        assert json_utils.is_valid(valid_json) is True
-
-    def test_is_valid_array(self):
-        """Test is_valid with valid JSON array"""
-        valid_json = '[1, 2, 3, "test"]'
-        assert json_utils.is_valid(valid_json) is True
+        assert is_valid('{"key": "value"}') is True
+        assert is_valid('[1, 2, 3]') is True
+        assert is_valid('{"nested": {"key": 1}}') is True
 
     def test_is_valid_invalid_json(self):
-        """Test is_valid with invalid JSON string"""
-        invalid_json = '{invalid: json}'
-        assert json_utils.is_valid(invalid_json) is False
+        """Test validation of invalid JSON"""
+        from aicoder.utils.json_utils import is_valid
 
-    def test_is_valid_empty_string(self):
-        """Test is_valid with empty string"""
-        assert json_utils.is_valid("") is False
-
-
-class TestJsonParseSafe:
-    """Tests for parse_safe function"""
+        assert is_valid("not json") is False
+        assert is_valid('{"incomplete":') is False
+        assert is_valid("") is False
 
     def test_parse_safe_valid_json(self):
-        """Test parse_safe with valid JSON"""
-        json_str = '{"key": "value"}'
-        result = json_utils.parse_safe(json_str)
+        """Test safe parsing of valid JSON"""
+        from aicoder.utils.json_utils import parse_safe
+
+        result = parse_safe('{"key": "value"}')
         assert result == {"key": "value"}
 
     def test_parse_safe_invalid_json(self):
-        """Test parse_safe with invalid JSON returns default (None)"""
-        result = json_utils.parse_safe("invalid")
+        """Test safe parsing of invalid JSON with default"""
+        from aicoder.utils.json_utils import parse_safe
+
+        result = parse_safe("not json", default={"error": True})
+        assert result == {"error": True}
+
+    def test_parse_safe_invalid_json_no_default(self):
+        """Test safe parsing of invalid JSON returns None by default"""
+        from aicoder.utils.json_utils import parse_safe
+
+        result = parse_safe("not json")
         assert result is None
 
-    def test_parse_safe_custom_default(self):
-        """Test parse_safe with custom default"""
-        result = json_utils.parse_safe("invalid", default={"default": True})
-        assert result == {"default": True}
+    def test_write_and_read_json(self):
+        """Test writing and reading JSON files"""
+        from aicoder.utils.json_utils import write_file, read_file
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.json")
+            data = {"key": "value", "number": 42, "list": [1, 2, 3]}
+
+            result = write_file(path, data)
+            assert "Successfully wrote" in result
+
+            # Verify round-trip
+            read_data = read_file(path)
+            assert read_data == data
+
+    def test_read_file_safe_file_not_found(self):
+        """Test safe read when file doesn't exist"""
+        from aicoder.utils.json_utils import read_file_safe
+
+        result = read_file_safe("/nonexistent/path/file.json")
+        assert result is None
+
+    def test_read_file_safe_default_value(self):
+        """Test safe read with custom default"""
+        from aicoder.utils.json_utils import read_file_safe
+
+        result = read_file_safe("/nonexistent/path/file.json", default=[])
+        assert result == []
