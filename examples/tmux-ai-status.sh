@@ -17,11 +17,13 @@ while read -r pane_id pane_pid pane_cmd window_name; do
         #echo "Prompt: $last_line"
         if [[ "$window_name" =~ [🔁🔥] ]]; then
             tmux rename-window -t $pane_id "$window_name_clean"
+            PROMPT_VISIBLE=1
         fi
     elif [[ "$last_line" =~ Choose|Approve ]]; then
         #echo "Approval: $last_line"
         if [[ ! "$window_name" =~ 🔥 ]]; then
             tmux rename-window -t $pane_id "$window_name_clean🔥"
+            APPROVAL_PROMPT_VISIBLE=1
         fi
     else
         #echo "Processing: $last_line - $window_name"
@@ -30,3 +32,9 @@ while read -r pane_id pane_pid pane_cmd window_name; do
         fi
     fi
 done <<< "$tmux_panes"
+
+if [[ -v APPROVAL_PROMPT_VISIBLE ]] && [[ -e ~/.notify-prompt-all ]]; then
+    PULSE_SINK="combined" timeout -k 1 3s espeak "approval available" &
+elif [[ -v PROMPT_VISIBLE ]] && [[ -e ~/.notify-prompt-all ]]; then
+    PULSE_SINK="combined" timeout -k 1 3s espeak "prompt available" &
+fi
