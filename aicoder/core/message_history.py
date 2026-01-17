@@ -63,8 +63,12 @@ class MessageHistory:
             self._plugin_system.call_hooks("after_session_initialized", self.messages)
 
     def add_user_message(self, content: str) -> None:
-        """Add a user message"""
-        message = {"role": "user", "content": content}
+        """Add a user message (string text or pre-formatted multimodal dict)"""
+        # Support multimodal messages from plugins (e.g., vision plugin)
+        if isinstance(content, dict):
+            message = content
+        else:
+            message = {"role": "user", "content": content}
         
         # Cache tokens immediately on creation (performance optimization)
         from .token_estimator import cache_message
