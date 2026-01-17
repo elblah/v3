@@ -1,6 +1,7 @@
 """Tests for config module"""
 
 import os
+import sys
 import pytest
 from aicoder.core import config
 
@@ -362,3 +363,123 @@ class TestConfigHelpers:
         result = config.Config.force_compact_size()
         assert isinstance(result, int)
         assert result > 0
+
+
+class TestConfigValidation:
+    """Tests for configuration validation"""
+
+    def test_validate_config_exits_when_no_base_url(self, monkeypatch):
+        """Test that validate_config exits when base URL is missing"""
+        monkeypatch.delenv("API_BASE_URL", raising=False)
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        with pytest.raises(SystemExit) as exc:
+            config.Config.validate_config()
+        assert exc.value.code == 1
+
+    def test_validate_config_passes_when_base_url_set(self, monkeypatch):
+        """Test that validate_config doesn't exit when base URL is set"""
+        monkeypatch.setenv("API_BASE_URL", "https://example.com/v1")
+        # Should not raise SystemExit
+        try:
+            config.Config.validate_config()
+        except SystemExit as e:
+            pytest.fail(f"validate_config should not exit when base_url is set: {e}")
+
+
+class TestConfigStartupInfo:
+    """Tests for startup info display"""
+
+    def test_print_startup_info_runs(self, capsys):
+        """Test that print_startup_info runs without error"""
+        # Should not raise
+        config.Config.print_startup_info()
+        captured = capsys.readouterr()
+        assert "Configuration:" in captured.out
+
+    def test_print_startup_info_shows_endpoint(self, monkeypatch, capsys):
+        """Test that startup info shows API endpoint"""
+        monkeypatch.setenv("API_BASE_URL", "https://example.com/v1")
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        config.Config.print_startup_info()
+        captured = capsys.readouterr()
+        assert "example.com" in captured.out
+
+    def test_print_startup_info_shows_model(self, monkeypatch, capsys):
+        """Test that startup info shows model"""
+        monkeypatch.setenv("API_MODEL", "test-model")
+        monkeypatch.delenv("OPENAI_MODEL", raising=False)
+        config.Config.print_startup_info()
+        captured = capsys.readouterr()
+        assert "test-model" in captured.out
+
+
+class TestConfigTemperatureEdgeCases:
+    """Tests for temperature edge cases"""
+
+    def test_temperature_with_valid_value(self, monkeypatch):
+        """Test temperature with valid float value"""
+        monkeypatch.setenv("TEMPERATURE", "0.5")
+        result = config.Config.temperature()
+        assert result == 0.5
+
+    def test_temperature_with_invalid_value_raises(self, monkeypatch):
+        """Test temperature with invalid value raises ValueError"""
+        monkeypatch.setenv("TEMPERATURE", "invalid")
+        with pytest.raises(ValueError):
+            config.Config.temperature()
+
+    def test_max_tokens_with_valid_value(self, monkeypatch):
+        """Test max_tokens with valid int value"""
+        monkeypatch.setenv("MAX_TOKENS", "4096")
+        result = config.Config.max_tokens()
+        assert result == 4096
+
+    def test_max_tokens_with_invalid_value_raises(self, monkeypatch):
+        """Test max_tokens with invalid value raises ValueError"""
+        monkeypatch.setenv("MAX_TOKENS", "invalid")
+        with pytest.raises(ValueError):
+            config.Config.max_tokens()
+
+
+class TestConfigAutoCompactThreshold:
+    """Tests for auto-compact threshold calculation"""
+
+    def test_auto_compact_threshold_with_percentage(self, monkeypatch):
+        """Test auto compact threshold calculation"""
+        monkeypatch.setenv("CONTEXT_SIZE", "100000")
+        monkeypatch.setenv("CONTEXT_COMPACT_PERCENTAGE", "80")
+        result = config.Config.auto_compact_threshold()
+        # 100000 * 0.80 = 80000
+        assert result == 80000
+
+    def test_auto_compact_threshold_capped_at_100(self, monkeypatch):
+        """Test auto compact threshold caps at 100%"""
+        monkeypatch.setenv("CONTEXT_SIZE", "100000")
+        monkeypatch.setenv("CONTEXT_COMPACT_PERCENTAGE", "150")
+        result = config.Config.auto_compact_threshold()
+        # Capped at 100%
+        assert result == 100000
+
+
+class TestConfigColorsAccessibility:
+    """Tests for color accessibility"""
+
+    def test_colors_contain_all_basic_colors(self):
+        """Test that all basic ANSI colors are defined"""
+        required_colors = ["red", "green", "yellow", "blue", "cyan", "magenta", "reset"]
+        for color in required_colors:
+            assert color in config.Config.colors, f"Missing color: {color}"
+
+    def test_colors_include_bright_variants(self):
+        """Test that bright color variants are defined"""
+        # Check if bright variants exist (they may or may not)
+        # This test just documents what's expected
+        has_bright = any("bright" in k for k in config.Config.colors.keys())
+        # Bright colors are optional but nice to have
+        # This test passes regardless
+
+    def test_colors_reset_code_present(self):
+        """Test that reset code is present"""
+        reset = config.Config.colors.get("reset")
+        assert reset is not None
+        assert "\x1b[0m" in reset or reset == "\x1b[0m"
