@@ -21,6 +21,7 @@ class RalphService:
     _completion_promise: str = "DONE"
     _max_iterations: int = 0
     _iteration: int = 0
+    _continuous: bool = False
 
     @classmethod
     def is_active(cls) -> bool:
@@ -32,7 +33,8 @@ class RalphService:
         cls,
         prompt: str,
         completion_promise: Optional[str] = None,
-        max_iterations: int = 10
+        max_iterations: int = 10,
+        continuous: bool = False
     ) -> None:
         """Start Ralph loop"""
         cls._active = True
@@ -40,6 +42,7 @@ class RalphService:
         cls._completion_promise = completion_promise or "DONE"
         cls._max_iterations = max_iterations
         cls._iteration = 1
+        cls._continuous = continuous
 
     @classmethod
     def stop_loop(cls) -> None:
@@ -49,6 +52,7 @@ class RalphService:
         cls._completion_promise = "DONE"
         cls._max_iterations = 0
         cls._iteration = 0
+        cls._continuous = False
 
     @classmethod
     def get_prompt(cls) -> str:
@@ -85,6 +89,11 @@ class RalphService:
             return True
         return cls._iteration < cls._max_iterations
 
+    @classmethod
+    def is_continuous(cls) -> bool:
+        """Check if continuous mode is enabled (ignore promise)"""
+        return cls._continuous
+
 
 class RalphCommand:
     """Ralph command handler"""
@@ -99,14 +108,17 @@ class RalphCommand:
 Ralph Plugin - Self-referential AI loops
 
 Usage:
-  /ralph "prompt" [--max-iterations N] [--completion-promise "TEXT"]
+  /ralph "prompt" [--max-iterations N] [--forever] [--continuous] [--completion-promise "TEXT"]
 
 Commands:
   /ralph <prompt>           Start Ralph loop with prompt
   /ralph-cancel             Cancel active Ralph loop
+  /ralph help               Show this help
 
 Options:
   --max-iterations N        Stop after N iterations (default: 10)
+  --forever                 Run forever (equivalent to --max-iterations 0)
+  --continuous              Loop until max iterations, ignore completion promise
   --completion-promise TEXT Phrase that signals completion (default: DONE)
 
 How it works:
@@ -119,16 +131,18 @@ How it works:
 Completion:
   To stop the loop, the AI must output: <promise>TEXT</promise>
   Default: <promise>IMPLEMENTATION_FINISHED</promise>
+  (Use --continuous to ignore the promise and loop until max iterations)
 
 Examples:
   /ralph "Build a REST API for todos"
   /ralph "Fix the auth bug" --max-iterations 20
-  /ralph "Refactor code" --completion-promise "DONE"
+  /ralph "Refactor code" --forever
+  /ralph "Improve test coverage" --continuous --max-iterations 20
 """
 
     def handle_ralph(self, args_str: str) -> str:
         """Handle /ralph command"""
-        if not args_str.strip():
+        if not args_str.strip() or args_str.strip().lower() == "help":
             return self.show_help()
 
         # Parse arguments
@@ -142,7 +156,8 @@ Examples:
         RalphService.start_loop(
             prompt=args["prompt"],
             completion_promise=args["completion_promise"],
-            max_iterations=args["max_iterations"]
+            max_iterations=args["max_iterations"],
+            continuous=args["continuous"]
         )
 
         # Show startup message
@@ -153,10 +168,15 @@ Examples:
         LogUtils.print(f"  Iteration: {RalphService.get_iteration()}", LogOptions(color=Config.colors["white"]))
         LogUtils.print(f"  Max iterations: {max_iter_str}", LogOptions(color=Config.colors["white"]))
         LogUtils.print(f"  Completion promise: {promise_str}", LogOptions(color=Config.colors["white"]))
+        if args["continuous"]:
+            LogUtils.print(f"  Mode: continuous (ignores promise)", LogOptions(color=Config.colors["yellow"]))
         LogUtils.print("", LogOptions(color=Config.colors["white"]))
         LogUtils.print("The AI will repeatedly work on the same task until completion.", LogOptions(color=Config.colors["cyan"]))
         LogUtils.print("Each iteration sees previous work in files and git history.", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print(f"To stop: output <promise>{promise_str}</promise>", LogOptions(color=Config.colors["yellow"]))
+        if args["continuous"]:
+            LogUtils.print("  (ignores <promise> - loops until max iterations)", LogOptions(color=Config.colors["yellow"]))
+        else:
+            LogUtils.print(f"To stop: output <promise>{promise_str}</promise>", LogOptions(color=Config.colors["yellow"]))
         LogUtils.print("", LogOptions(color=Config.colors["white"]))
 
         # Build full prompt with completion instructions for AI
@@ -215,7 +235,8 @@ The loop will continue indefinitely until this phrase is detected.
         result = {
             "prompt": "",
             "completion_promise": None,
-            "max_iterations": 10
+            "max_iterations": 10,
+            "continuous": False
         }
 
         parts = args_str.split()
@@ -232,6 +253,12 @@ The loop will continue indefinitely until this phrase is detected.
                 except ValueError:
                     LogUtils.error("Invalid --max-iterations value")
                     i += 2
+            elif part == "--forever":
+                result["max_iterations"] = 0
+                i += 1
+            elif part == "--continuous":
+                result["continuous"] = True
+                i += 1
             elif part == "--completion-promise" and i + 1 < len(parts):
                 result["completion_promise"] = parts[i + 1]
                 i += 2
@@ -277,8 +304,8 @@ The loop will continue indefinitely until this phrase is detected.
             RalphService.stop_loop()
             return None
 
-        # Check for completion promise
-        if RalphService.check_completion_promise(last_assistant_msg):
+        # Check for completion promise (skip in continuous mode)
+        if not RalphService.is_continuous() and RalphService.check_completion_promise(last_assistant_msg):
             LogUtils.print(f"✅ Ralph loop: Completion promise detected: {RalphService._completion_promise}", LogOptions(color=Config.colors["green"]))
             RalphService.stop_loop()
             return None
