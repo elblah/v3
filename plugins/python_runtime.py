@@ -255,8 +255,9 @@ Examples:
     ctx.register_command("python-runtime", handle_python_runtime_command, "Control Runtime Python feature")
 
     # Print what was registered
-    print("  - run_inline_python tool")
-    print("  - /python-runtime command")
+    if Config.debug():
+        print("  - run_inline_python tool")
+        print("  - /python-runtime command")
 
     # No cleanup needed
     return None

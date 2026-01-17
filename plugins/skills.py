@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from aicoder.core.config import Config
+
 
 def _parse_yaml_frontmatter(text: str) -> dict:
     """
@@ -276,20 +278,21 @@ Skills are loaded from either .aicoder/skills (local) or ~/.config/aicoder-v3/sk
     # Register command
     ctx.register_command("skills", handle_skills_command, description="Manage Claude Skills")
 
-    if count > 0:
-        source_display = manager.skills_dir
-        if manager.skills_source == "global":
-            # Show shortened path for global
-            source_display = "~/.config/aicoder-v3/skills"
-        
-        print(f"[+] Skills plugin loaded ({count} skills found)")
-        print(f"  - Loading from: {source_display}")
-    else:
-        print("[+] Skills plugin loaded (0 skills found)")
-        print("  - No skills directory found")
-    
-    print("  - [SKILLS] message auto-maintained")
-    print("  - /skills reload command")
+    if Config.debug():
+        if count > 0:
+            source_display = manager.skills_dir
+            if manager.skills_source == "global":
+                # Show shortened path for global
+                source_display = "~/.config/aicoder-v3/skills"
+
+            print(f"[+] Skills plugin loaded ({count} skills found)")
+            print(f"  - Loading from: {source_display}")
+        else:
+            print("[+] Skills plugin loaded (0 skills found)")
+            print("  - No skills directory found")
+
+        print("  - [SKILLS] message auto-maintained")
+        print("  - /skills reload command")
 
     # Cleanup function
     def cleanup():

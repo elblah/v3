@@ -37,4 +37,5 @@ def create_plugin(ctx):
     Config.colors["brightCyan"] = "\x1b[38;2;150;255;255m"    # Brighter Cyan
     Config.colors["brightWhite"] = "\x1b[38;2;255;255;255m"   # Pure White
 
-    print("  - Luna theme applied")
+    if Config.debug():
+        print("  - Luna theme applied")

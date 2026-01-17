@@ -13,6 +13,8 @@ Block Plugin - Unified network and disk restrictions
 import os
 import sys
 import subprocess
+
+from aicoder.core.config import Config
 import tempfile
 import shutil
 import hashlib
@@ -353,9 +355,10 @@ timeout 60s {_block_executable_path} -- bash -c "$command"'''
     
     ctx.register_command("/block", _handle_block, "Unified network and disk blocking")
     patch_run_shell_command()
-    
+
     requirements_ok, missing = check_requirements()
-    if requirements_ok:
-        print("[+] Block plugin loaded (use /block on net disk)")
-    else:
-        print("[+] Block plugin loaded (missing: {', '.join(missing)})")
+    if Config.debug():
+        if requirements_ok:
+            print("[+] Block plugin loaded (use /block on net disk)")
+        else:
+            print("[+] Block plugin loaded (missing: {', '.join(missing)})")

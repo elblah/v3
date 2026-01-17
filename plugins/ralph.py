@@ -308,5 +308,6 @@ def create_plugin(ctx):
     # Register hook for auto-loop trigger
     ctx.register_hook("after_ai_processing", cmd.handle_ralph_trigger)
 
-    LogUtils.print("[+] Ralph plugin loaded", LogOptions(color=Config.colors["green"]))
+    if Config.debug():
+        LogUtils.print("[+] Ralph plugin loaded", LogOptions(color=Config.colors["green"]))
     return {}

@@ -11,6 +11,8 @@ import urllib.parse
 import subprocess
 from typing import Dict, Any
 
+from aicoder.core.config import Config
+
 
 def create_plugin(ctx):
     """Web search and URL content plugin"""
@@ -163,5 +165,6 @@ def create_plugin(ctx):
         format_arguments=format_get_url_content
     )
 
-    print("  - web_search tool (auto-approved)")
-    print("  - get_url_content tool")
+    if Config.debug():
+        print("  - web_search tool (auto-approved)")
+        print("  - get_url_content tool")

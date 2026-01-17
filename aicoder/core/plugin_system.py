@@ -20,6 +20,8 @@ import subprocess
 from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
 from pathlib import Path
 
+from aicoder.core.config import Config
+
 if TYPE_CHECKING:
     from aicoder.core.aicoder import AICoder
 
@@ -241,7 +243,8 @@ class PluginSystem:
                 if result and isinstance(result, dict) and "cleanup" in result:
                     self.cleanup_handlers.append(result["cleanup"])
 
-                print(f"[+] Loaded plugin: {Path(plugin_path).name}")
+                if Config.debug():
+                    print(f"[+] Loaded plugin: {Path(plugin_path).name}")
 
         except Exception as e:
             print(f"[!] Failed to load plugin {plugin_path}: {e}")

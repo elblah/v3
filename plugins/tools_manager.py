@@ -22,6 +22,8 @@ Commands:
 
 from typing import Dict, Any, Set
 
+from aicoder.core.config import Config
+
 
 def create_plugin(ctx):
     """Tools manager plugin"""
@@ -373,4 +375,5 @@ Notes:
     # Register the /tools command
     ctx.register_command("/tools", handle_tools_command, description="Manage available tools")
 
-    print("  - /tools command")
+    if Config.debug():
+        print("  - /tools command")

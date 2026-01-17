@@ -31,6 +31,8 @@ import re
 import json
 from pathlib import Path
 
+from aicoder.core.config import Config
+
 RULES_FILE = Path(".aicoder/auto-approve-rules.json")
 
 
@@ -88,7 +90,8 @@ def create_plugin(ctx):
     # Register hook (plugins can return True/False/None)
     ctx.register_hook("before_approval_prompt", before_approval_prompt)
 
-    print("[+] Loaded auto_approve plugin")
-    print(f"    Rules file: {RULES_FILE}")
-    print("    Copy .aicoder/auto-approve-rules.json.sample to .aicoder/auto-approve-rules.json")
-    print("    and edit to define your rules.")
+    if Config.debug():
+        print("[+] Loaded auto_approve plugin")
+        print(f"    Rules file: {RULES_FILE}")
+        print("    Copy .aicoder/auto-approve-rules.json.sample to .aicoder/auto-approve-rules.json")
+        print("    and edit to define your rules.")
