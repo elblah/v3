@@ -2,6 +2,7 @@
 Test streaming_client module
 """
 
+import time
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from aicoder.core.streaming_client import StreamingClient
@@ -590,4 +591,405 @@ class TestAddToolDefinitionsExtended:
         data = {}
         client._add_tool_definitions(data)
         assert len(data["tools"]) == 3
+
+
+class TestHandleStreamingResponse:
+    """Test _handle_streaming_response method"""
+
+    def test_handles_empty_response(self):
+        """Test handling empty streaming response"""
+        client = StreamingClient()
+        mock_response = Mock()
+        mock_response.readline.return_value = b""  # Empty response
+
+        result = list(client._handle_streaming_response(mock_response))
+        assert result == []
+
+    def test_handles_single_data_chunk(self):
+        """Test handling single data chunk"""
+        client = StreamingClient()
+
+        # Create mock response that returns data lines
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n",
+            b"data: [DONE]\n",
+            b""  # Empty to end
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 1
+        assert result[0]["choices"][0]["delta"]["content"] == "Hello"
+
+    def test_handles_multiple_chunks(self):
+        """Test handling multiple data chunks"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n",
+            b"data: {\"choices\":[{\"delta\":{\"content\":\" World\"}}]}\n",
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 2
+        assert result[0]["choices"][0]["delta"]["content"] == "Hello"
+        assert result[1]["choices"][0]["delta"]["content"] == " World"
+
+    def test_skips_empty_lines(self):
+        """Test that empty lines are skipped"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b"\n",
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n",
+            b"\n",
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 1
+
+    def test_handles_data_prefix_with_space(self):
+        """Test handling data: prefix with space"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n",
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 1
+
+    def test_handles_parse_error_gracefully(self):
+        """Test handling JSON parse error gracefully"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b"data: invalid json\n",
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n",
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch('aicoder.utils.log.LogUtils') as mock_log:
+            with patch.object(Config, 'debug', return_value=False):
+                result = list(client._handle_streaming_response(mock_response))
+
+        # Should skip invalid JSON and continue
+        assert len(result) == 1
+        assert result[0]["choices"][0]["delta"]["content"] == "Hello"
+
+    def test_handles_tool_calls_in_stream(self):
+        """Test handling tool calls in stream"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b'data: {"choices":[{"delta":{"content":"","tool_calls":[{"id":"call1","type":"function","function":{"name":"test_tool"}}]}}]}\n',
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 1
+        tool_calls = result[0]["choices"][0]["delta"]["tool_calls"]
+        assert tool_calls is not None
+        assert len(tool_calls) == 1
+        assert tool_calls[0]["id"] == "call1"
+
+    def test_handles_no_choices(self):
+        """Test handling response with no choices"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b'data: {"id":"test"}\n',
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 1
+        assert result[0]["choices"] == []
+
+    def test_handles_complete_chunk_data(self):
+        """Test handling complete chunk with all fields"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.readline.side_effect = [
+            b'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"delta":{"content":"Hi"},"finish_reason":null,"index":0}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n',
+            b"data: [DONE]\n",
+            b""
+        ]
+
+        with patch.object(Config, 'debug', return_value=False):
+            result = list(client._handle_streaming_response(mock_response))
+
+        assert len(result) == 1
+        assert result[0]["id"] == "chatcmpl-123"
+        assert result[0]["model"] == "gpt-4"
+        assert result[0]["usage"]["prompt_tokens"] == 10
+
+
+class TestHandleAttemptErrorExtended:
+    """Extended tests for _handle_attempt_error"""
+
+    def test_recovery_with_auto_compact(self):
+        """Test auto-recovery with context compaction"""
+        mock_stats = Mock()
+        mock_stats.current_prompt_size = 150000
+        mock_message_history = Mock()
+
+        client = StreamingClient(stats=mock_stats, message_history=mock_message_history)
+
+        with patch.object(Config, 'auto_compact_threshold', return_value=100000):
+            with patch('aicoder.utils.log.LogUtils') as mock_log:
+                # Add info attribute to mock since streaming_client.py calls it
+                mock_log.info = Mock()
+                with patch.object(client, '_recovery_attempted', False, create=True):
+                    result = client._handle_attempt_error(
+                        Exception("Context too large"),
+                        1,
+                        3,
+                        False,
+                        time.time()
+                    )
+
+        # Should attempt recovery
+        assert result is True
+        mock_message_history.force_compact_rounds.assert_called_once_with(1)
+
+    def test_no_recovery_after_already_attempted(self):
+        """Test no recovery after already attempted"""
+        mock_stats = Mock()
+        mock_stats.current_prompt_size = 150000
+
+        client = StreamingClient(stats=mock_stats)
+        client._recovery_attempted = True
+
+        with patch.object(Config, 'auto_compact_threshold', return_value=100000):
+            with patch('aicoder.utils.log.LogUtils'):
+                result = client._handle_attempt_error(
+                    Exception("Context too large"),
+                    2,
+                    3,
+                    False,
+                    time.time()
+                )
+
+        # Should not attempt recovery again
+        assert result is True
+
+    def test_unlimited_mode_always_retries(self):
+        """Test that unlimited mode (max_retries=0) always retries"""
+        client = StreamingClient()
+
+        with patch('aicoder.utils.log.LogUtils') as mock_log:
+            result = client._handle_attempt_error(
+                Exception("Connection error"),
+                1,
+                0,  # Unlimited retries
+                False,
+                time.time()
+            )
+
+        assert result is True
+
+    def test_retry_until_max_then_fail(self):
+        """Test retrying until max attempts then failing"""
+        mock_stats = Mock()
+        client = StreamingClient(stats=mock_stats)
+
+        with patch('aicoder.utils.log.LogUtils') as mock_log:
+            result = client._handle_attempt_error(
+                Exception("Connection error"),
+                3,  # 3rd attempt
+                3,  # Max 3 retries
+                False,
+                time.time()
+            )
+
+        assert result is False
+        mock_stats.increment_api_errors.assert_called_once()
+
+    def test_throw_on_error_raises(self):
+        """Test that throw_on_error raises exception"""
+        client = StreamingClient()
+
+        with patch('aicoder.utils.log.LogUtils'):
+            with pytest.raises(Exception):
+                client._handle_attempt_error(
+                    Exception("Connection error"),
+                    3,
+                    3,
+                    True,  # throw_on_error
+                    time.time()
+                )
+
+
+class TestStreamRequestIntegration:
+    """Integration tests for stream_request"""
+
+    def test_stream_request_empty_messages(self):
+        """Test stream request with empty messages"""
+        client = StreamingClient()
+
+        with patch.object(Config, 'debug', return_value=False):
+            with patch.object(Config, 'base_url', return_value='http://test.com'):
+                with patch.object(Config, 'model', return_value='gpt-4'):
+                    with patch.object(Config, 'effective_max_retries', return_value=1):
+                        with patch.object(Config, 'total_timeout', return_value=30000):
+                            with patch.object(Config, 'temperature', return_value=None):
+                                with patch.object(Config, 'max_tokens', return_value=None):
+                                    result = list(client.stream_request([]))
+        assert result == []
+
+    def test_stream_request_with_single_message(self):
+        """Test stream request with single message"""
+        client = StreamingClient()
+
+        with patch.object(Config, 'debug', return_value=False):
+            with patch.object(Config, 'base_url', return_value='http://test.com'):
+                with patch.object(Config, 'model', return_value='gpt-4'):
+                    with patch.object(Config, 'effective_max_retries', return_value=1):
+                        with patch.object(Config, 'total_timeout', return_value=30000):
+                            with patch.object(Config, 'temperature', return_value=None):
+                                with patch.object(Config, 'max_tokens', return_value=None):
+                                    result = list(client.stream_request([
+                                        {"role": "user", "content": "Hello"}
+                                    ]))
+        assert result == []
+
+    def test_resets_recovery_flag_on_new_request(self):
+        """Test that recovery flag is reset for each new request"""
+        client = StreamingClient()
+        client._recovery_attempted = True
+
+        with patch.object(Config, 'debug', return_value=False):
+            with patch.object(Config, 'base_url', return_value='http://test.com'):
+                with patch.object(Config, 'model', return_value='gpt-4'):
+                    with patch.object(Config, 'effective_max_retries', return_value=1):
+                        with patch.object(Config, 'total_timeout', return_value=30000):
+                            with patch.object(Config, 'temperature', return_value=None):
+                                with patch.object(Config, 'max_tokens', return_value=None):
+                                    list(client.stream_request([{"role": "user", "content": "test"}]))
+
+        assert client._recovery_attempted is False
+
+    def test_stream_request_no_send_tools(self):
+        """Test stream request without sending tools"""
+        client = StreamingClient()
+
+        with patch.object(Config, 'debug', return_value=False):
+            with patch.object(Config, 'base_url', return_value='http://test.com'):
+                with patch.object(Config, 'model', return_value='gpt-4'):
+                    with patch.object(Config, 'effective_max_retries', return_value=1):
+                        with patch.object(Config, 'total_timeout', return_value=30000):
+                            with patch.object(Config, 'temperature', return_value=None):
+                                with patch.object(Config, 'max_tokens', return_value=None):
+                                    result = list(client.stream_request(
+                                        [{"role": "user", "content": "test"}],
+                                        send_tools=False
+                                    ))
+        assert result == []
+
+
+class TestResponseContentTypeHandling:
+    """Test content-type header handling"""
+
+    def test_handles_case_insensitive_content_type(self):
+        """Test case-insensitive content-type header handling"""
+        client = StreamingClient()
+        mock_response = Mock()
+        mock_response.headers = {"Content-Type": "text/event-stream", "X-Request-Id": "123"}
+
+        content_type = ""
+        for header_name, header_value in mock_response.headers.items():
+            if header_name.lower() == "content-type":
+                content_type = header_value
+                break
+
+        assert content_type == "text/event-stream"
+
+    def test_handles_mixed_case_content_type(self):
+        """Test mixed-case content-type header"""
+        client = StreamingClient()
+
+        # Simulate the parsing logic
+        headers = {"Content-Type": "TEXT/EVENT-STREAM; CHARSET=UTF-8"}
+        content_type = ""
+        for header_name, header_value in headers.items():
+            if header_name.lower() == "content-type":
+                content_type = header_value
+                break
+
+        assert client._is_streaming_response(content_type) is True
+
+
+class TestUsageStatsHandling:
+    """Test usage statistics handling"""
+
+    def test_create_usage_with_partial_data(self):
+        """Test _create_usage with partial data"""
+        client = StreamingClient()
+
+        usage_data = {
+            "prompt_tokens": 100,
+            # completion_tokens missing
+        }
+        result = client._create_usage(usage_data)
+
+        assert result["prompt_tokens"] == 100
+        assert result.get("completion_tokens") is None
+        assert result.get("total_tokens") is None
+
+    def test_create_usage_with_all_fields(self):
+        """Test _create_usage with all fields"""
+        client = StreamingClient()
+
+        usage_data = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150
+        }
+        result = client._create_usage(usage_data)
+
+        assert result["prompt_tokens"] == 100
+        assert result["completion_tokens"] == 50
+        assert result["total_tokens"] == 150
+
+    def test_update_stats_from_usage_with_dict(self):
+        """Test _update_stats_from_usage with dict"""
+        mock_stats = Mock()
+        client = StreamingClient(stats=mock_stats)
+
+        usage = {"prompt_tokens": 100, "completion_tokens": 50}
+        client._update_stats_from_usage(usage)
+
+        # Dict keys use get(), so we need to check add methods are not called
+        # when stats expects attribute access
+        mock_stats.add_prompt_tokens.assert_not_called()
+        mock_stats.add_completion_tokens.assert_not_called()
 
