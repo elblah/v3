@@ -11,6 +11,8 @@ Features:
 import os
 import subprocess
 
+from aicoder.core.config import Config
+
 
 def create_plugin(ctx):
     """Audio notifications plugin"""
@@ -71,5 +73,6 @@ def create_plugin(ctx):
     ctx.register_hook("before_user_prompt", on_before_user_prompt)
     ctx.register_hook("before_approval_prompt", on_before_approval_prompt)
 
-    print("  - before_user_prompt hook")
-    print("  - before_approval_prompt hook")
+    if Config.debug():
+        print("  - before_user_prompt hook")
+        print("  - before_approval_prompt hook")

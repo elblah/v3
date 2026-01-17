@@ -47,9 +47,42 @@ cp plugins/ruff.py .aicoder/plugins/
 mv .aicoder/plugins/_ruff.py .aicoder/plugins/ruff.py
 ```
 
+## Plugin Output Conventions
+
+To keep startup clean, plugins should wrap verbose output in `Config.debug()` checks:
+
+```python
+from aicoder.core.config import Config
+
+def create_plugin(ctx):
+    # This output only shows when DEBUG=1
+    if Config.debug():
+        print("[+] My plugin loaded")
+        print("    - mytool tool")
+        print("    - /mycmd command")
+
+    # Always print errors (never wrap these)
+    if requirements_missing:
+        print(f"[!] My plugin unavailable - missing requirements:")
+        for req in requirements_missing:
+            print(f"    - {req}")
+```
+
+**Rules:**
+- Wrap informational/verbose messages in `if Config.debug():`
+- Always print errors (e.g., missing requirements) without conditions
+- The global plugin loader message `[i] Loading plugins from...` is always shown
+
+**To see plugin loading output:**
+```bash
+DEBUG=1 aicoder
+```
+
 ## Plugin API
 
 ```python
+from aicoder.core.config import Config
+
 def create_plugin(ctx):
     """
     Called when plugin loads.
@@ -95,6 +128,11 @@ def create_plugin(ctx):
 
     # Add a message to the conversation (direct access, no bureaucracy)
     ctx.app.message_history.add_user_message("Plugin message")
+
+    # Optional: Suppress plugin loading messages unless DEBUG=1
+    if Config.debug():
+        print("[+] My plugin loaded")
+        print("    - /mycmd command")
 
     # Optional: return cleanup function
     def cleanup():

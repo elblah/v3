@@ -348,10 +348,11 @@ def create_plugin(ctx: 'PluginContext') -> Optional[Dict[str, Callable]]:
     ctx.register_command('mc', _handle_model_command, 'Alias for /model command')
     ctx.register_command('mb', _handle_model_back_command, 'Toggle back to previous model')
 
-    LogUtils.print("[+] model_switch plugin loaded", LogOptions(color=Config.colors["green"]))
-    LogUtils.print("  - /model or /mc - Switch model using external selector", LogOptions(color=Config.colors["cyan"]))
-    LogUtils.print("  - /model help   - Show detailed help", LogOptions(color=Config.colors["cyan"]))
-    LogUtils.print("  - /model info   - Show current/previous model info", LogOptions(color=Config.colors["cyan"]))
-    LogUtils.print("  - /mb           - Toggle back to previous model", LogOptions(color=Config.colors["cyan"]))
+    if Config.debug():
+        LogUtils.print("[+] model_switch plugin loaded", LogOptions(color=Config.colors["green"]))
+        LogUtils.print("  - /model or /mc - Switch model using external selector", LogOptions(color=Config.colors["cyan"]))
+        LogUtils.print("  - /model help   - Show detailed help", LogOptions(color=Config.colors["cyan"]))
+        LogUtils.print("  - /model info   - Show current/previous model info", LogOptions(color=Config.colors["cyan"]))
+        LogUtils.print("  - /mb           - Toggle back to previous model", LogOptions(color=Config.colors["cyan"]))
 
     return None
