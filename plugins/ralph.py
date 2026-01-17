@@ -22,6 +22,8 @@ class RalphService:
     _max_iterations: int = 0
     _iteration: int = 0
     _continuous: bool = False
+    _reset_context: bool = False
+    _system_prompt: Optional[str] = None
 
     @classmethod
     def is_active(cls) -> bool:
@@ -34,7 +36,9 @@ class RalphService:
         prompt: str,
         completion_promise: Optional[str] = None,
         max_iterations: int = 10,
-        continuous: bool = False
+        continuous: bool = False,
+        reset_context: bool = False,
+        system_prompt: Optional[str] = None
     ) -> None:
         """Start Ralph loop"""
         cls._active = True
@@ -43,6 +47,8 @@ class RalphService:
         cls._max_iterations = max_iterations
         cls._iteration = 1
         cls._continuous = continuous
+        cls._reset_context = reset_context
+        cls._system_prompt = system_prompt
 
     @classmethod
     def stop_loop(cls) -> None:
@@ -94,6 +100,16 @@ class RalphService:
         """Check if continuous mode is enabled (ignore promise)"""
         return cls._continuous
 
+    @classmethod
+    def should_reset_context(cls) -> bool:
+        """Check if context should be reset each iteration"""
+        return cls._reset_context
+
+    @classmethod
+    def get_system_prompt(cls) -> Optional[str]:
+        """Get cached system prompt"""
+        return cls._system_prompt
+
 
 class RalphCommand:
     """Ralph command handler"""
@@ -108,7 +124,7 @@ class RalphCommand:
 Ralph Plugin - Self-referential AI loops
 
 Usage:
-  /ralph "prompt" [--max-iterations N] [--forever] [--continuous] [--completion-promise "TEXT"]
+  /ralph "prompt" [--max-iterations N] [--forever] [--continuous] [--completion-promise "TEXT"] [--reset-context]
 
 Commands:
   /ralph <prompt>           Start Ralph loop with prompt
@@ -120,6 +136,7 @@ Options:
   --forever                 Run forever (equivalent to --max-iterations 0)
   --continuous              Loop until max iterations, ignore completion promise
   --completion-promise TEXT Phrase that signals completion (default: DONE)
+  --reset-context           Reset context each iteration (fresh start each time)
 
 How it works:
   1. Run /ralph "Your task description"
@@ -127,6 +144,12 @@ How it works:
   3. When AI finishes, same prompt is fed back
   4. AI sees its previous work in files/git
   5. Loop repeats until completion promise found or max iterations reached
+
+With --reset-context:
+  - Each iteration starts fresh (system prompt + user prompt only)
+  - Conversation history is cleared each turn
+  - AI relies on files and git history instead of memory
+  - Better for focused, independent iterations
 
 Completion:
   To stop the loop, the AI must output: <promise>TEXT</promise>
@@ -138,6 +161,7 @@ Examples:
   /ralph "Fix the auth bug" --max-iterations 20
   /ralph "Refactor code" --forever
   /ralph "Improve test coverage" --continuous --max-iterations 20
+  /ralph "Analyze this codebase" --reset-context
 """
 
     def handle_ralph(self, args_str: str) -> str:
@@ -157,7 +181,8 @@ Examples:
             prompt=args["prompt"],
             completion_promise=args["completion_promise"],
             max_iterations=args["max_iterations"],
-            continuous=args["continuous"]
+            continuous=args["continuous"],
+            reset_context=args["reset_context"]
         )
 
         # Show startup message
@@ -170,9 +195,13 @@ Examples:
         LogUtils.print(f"  Completion promise: {promise_str}", LogOptions(color=Config.colors["white"]))
         if args["continuous"]:
             LogUtils.print(f"  Mode: continuous (ignores promise)", LogOptions(color=Config.colors["yellow"]))
+        if args["reset_context"]:
+            LogUtils.print(f"  Mode: reset-context (fresh start each iteration)", LogOptions(color=Config.colors["cyan"]))
         LogUtils.print("", LogOptions(color=Config.colors["white"]))
         LogUtils.print("The AI will repeatedly work on the same task until completion.", LogOptions(color=Config.colors["cyan"]))
         LogUtils.print("Each iteration sees previous work in files and git history.", LogOptions(color=Config.colors["cyan"]))
+        if args["reset_context"]:
+            LogUtils.print("  (context cleared each iteration - fresh start)", LogOptions(color=Config.colors["cyan"]))
         if args["continuous"]:
             LogUtils.print("  (ignores <promise> - loops until max iterations)", LogOptions(color=Config.colors["yellow"]))
         else:
@@ -236,7 +265,8 @@ The loop will continue indefinitely until this phrase is detected.
             "prompt": "",
             "completion_promise": None,
             "max_iterations": 10,
-            "continuous": False
+            "continuous": False,
+            "reset_context": False
         }
 
         parts = args_str.split()
@@ -262,6 +292,9 @@ The loop will continue indefinitely until this phrase is detected.
             elif part == "--completion-promise" and i + 1 < len(parts):
                 result["completion_promise"] = parts[i + 1]
                 i += 2
+            elif part == "--reset-context":
+                result["reset_context"] = True
+                i += 1
             else:
                 # Part of prompt
                 prompt_parts.append(part)
@@ -310,15 +343,33 @@ The loop will continue indefinitely until this phrase is detected.
             RalphService.stop_loop()
             return None
 
-        # Continue loop - increment iteration and set next prompt
+        # Continue loop - increment iteration
         RalphService.increment_iteration()
         base_prompt = RalphService.get_prompt()
 
+        LogUtils.print(f"🔄 Ralph iteration {RalphService.get_iteration()}", LogOptions(color=Config.colors["cyan"]))
+
+        # If reset-context is enabled, clear and rebuild context fresh
+        if RalphService.should_reset_context():
+            LogUtils.print(f"  (resetting context)", LogOptions(color=Config.colors["dim"]))
+
+            # Reset message history (preserves system prompt, clears chat)
+            self.app.message_history.clear()
+
+            # Build fresh prompt with instructions
+            prompt_with_instructions = self._build_prompt_with_instructions(base_prompt)
+
+            # Add user message to fresh context
+            self.app.message_history.add_user_message(prompt_with_instructions)
+
+            # Return prompt for next AI call
+            return prompt_with_instructions
+
+        # Normal mode: just continue with accumulated context
+        LogUtils.print(f"  Prompt: {base_prompt[:80]}{'...' if len(base_prompt) > 80 else ''}", LogOptions(color=Config.colors["white"]))
+
         # Rebuild prompt with instructions for next iteration
         prompt_with_instructions = self._build_prompt_with_instructions(base_prompt)
-
-        LogUtils.print(f"🔄 Ralph iteration {RalphService.get_iteration()}", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print(f"  Prompt: {base_prompt[:80]}{'...' if len(base_prompt) > 80 else ''}", LogOptions(color=Config.colors["white"]))
 
         # Set next prompt to trigger AI again
         return prompt_with_instructions
