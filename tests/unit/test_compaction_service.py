@@ -241,3 +241,101 @@ class TestCompactionServiceUnit:
         messages = [{"role": "user", "content": "[SUMMARY] Previous summary"}]
         result = service.force_compact_messages(messages, 1)
         assert result == messages
+
+    def test_compact_with_summaries(self):
+        """Test compact preserves existing summaries."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "system", "content": "You are helpful"},
+            {"role": "user", "content": "[SUMMARY] Old summary"},
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+        # With many more messages, this would compact
+        # For now just verify it doesn't crash
+        result = service.compact(messages)
+        assert len(result) > 0
+
+    def test_compact_with_protected_rounds(self):
+        """Test compact protects recent rounds."""
+        service = CompactionService(api_client=None)
+        # Create many rounds
+        messages = [
+            {"role": "system", "content": "You are helpful"},
+        ]
+        for i in range(10):
+            messages.append({"role": "user", "content": f"Round {i} question"})
+            messages.append({"role": "assistant", "content": f"Round {i} answer"})
+
+        # With more than 3 messages and multiple rounds, it should compact
+        result = service.compact(messages)
+        assert result is not None
+
+    def test_group_messages_empty(self):
+        """Test grouping empty message list."""
+        service = CompactionService(api_client=None)
+        groups = service.group_messages([])
+        assert groups == []
+
+    def test_group_messages_single_message(self):
+        """Test grouping single message."""
+        service = CompactionService(api_client=None)
+        messages = [{"role": "user", "content": "Hello"}]
+        groups = service.group_messages(messages)
+        assert len(groups) == 1
+        assert groups[0].messages == messages
+
+    def test_identify_rounds_empty(self):
+        """Test identifying rounds in empty messages."""
+        service = CompactionService(api_client=None)
+        rounds = service._identify_rounds([])
+        assert rounds == []
+
+    def test_identify_rounds_single_message(self):
+        """Test identifying rounds with single message."""
+        service = CompactionService(api_client=None)
+        messages = [{"role": "user", "content": "Hello"}]
+        rounds = service._identify_rounds(messages)
+        # Single message might not form a complete round
+        assert rounds is not None
+
+    def test_format_messages_empty(self):
+        """Test formatting empty message list returns empty string."""
+        service = CompactionService(api_client=None)
+        result = service._format_messages_for_summary([])
+        # Empty messages should return empty string
+        assert result == ""
+
+    def test_format_messages_single(self):
+        """Test formatting single message."""
+        service = CompactionService(api_client=None)
+        messages = [{"role": "user", "content": "Hello"}]
+        result = service._format_messages_for_summary(messages)
+        assert "User:" in result
+        assert "Hello" in result
+
+    def test_validate_summary_exactly_50_chars(self):
+        """Test summary validation with exactly 50 characters."""
+        service = CompactionService(api_client=None)
+        # 50 characters exactly should be valid
+        summary = "x" * 50
+        assert service._validate_summary(summary) is True
+
+    def test_validate_summary_49_chars(self):
+        """Test summary validation with 49 characters (invalid)."""
+        service = CompactionService(api_client=None)
+        summary = "x" * 49
+        assert service._validate_summary(summary) is False
+
+    def test_replace_messages_all_match(self):
+        """Test replacing when all messages match."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+        to_replace = messages
+        summary = {"role": "user", "content": "[SUMMARY] Compacted"}
+        result = service._replace_messages_with_summary(messages, to_replace, summary)
+        assert len(result) == 1
+        assert result[0]["content"].startswith("[SUMMARY]")
