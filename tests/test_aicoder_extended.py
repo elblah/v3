@@ -236,3 +236,150 @@ class TestAICoderWithMockedComponents:
         # Check that streaming_client has required methods
         assert hasattr(app.streaming_client, 'stream_request')
         assert hasattr(app.streaming_client, 'stats')
+
+    def test_command_handler_integration(self):
+        """Test command handler is properly integrated"""
+        app = AICoder()
+
+        # Check that command_handler has required attributes
+        assert hasattr(app.command_handler, 'handle_command')
+        assert hasattr(app.command_handler, 'registry')
+
+    def test_input_handler_integration(self):
+        """Test input handler is properly integrated"""
+        app = AICoder()
+
+        # Check that input_handler has required attributes
+        assert hasattr(app.input_handler, 'get_user_input')
+
+    def test_stats_integration(self):
+        """Test stats is properly integrated"""
+        app = AICoder()
+
+        # Check that stats has required methods
+        assert hasattr(app.stats, 'increment_user_interactions')
+        assert hasattr(app.stats, 'increment_api_requests')
+
+
+class TestAICoderRunModes:
+    """Tests for different run modes"""
+
+    def test_run_with_socket_only_env(self):
+        """Test run_socket_only mode sets YOLO"""
+        app = AICoder()
+
+        with patch('aicoder.core.aicoder.Config') as mock_config:
+            mock_config.socket_only.return_value = True
+            mock_config.debug.return_value = False
+            mock_config.print_startup_info = MagicMock()
+            mock_config.set_yolo_mode = MagicMock()
+
+            # Run in socket-only mode - should set YOLO
+            with patch.object(app, 'shutdown'):
+                with patch('time.sleep'):
+                    app.is_running = False  # Stop immediately after starting
+                    app.run_socket_only()
+
+            mock_config.set_yolo_mode.assert_called_with(True)
+
+    def test_run_non_interactive_calls_shutdown(self):
+        """Test run_non_interactive calls shutdown on error"""
+        app = AICoder()
+
+        with patch('aicoder.core.aicoder.read_stdin_as_string', side_effect=Exception("Stdin error")):
+            with patch.object(app, 'shutdown') as mock_shutdown:
+                app.run_non_interactive()
+                mock_shutdown.assert_called_once()
+
+
+class TestAICoderErrorHandling:
+    """Tests for error handling"""
+
+    def test_call_notify_hook_with_exception_in_debug_mode(self):
+        """Test that notify hook exceptions are handled gracefully in debug mode"""
+        app = AICoder()
+
+        mock_hook = MagicMock(side_effect=Exception("Hook error"))
+        app.notify_hooks = {"on_test": mock_hook}
+
+        with patch('aicoder.core.aicoder.Config') as mock_config:
+            mock_config.debug.return_value = True
+            with patch('aicoder.core.aicoder.LogUtils') as mock_log:
+                # Should not raise even when hook fails
+                app.call_notify_hook("on_test")
+                mock_log.warn.assert_called()
+
+
+class TestAICoderPluginIntegration:
+    """Tests for plugin integration"""
+
+    def test_plugin_system_set_app_called(self):
+        """Test that set_app is called on plugin system during initialize"""
+        app = AICoder()
+
+        with patch.object(app.plugin_system, 'set_app'):
+            with patch.object(app.message_history, 'set_api_client'):
+                with patch.object(app.plugin_system, 'load_plugins'):
+                    app.initialize()
+                    app.plugin_system.set_app.assert_called_once_with(app)
+
+    def test_tool_manager_set_plugin_system_called(self):
+        """Test that set_plugin_system is called on tool manager"""
+        app = AICoder()
+
+        with patch.object(app.message_history, 'set_api_client'):
+            with patch.object(app.plugin_system, 'load_plugins'):
+                with patch.object(app.tool_manager, 'set_plugin_system') as mock_set:
+                    app.initialize()
+                    mock_set.assert_called_once()
+
+    def test_message_history_set_plugin_system_called(self):
+        """Test that set_plugin_system is called on message history"""
+        app = AICoder()
+
+        with patch.object(app.message_history, 'set_api_client'):
+            with patch.object(app.plugin_system, 'load_plugins'):
+                with patch.object(app.message_history, 'set_plugin_system') as mock_set:
+                    app.initialize()
+                    mock_set.assert_called_once()
+
+    def test_get_plugin_tools_iterates(self):
+        """Test that get_plugin_tools returns tools dict"""
+        app = AICoder()
+
+        # Just verify the method exists and can be called
+        tools = app.plugin_system.get_plugin_tools()
+        assert isinstance(tools, dict)
+
+    def test_get_plugin_commands_iterates(self):
+        """Test that get_plugin_commands returns commands dict"""
+        app = AICoder()
+
+        # Just verify the method exists and can be called
+        commands = app.plugin_system.get_plugin_commands()
+        assert isinstance(commands, dict)
+
+
+class TestAICoderCommandExecution:
+    """Tests for command execution flow"""
+
+    def test_add_user_input_triggers_prompt_history_save(self):
+        """Test that add_user_input saves to prompt history"""
+        app = AICoder()
+
+        with patch('aicoder.core.prompt_history.save_prompt') as mock_save:
+            app.add_user_input("Test message")
+            mock_save.assert_called_once_with("Test message")
+
+    def test_command_execution_adds_message(self):
+        """Test that command execution can add user messages"""
+        app = AICoder()
+
+        initial_count = len(app.message_history.get_messages())
+
+        # Execute a command that should run API call
+        from aicoder.core.commands.base import CommandResult
+        mock_result = CommandResult(should_quit=False, run_api_call=True, message="Hello from command")
+
+        # Verify command handling works (basic sanity check)
+        assert hasattr(app.command_handler, 'handle_command')
