@@ -1,8 +1,10 @@
 """Unit tests for command implementations."""
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 import os
+import tempfile
+import json
 
 import sys
 sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
@@ -13,6 +15,10 @@ from aicoder.core.commands.detail import DetailCommand
 from aicoder.core.commands.yolo import YoloCommand
 from aicoder.core.commands.sandbox import SandboxCommand
 from aicoder.core.commands.edit import EditCommand
+from aicoder.core.commands.memory import MemoryCommand
+from aicoder.core.commands.help import HelpCommand
+from aicoder.core.commands.save import SaveCommand
+from aicoder.core.commands.load import LoadCommand
 from aicoder.core.commands.stats import StatsCommand
 
 
@@ -287,20 +293,6 @@ class TestSandboxCommand:
             mock_config.set_sandbox_disabled.assert_called_with(True)
 
 
-class TestEditCommand:
-    """Test EditCommand."""
-
-    def test_edit_command_name(self, mock_context):
-        """Test edit command has correct name."""
-        cmd = EditCommand(mock_context)
-        assert cmd.get_name() == "edit"
-
-    def test_edit_command_description(self, mock_context):
-        """Test edit command has correct description."""
-        cmd = EditCommand(mock_context)
-        assert "edit" in cmd.get_description().lower()
-
-
 class TestStatsCommand:
     """Test StatsCommand."""
 
@@ -330,3 +322,172 @@ class TestStatsCommand:
             result = cmd.execute([])
             assert result.should_quit is False
             mock_context.stats.print_stats.assert_called_once()
+
+
+class TestHelpCommand:
+    """Test HelpCommand."""
+
+    def test_help_command_name(self, mock_context):
+        """Test help command has correct name."""
+        cmd = HelpCommand(mock_context)
+        assert cmd.get_name() == "help"
+
+    def test_help_command_description(self, mock_context):
+        """Test help command has correct description."""
+        cmd = HelpCommand(mock_context)
+        assert "help" in cmd.get_description().lower()
+
+    def test_help_command_aliases(self, mock_context):
+        """Test help command has aliases."""
+        cmd = HelpCommand(mock_context)
+        aliases = cmd.get_aliases()
+        assert "?" in aliases or "h" in aliases
+
+    def test_help_execute_no_handler(self, mock_context):
+        """Test help command when command handler is not available."""
+        mock_context.command_handler = None
+        cmd = HelpCommand(mock_context)
+        result = cmd.execute([])
+        assert result.should_quit is False
+        assert result.run_api_call is False
+
+    def test_help_execute_with_commands(self, mock_context):
+        """Test help command execution with commands available."""
+        # Create a mock command handler
+        mock_handler = MagicMock()
+        mock_handler.get_all_commands.return_value = {
+            "debug": DebugCommand(mock_context),
+            "help": HelpCommand(mock_context)
+        }
+        mock_context.command_handler = mock_handler
+
+        with patch('aicoder.core.commands.help.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "cyan": "\033[36m",
+                "dim": "\033[2m",
+                "reset": "\033[0m",
+                "bold": "\033[1m"
+            }
+            mock_config.in_tmux.return_value = True
+            cmd = HelpCommand(mock_context)
+            result = cmd.execute([])
+            assert result.should_quit is False
+            assert result.run_api_call is False
+
+
+class TestMemoryCommand:
+    """Test MemoryCommand."""
+
+    def test_memory_command_name(self, mock_context):
+        """Test memory command has correct name."""
+        cmd = MemoryCommand(mock_context)
+        assert cmd.get_name() == "memory"
+
+    def test_memory_command_description(self, mock_context):
+        """Test memory command has correct description."""
+        cmd = MemoryCommand(mock_context)
+        assert "memory" in cmd.get_description().lower()
+
+    def test_memory_command_aliases(self, mock_context):
+        """Test memory command has aliases."""
+        cmd = MemoryCommand(mock_context)
+        aliases = cmd.get_aliases()
+        assert "m" in aliases
+
+    def test_memory_execute_no_tmux(self, mock_context):
+        """Test memory command fails gracefully outside tmux."""
+        with patch('aicoder.core.commands.memory.Config') as mock_config:
+            mock_config.in_tmux.return_value = False
+            cmd = MemoryCommand(mock_context)
+            result = cmd.execute([])
+            assert result.should_quit is False
+            assert result.run_api_call is False
+
+    def test_memory_execute_with_messages(self, mock_context):
+        """Test memory command with messages in history."""
+        # Setup mock messages
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"}
+        ]
+
+        with patch('aicoder.core.commands.memory.Config') as mock_config:
+            mock_config.in_tmux.return_value = True
+            mock_config.colors = {
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "cyan": "\033[36m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            with patch('aicoder.core.commands.memory.create_temp_file', return_value='/tmp/test.json'):
+                with patch('builtins.open', mock_open(read_data='[{"role": "user", "content": "Updated"}]')):
+                    with patch('aicoder.core.commands.memory.os.path.exists', return_value=True):
+                        with patch('aicoder.core.commands.memory.os.unlink'):
+                            with patch('aicoder.core.commands.memory.os.system'):
+                                cmd = MemoryCommand(mock_context)
+                                result = cmd.execute([])
+                                assert result.should_quit is False
+                                assert result.run_api_call is False
+
+
+class TestEditCommand:
+    """Test EditCommand - extended tests."""
+
+    def test_edit_command_name(self, mock_context):
+        """Test edit command has correct name."""
+        cmd = EditCommand(mock_context)
+        assert cmd.get_name() == "edit"
+
+    def test_edit_command_description(self, mock_context):
+        """Test edit command has correct description."""
+        cmd = EditCommand(mock_context)
+        assert "edit" in cmd.get_description().lower()
+
+    def test_edit_command_aliases(self, mock_context):
+        """Test edit command has aliases."""
+        cmd = EditCommand(mock_context)
+        aliases = cmd.get_aliases()
+        assert "e" in aliases
+
+    def test_edit_execute_no_tmux(self, mock_context):
+        """Test edit command fails gracefully outside tmux."""
+        with patch.dict(os.environ, {}, clear=False):
+            with patch('aicoder.core.commands.edit.Config') as mock_config:
+                mock_config.colors = {
+                    "green": "\033[32m",
+                    "yellow": "\033[33m",
+                    "cyan": "\033[36m",
+                    "dim": "\033[2m",
+                    "reset": "\033[0m"
+                }
+                # Remove TMUX env var
+                if 'TMUX' in os.environ:
+                    del os.environ['TMUX']
+
+                cmd = EditCommand(mock_context)
+                result = cmd.execute([])
+                assert result.should_quit is False
+                assert result.run_api_call is False
+
+    def test_edit_execute_empty_content(self, mock_context):
+        """Test edit command with empty content returns no API call."""
+        with patch.dict(os.environ, {"TMUX": "1", "EDITOR": "nano"}, clear=False):
+            with patch('aicoder.core.commands.edit.Config') as mock_config:
+                mock_config.colors = {
+                    "green": "\033[32m",
+                    "yellow": "\033[33m",
+                    "cyan": "\033[36m",
+                    "dim": "\033[2m",
+                    "reset": "\033[0m"
+                }
+                with patch('aicoder.core.commands.edit.create_temp_file', return_value='/tmp/test.md'):
+                    with patch('builtins.open', mock_open(read_data='')):
+                        with patch('subprocess.run'):
+                            with patch('aicoder.core.commands.edit.os.remove'):
+                                cmd = EditCommand(mock_context)
+                                result = cmd.execute([])
+                                assert result.should_quit is False
+                                assert result.run_api_call is False
