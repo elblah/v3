@@ -230,62 +230,68 @@ class TestGeneratePreview:
 
     def test_file_not_found(self):
         """Test with non-existent file"""
-        result = generate_preview({
-            "path": "/nonexistent/file.txt",
-            "old_string": "test"
-        })
-        assert result["tool"] == "edit_file"
-        assert "Error" in result["content"]
-        assert "File not found" in result["content"]
-        assert result["can_approve"] is False
+        # Mock sandbox check to return True (file doesn't exist yet, so sandbox check passes)
+        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+            result = generate_preview({
+                "path": "/nonexistent/file.txt",
+                "old_string": "test"
+            })
+            assert result["tool"] == "edit_file"
+            assert "Error" in result["content"]
+            assert "File not found" in result["content"]
+            assert result["can_approve"] is False
 
     def test_old_string_not_found(self, temp_file):
         """Test when old_string is not in file"""
-        result = generate_preview({
-            "path": temp_file,
-            "old_string": "NOTFOUND"
-        })
-        assert result["tool"] == "edit_file"
-        assert "Error" in result["content"]
-        assert "old_string not found" in result["content"]
-        assert result["can_approve"] is False
+        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+            result = generate_preview({
+                "path": temp_file,
+                "old_string": "NOTFOUND"
+            })
+            assert result["tool"] == "edit_file"
+            assert "Error" in result["content"]
+            assert "old_string not found" in result["content"]
+            assert result["can_approve"] is False
 
     def test_file_not_read_first(self, temp_file):
         """Test when file was not read first"""
-        result = generate_preview({
-            "path": temp_file,
-            "old_string": "Hello"
-        })
-        assert result["tool"] == "edit_file"
-        assert "can_approve" in result
-        assert result["can_approve"] is False
-        assert "Warning" in result["content"] or "read file first" in result["content"]
+        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+            result = generate_preview({
+                "path": temp_file,
+                "old_string": "Hello"
+            })
+            assert result["tool"] == "edit_file"
+            assert "can_approve" in result
+            assert result["can_approve"] is False
+            assert "Warning" in result["content"] or "read file first" in result["content"]
 
     def test_no_changes_detected(self, temp_file):
         """Test when no changes are detected in diff"""
         FileAccessTracker.record_read(temp_file)
-        result = generate_preview({
-            "path": temp_file,
-            "old_string": "Hello",
-            "new_string": "Hello"  # Same content
-        })
-        assert result["tool"] == "edit_file"
-        assert result["can_approve"] is False
+        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+            result = generate_preview({
+                "path": temp_file,
+                "old_string": "Hello",
+                "new_string": "Hello"  # Same content
+            })
+            assert result["tool"] == "edit_file"
+            assert result["can_approve"] is False
 
     def test_successful_preview(self, temp_file):
         """Test successful preview generation"""
         FileAccessTracker.record_read(temp_file)
-        result = generate_preview({
-            "path": temp_file,
-            "old_string": "Hello",
-            "new_string": "Hi"
-        })
-        assert result["tool"] == "edit_file"
-        assert "can_approve" in result
-        # With a change, can_approve should be True
-        assert result["can_approve"] is True
-        # Content should contain path or diff info
-        assert len(result["content"]) > 0
+        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+            result = generate_preview({
+                "path": temp_file,
+                "old_string": "Hello",
+                "new_string": "Hi"
+            })
+            assert result["tool"] == "edit_file"
+            assert "can_approve" in result
+            # With a change, can_approve should be True
+            assert result["can_approve"] is True
+            # Content should contain path or diff info
+            assert len(result["content"]) > 0
 
 
 class TestFormatArguments:

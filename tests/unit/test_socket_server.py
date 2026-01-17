@@ -471,3 +471,160 @@ class TestMaxInjectTextSize:
         """Test max inject text size is 10MB."""
         assert MAX_INJECT_TEXT_SIZE == 10 * 1024 * 1024
         assert MAX_INJECT_TEXT_SIZE == 10485760
+
+
+class TestSocketServerExecuteCommandExtended:
+    """Extended tests for command execution."""
+
+    def _create_server(self):
+        """Create a test server instance."""
+        mock_aicoder = MagicMock()
+        mock_aicoder.session_manager = MagicMock()
+        mock_aicoder.session_manager.is_processing = False
+        mock_aicoder.message_history = MagicMock()
+        mock_aicoder.message_history.get_messages.return_value = []
+        server = SocketServer(mock_aicoder)
+        server.lock = MagicMock()
+        server.lock.__enter__ = MagicMock()
+        server.lock.__exit__ = MagicMock()
+        return server
+
+    def test_execute_command_with_args(self):
+        """Test executing command with arguments."""
+        server = self._create_server()
+
+        with patch('aicoder.core.socket_server.Config') as mock_config:
+            mock_config.yolo_mode.return_value = False
+            result = server._execute_command("yolo on")
+            data = json.loads(result)
+            assert data["status"] == "success"
+            assert data["data"]["enabled"] is True
+
+    def test_execute_command_sandbox_toggle(self):
+        """Test sandbox toggle command."""
+        server = self._create_server()
+
+        with patch('aicoder.core.socket_server.Config') as mock_config:
+            mock_config.sandbox_disabled.return_value = False
+            with patch.object(mock_config, 'set_sandbox_disabled'):
+                result = server._execute_command("sandbox toggle")
+                data = json.loads(result)
+                assert data["status"] == "success"
+                assert "enabled" in data["data"]
+
+    def test_execute_command_status(self):
+        """Test status command execution."""
+        server = self._create_server()
+
+        with patch.object(server, 'lock'):
+            with patch('aicoder.core.socket_server.Config') as mock_config:
+                mock_config.yolo_mode.return_value = False
+                mock_config.detail_mode.return_value = False
+                mock_config.sandbox_disabled.return_value = False
+                result = server._execute_command("status")
+                data = json.loads(result)
+                assert data["status"] == "success"
+
+    def test_execute_command_process(self):
+        """Test process command execution."""
+        server = self._create_server()
+        server.aicoder.session_manager.process_with_ai = MagicMock()
+
+        result = server._execute_command("process")
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert data["data"]["processing"] is True
+
+    def test_execute_command_process_already_running(self):
+        """Test process command when already processing."""
+        server = self._create_server()
+        server.aicoder.session_manager.is_processing = True
+
+        result = server._execute_command("process")
+        data = json.loads(result)
+        assert data["status"] == "error"
+        assert data["code"] == ERR_NOT_PROCESSING
+
+    def test_execute_command_messages_count(self):
+        """Test messages count command."""
+        server = self._create_server()
+        server.aicoder.message_history.get_messages.return_value = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"},
+        ]
+
+        result = server._execute_command("messages count")
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert data["data"]["total"] == 2
+
+    def test_execute_command_messages_list(self):
+        """Test messages list command."""
+        server = self._create_server()
+        messages = [{"role": "user", "content": "Hello"}]
+        server.aicoder.message_history.get_messages.return_value = messages
+
+        result = server._execute_command("messages")
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert data["data"]["messages"] == messages
+
+
+class TestSocketServerCommandHandlerDetails:
+    """Test command handler details (detail command)."""
+
+    def _create_server(self):
+        """Create a test server instance."""
+        mock_aicoder = MagicMock()
+        mock_aicoder.session_manager = MagicMock()
+        mock_aicoder.session_manager.is_processing = False
+        server = SocketServer(mock_aicoder)
+        server.lock = MagicMock()
+        server.lock.__enter__ = MagicMock()
+        server.lock.__exit__ = MagicMock()
+        return server
+
+    def test_cmd_detail_invalid_arg(self):
+        """Test detail with invalid argument."""
+        server = self._create_server()
+
+        result = server._cmd_detail("invalid")
+        data = json.loads(result)
+        assert data["status"] == "error"
+        assert data["code"] == ERR_INVALID_ARG
+
+    def test_cmd_sandbox_on(self):
+        """Test sandbox on command."""
+        server = self._create_server()
+
+        with patch('aicoder.core.socket_server.Config') as mock_config:
+            mock_config.sandbox_disabled.return_value = True
+            with patch.object(mock_config, 'set_sandbox_disabled'):
+                result = server._cmd_sandbox("on")
+                data = json.loads(result)
+                assert data["status"] == "success"
+                assert data["data"]["enabled"] is True
+
+    def test_cmd_sandbox_off(self):
+        """Test sandbox off command."""
+        server = self._create_server()
+
+        with patch('aicoder.core.socket_server.Config') as mock_config:
+            mock_config.sandbox_disabled.return_value = False
+            with patch.object(mock_config, 'set_sandbox_disabled'):
+                result = server._cmd_sandbox("off")
+                data = json.loads(result)
+                assert data["status"] == "success"
+                assert data["data"]["enabled"] is False
+
+    def test_cmd_stop_with_alternative_interface(self):
+        """Test stop with is_processing on aicoder directly."""
+        server = self._create_server()
+        server.aicoder.is_processing = True
+        del server.aicoder.session_manager  # Remove session_manager
+
+        with patch.object(server, 'lock'):
+            result = server._cmd_stop("")
+            data = json.loads(result)
+            assert data["status"] == "success"
+            assert data["data"]["stopped"] is True
