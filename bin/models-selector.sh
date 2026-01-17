@@ -2,16 +2,15 @@
 
 SCRIPT_FILE=$(readlink -f $0)
 
-AICODER_MODELS_FILE=/var/run/user/$UID/tmp/models
-AICODER_MODEL_CURRENT_FILE=/var/run/user/$UID/tmp/model.cur
+AICODER_MODELS_FILE=/run/user/$UID/tmp/models
+AICODER_MODEL_CURRENT_FILE=/run/user/$UID/tmp/model.cur
 
-echo "Fetching models..."
-models=$(aicoder-fetch-models)
-if [[ "$?" != 0 ]]; then
-    echo "Could not fetch models..."
+if [ ! -e "$AICODER_MODELS_FILE" ]; then
+    # NOTE: aicoder-gen-models is not provided by aicoder and 
+    #       should be implemented by the user
+    echo "No models file found... execute aicoder-gen-models"
     exit 1
 fi
-echo "$models" > "$AICODER_MODELS_FILE"
 
 MODELS=$(<$AICODER_MODELS_FILE)
 
