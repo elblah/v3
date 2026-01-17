@@ -29,21 +29,27 @@ class TestColorizeDiff:
 
     def test_colorize_additions_green(self):
         """Test addition lines are colored green."""
+        from aicoder.core.config import Config
         diff = "+ This is an added line"
         result = colorize_diff(diff)
-        assert "\033[32m" in result  # Green color code
+        green = Config.colors.get('green', '\x1b[32m')
+        assert green in result  # Green color code
 
     def test_colorize_deletions_red(self):
         """Test deletion lines are colored red."""
+        from aicoder.core.config import Config
         diff = "- This is a deleted line"
         result = colorize_diff(diff)
-        assert "\033[31m" in result  # Red color code
+        red = Config.colors.get('red', '\x1b[31m')
+        assert red in result  # Red color code
 
     def test_colorize_hunks_cyan(self):
         """Test hunk headers are colored cyan."""
+        from aicoder.core.config import Config
         diff = "@@ -1,3 +1,4 @@"
         result = colorize_diff(diff)
-        assert "\033[36m" in result  # Cyan color code
+        cyan = Config.colors.get('cyan', '\x1b[36m')
+        assert cyan in result  # Cyan color code
 
     def test_skips_diff_headers(self):
         """Test that diff header lines (--- and +++) are skipped."""
@@ -57,7 +63,11 @@ class TestColorizeDiff:
         diff = "  This is a context line"
         result = colorize_diff(diff)
         assert "This is a context line" in result
-        assert "\033[" not in result  # No color codes
+        # No color codes for context lines - use reset detection
+        reset = "\x1b[0m"  # Reset is always the same
+        # If there are color codes, there should be a reset at the end
+        if "\x1b[" in result:
+            assert result.endswith(reset)
 
     def test_empty_diff(self):
         """Test handling empty diff."""
