@@ -429,6 +429,13 @@ Immediate next actions:
 For more detailed information about previous work, decisions, and patterns, refer to the [BLAH FILES] listing above and examine the knowledge files as needed.
 
 ───────────────────────────────────────────────────────────────────────
+CURRENT FILES IN SESSION DIRECTORY:
+───────────────────────────────────────────────────────────────────────
+Before creating new files, review the existing files in your target directory:
+
+{os.linesep.join([f"- {f}" for f in os.listdir(self.current_session_dir) if f.endswith('.md')]) if os.path.exists(self.current_session_dir) and os.listdir(self.current_session_dir) else "- No existing .md files in session directory"}
+
+───────────────────────────────────────────────────────────────────────
 TARGET DIRECTORY (ALREADY EXISTS - DO NOT CREATE):
 ───────────────────────────────────────────────────────────────────────
 {self.current_session_dir}
@@ -463,13 +470,17 @@ GUIDELINES:
 • Focus on information that's hard to re-discover
 • Include recent conversation context that led to current task state
 • Most importantly: Create 'next_session_summary.md' as your orientation guide
+• PREFER UPDATING EXISTING FILES: Review current files first and update them instead of creating duplicates
+• Look at file names and descriptions to determine if existing files can be enhanced rather than creating new ones
 
 ───────────────────────────────────────────────────────────────────────
 START NOW:
 ───────────────────────────────────────────────────────────────────────
-Use write_file to create memory files in: {self.current_session_dir}
-Create 'next_session_summary.md' as your first priority
-End your final response with: <promise>BLAHDONE</promise>
+1. First, examine existing files in {self.current_session_dir}
+2. Decide whether to update existing files or create new ones
+3. Use write_file or edit_file to manage your knowledge files
+4. Create 'next_session_summary.md' as your first priority
+5. End your final response with: <promise>BLAHDONE</promise>
 </system-reminder>"""
 
             # Set as next prompt to trigger AI processing
