@@ -33,8 +33,9 @@ class BlahContextPlugin:
         self.blah_dir = None
         self.current_session_dir = None
         self.archives_dir = None
-        self.token_threshold = 60000  # Default 60k tokens
+        self.token_threshold = 100000  # Default 100k tokens
         self.enabled = True
+        self.before_compaction_hook_enabled = False  # Default disabled
         
         # Session tracking
         self.session_id = None
@@ -90,6 +91,13 @@ class BlahContextPlugin:
         enabled_env = os.environ.get('BLAH_ENABLED')
         if enabled_env:
             self.enabled = enabled_env.lower() in ('true', '1', 'yes', 'on')
+        
+        # Before compaction hook enabled flag (default: disabled)
+        before_compaction_env = os.environ.get('BLAH_BEFORE_COMPACTION_HOOK')
+        if before_compaction_env:
+            self.before_compaction_hook_enabled = before_compaction_env.lower() in ('true', '1', 'yes', 'on')
+        else:
+            self.before_compaction_hook_enabled = False
     
     def _get_next_archive_number(self):
         """Get next archive number for sequential naming"""
@@ -749,7 +757,7 @@ Directory: {self.current_session_dir}
    Total Knowledge Available: {total_tokens:,} tokens for selective loading
 
 🎯 Performance Target:
-   Goal: Stay under 60k active tokens while having millions of stored tokens available
+   Goal: Stay under 100k active tokens while having millions of stored tokens available
    Current: {current_tokens:,} active tokens with {total_tokens:,} stored tokens available
 """
         
@@ -758,6 +766,10 @@ Directory: {self.current_session_dir}
     # Hook handlers
     def _before_compaction(self):
         """Hook called before traditional compaction"""
+        # Only interfere with compaction if explicitly enabled via environment variable
+        if not self.before_compaction_hook_enabled:
+            return True  # Allow traditional compaction
+        
         if not self.enabled or self.is_organizing:
             return True  # Allow traditional compaction
         
@@ -886,7 +898,7 @@ Directory: {self.current_session_dir}
 /blah help           - Show this help message
 
 The plugin maintains AI coherence by organizing conversation knowledge
-when context grows beyond token threshold (default: 60,000 tokens).
+when context grows beyond token threshold (default: 100,000 tokens).
 """
         else:
             return f"Unknown blah command: {command}. Use /blah help for usage."
