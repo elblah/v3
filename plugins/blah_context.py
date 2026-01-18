@@ -124,7 +124,7 @@ class BlahContextPlugin:
             with open(text_path, 'w', encoding='utf-8') as f:
                 f.write(self._format_messages_for_archive(messages))
         except Exception as e:
-            print(f"[!] Failed to save text archive: {e}")
+            LogUtils.warn(f"Failed to save text archive: {e}")
             return False
         
         # Save JSON format (for reconstruction)
@@ -133,7 +133,7 @@ class BlahContextPlugin:
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(messages, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[!] Failed to save JSON archive: {e}")
+            LogUtils.warn(f"Failed to save JSON archive: {e}")
             return False
         
         return True
@@ -494,11 +494,12 @@ START NOW:
             # Set as next prompt to trigger AI processing
             self.app.set_next_prompt(org_prompt)
 
-            print(f"[*] Blah organization started (session: {self.session_id})")
+            colors = Config.colors
+            print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start")
             return {"success": True, "message": "Organization request queued"}
 
         except Exception as e:
-            print(f"[!] Organization start failed: {e}")
+            LogUtils.error(f"Organization start failed: {e}")
             self.is_organizing = False
             return {"success": False, "error": str(e)}
     
@@ -531,12 +532,13 @@ START NOW:
                     # Add the summary as a user message to provide context
                     self.app.message_history.add_user_message(f"[CONTEXT RESUMPTION]\n\n{summary_content}")
                 except Exception as e:
-                    print(f"[!] Warning: Could not read next_session_summary.md: {e}")
+                    LogUtils.warn(f"Could not read next_session_summary.md: {e}")
 
             # Ensure [BLAH FILES] message
             self._ensure_blah_files_message()
 
-            print("[✓] Blah organization completed successfully")
+            colors = Config.colors
+            print(f"{colors['green']}[✓]{colors['reset']} Blah plugin finish")
             
             # Continue processing with a resume prompt to help AI understand the new state
             resume_prompt = """[SYSTEM NOTICE: CONTEXT ORGANIZATION COMPLETE]
@@ -553,7 +555,7 @@ Please continue working on the task based on the preserved context and available
             self.app.set_next_prompt(resume_prompt)
 
         except Exception as e:
-            print(f"[!] Organization completion failed: {e}")
+            LogUtils.error(f"Organization completion failed: {e}")
 
         finally:
             self.is_organizing = False
@@ -777,7 +779,8 @@ Directory: {self.current_session_dir}
         if self._check_auto_organize():
             result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
             if result.get("success"):
-                print(f"[*] Blah organization triggered instead of compaction")
+                colors = Config.colors
+                print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
                 return False  # Skip traditional compaction
         
         return True  # Allow traditional compaction
@@ -788,7 +791,8 @@ Directory: {self.current_session_dir}
         if self._check_auto_organize() and not self.is_organizing:
             result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
             if result.get("success"):
-                print(f"[*] Blah organization triggered at {self._get_current_tokens()} tokens")
+                colors = Config.colors
+                print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
         
         if not self.is_organizing:
             return None
@@ -816,7 +820,8 @@ Directory: {self.current_session_dir}
         if self._check_auto_organize():
             result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
             if result.get("success"):
-                print(f"[*] Blah organization triggered automatically at {self._get_current_tokens()} tokens")
+                colors = Config.colors
+                print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
         
         # Ensure [BLAH FILES] message exists
         self._ensure_blah_files_message()
