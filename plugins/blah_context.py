@@ -784,6 +784,12 @@ Directory: {self.current_session_dir}
     
     def _after_ai_processing(self, has_tool_calls):
         """Hook called after AI processing - check for BLAHDONE signal"""
+        # Check threshold after each AI message
+        if self._check_auto_organize() and not self.is_organizing:
+            result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
+            if result.get("success"):
+                print(f"[*] Blah organization triggered at {self._get_current_tokens()} tokens")
+        
         if not self.is_organizing:
             return None
         
