@@ -3,8 +3,8 @@ List directory tool
 
 """
 
-import fnmatch
 import os
+from pathlib import Path
 from typing import Dict, Any
 from aicoder.core.config import Config
 
@@ -60,30 +60,50 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         ignore_dirs = set(Config.ignore_dirs())
         ignore_patterns = Config.ignore_patterns()
 
-        # Use os.walk to list files with ignore dir filtering
         files = []
-        for root, dirs, filenames in os.walk(resolved_path):
-            # Filter dirs in-place to skip them in recursion
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
-            for filename in filenames:
-                # Skip files matching ignore patterns
-                if any(filename.endswith(p) for p in ignore_patterns):
+        if pattern:
+            # Use pathlib.glob for pattern matching (iterator, handles **/ properly)
+            base = Path(resolved_path)
+            glob_pattern = pattern if pattern.startswith("**/") else "**/" + pattern
+            matches = base.glob(glob_pattern)  # recursive=True removed in Python 3.12+
+
+            for f in matches:
+                # Skip directories
+                if not f.is_file():
+                    continue
+                # Check ignore patterns on filename
+                if any(f.name.endswith(p) for p in ignore_patterns):
+                    continue
+                # Check ignore dirs (all path parts)
+                if any(part in ignore_dirs for part in f.parts):
                     continue
 
-                # Skip files not matching pattern if specified
-                if pattern and not fnmatch.fnmatch(filename, pattern):
-                    continue
+                files.append(str(f))
 
-                full_path = os.path.join(root, filename)
-                files.append(full_path)
-
-                # Stop early if we have enough files
+                # Early exit - don't load all matches into memory
                 if len(files) >= MAX_FILES + 1:
                     break
+        else:
+            # No pattern - use os.walk for listing with ignore dir filtering
+            for root, dirs, filenames in os.walk(resolved_path):
+                # Filter dirs in-place to skip them in recursion
+                dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
-            if len(files) >= MAX_FILES + 1:
-                break
+                for filename in filenames:
+                    # Skip files matching ignore patterns
+                    if any(filename.endswith(p) for p in ignore_patterns):
+                        continue
+
+                    full_path = os.path.join(root, filename)
+                    files.append(full_path)
+
+                    # Stop early if we have enough files
+                    if len(files) >= MAX_FILES + 1:
+                        break
+
+                if len(files) >= MAX_FILES + 1:
+                    break
 
         actual_count = len(files)
         limited_files = files[:MAX_FILES]
