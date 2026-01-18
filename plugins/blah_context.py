@@ -388,6 +388,47 @@ Analyze this conversation and extract:
 Focus especially on the most recent exchanges that define the current task state.
 
 ───────────────────────────────────────────────────────────────────────
+SPECIAL FILE REQUIRED:
+───────────────────────────────────────────────────────────────────────
+You MUST create a special file called 'next_session_summary.md' that will serve as orientation for the next session. This file should contain:
+
+  • Clear statement about the context wipe and why it happened
+  • Main objective of this session
+  • Current status and what we're working on
+  • Next steps to continue the work
+  • Guidance on where to find more detailed information
+
+Use this template for next_session_summary.md:
+---
+name: next_session_summary
+description: Orientation guide for AI after context wipe - main objectives, current status, and next steps
+license: Complete terms in LICENSE.txt
+---
+
+# Next Session Summary
+
+Your memory was wiped because the session context reached {current_tokens:,}+ tokens to maintain performance and coherence.
+
+## Main Objective
+The primary goal of this session is:
+- [State the main objective clearly]
+
+## Current Status
+What we are currently working on:
+- [Item 1]
+- [Item 2] 
+- [Item 3]
+
+## Next Steps
+Immediate next actions:
+- [Step 1]
+- [Step 2]
+- [Step 3]
+
+## Additional Context
+For more detailed information about previous work, decisions, and patterns, refer to the [BLAH FILES] listing above and examine the knowledge files as needed.
+
+───────────────────────────────────────────────────────────────────────
 TARGET DIRECTORY (ALREADY EXISTS - DO NOT CREATE):
 ───────────────────────────────────────────────────────────────────────
 {self.current_session_dir}
@@ -421,11 +462,13 @@ GUIDELINES:
 • Write descriptions that help future AI choose relevant files
 • Focus on information that's hard to re-discover
 • Include recent conversation context that led to current task state
+• Most importantly: Create 'next_session_summary.md' as your orientation guide
 
 ───────────────────────────────────────────────────────────────────────
 START NOW:
 ───────────────────────────────────────────────────────────────────────
 Use write_file to create memory files in: {self.current_session_dir}
+Create 'next_session_summary.md' as your first priority
 End your final response with: <promise>BLAHDONE</promise>
 </system-reminder>"""
 
