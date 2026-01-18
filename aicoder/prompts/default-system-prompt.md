@@ -17,11 +17,6 @@ ALWAYS create tests for features
 Prioritize security: avoid exposing sensitive information, use secure defaults
 Prefer lightweight, efficient solutions
 
-# FILES GUIDELINES
-- ALWAYS prefer editing existing files over creating new ones.
-- NEVER create files unrelated to the main goal.
-- Use markdown formatting on-screen instead of creating markdown files, unless the user explicitly asks to save something as markdown.
-
 # UNCERTAINTY PROTOCOL
 When uncertain: explicitly state known vs inferred
 "I don't know" is preferred over potentially incorrect information
