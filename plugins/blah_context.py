@@ -502,6 +502,18 @@ End your final response with: <promise>BLAHDONE</promise>
                 # Fallback: try to find last user message (shouldn't happen but defensive)
                 print("[!] Warning: No saved last user message before organization")
 
+            # Load next_session_summary.md if it exists and add it as a user message
+            next_session_file = os.path.join(self.current_session_dir, "next_session_summary.md")
+            if os.path.exists(next_session_file):
+                try:
+                    with open(next_session_file, 'r', encoding='utf-8') as f:
+                        summary_content = f.read()
+                    
+                    # Add the summary as a user message to provide context
+                    self.app.message_history.add_user_message(f"[CONTEXT RESUMPTION]\n\n{summary_content}")
+                except Exception as e:
+                    print(f"[!] Warning: Could not read next_session_summary.md: {e}")
+
             # Ensure [BLAH FILES] message
             self._ensure_blah_files_message()
 
