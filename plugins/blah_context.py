@@ -795,6 +795,26 @@ Directory: {self.current_session_dir}
             "content": blah_text
         })
     
+    def _before_approval_prompt(self, tool_name: str, arguments: dict) -> bool | None:
+        """
+        Hook called before approval prompt. Return:
+        - True  -> auto-approve
+        - False -> auto-deny
+        - None  -> ask user
+        """
+        # Auto-approve file operations within the session directory
+        if tool_name in ['write_file', 'edit_file']:
+            # Get the path from arguments
+            path = arguments.get('path', '')
+            
+            # Check if the path is within our session directory
+            if (self.current_session_dir and 
+                path.startswith(self.current_session_dir)):
+                return True  # Auto-approve file operations in session directory
+        
+        # For all other operations, return None to ask user
+        return None
+    
     def _cmd_handler(self, args_str):
         """Handle all /blah commands (like skills plugin)"""
         args = args_str.strip().split(maxsplit=1) if args_str.strip() else []
@@ -864,6 +884,7 @@ def create_plugin(ctx):
     ctx.register_hook('after_ai_processing', plugin._after_ai_processing)
     ctx.register_hook('before_user_prompt', plugin._before_user_prompt)
     ctx.register_hook('after_file_write', plugin._after_file_write)
+    ctx.register_hook('before_approval_prompt', plugin._before_approval_prompt)
     
     if Config.debug():
         print(f"[+] Blah Context plugin loaded")
