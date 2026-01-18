@@ -529,6 +529,20 @@ START NOW:
             self._ensure_blah_files_message()
 
             print("[✓] Blah organization completed successfully")
+            
+            # Continue processing with a resume prompt to help AI understand the new state
+            resume_prompt = """[SYSTEM NOTICE: CONTEXT ORGANIZATION COMPLETE]
+
+Your context has been successfully organized and cleaned up to maintain coherence. You now have access to:
+
+1. Your original last user prompt (preserved from before organization)
+2. A summary of the session state in next_session_summary.md 
+3. Other knowledge files in the [BLAH FILES] listing above
+
+Please continue working on the task based on the preserved context and available knowledge files. If you need to reference specific details from the organized knowledge, use read_file to access the relevant .md files."""
+            
+            # Set this as the next prompt to continue processing
+            self.app.set_next_prompt(resume_prompt)
 
         except Exception as e:
             print(f"[!] Organization completion failed: {e}")
