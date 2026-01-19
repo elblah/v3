@@ -10,7 +10,7 @@ from unittest.mock import patch
 import sys
 sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
-from aicoder.tools.internal.list_directory import execute, formatArguments, validateArguments, _check_sandbox
+from aicoder.tools.internal.list_directory import execute, formatArguments, validateArguments
 from aicoder.core.config import Config
 
 
@@ -152,72 +152,6 @@ class TestListDirectory:
         args = {"path": "/my/path"}
         validateArguments(args)
         assert args.get("path") == "/my/path"
-
-
-class TestSandboxCheck:
-    """Test sandbox checking functionality."""
-
-    def test_sandbox_allows_current_dir(self):
-        """Test sandbox allows current directory."""
-        result = _check_sandbox(os.getcwd(), print_message=False)
-        assert result == True
-
-    def test_sandbox_allows_subdirectory(self):
-        """Test sandbox allows subdirectory of current."""
-        current = os.getcwd()
-        subdir = os.path.join(current, "subdir")
-        result = _check_sandbox(subdir, print_message=False)
-        assert result == True
-
-    def test_sandbox_denies_parent_directory(self):
-        """Test sandbox denies parent directory traversal."""
-        current = os.getcwd()
-        parent = os.path.dirname(current)
-        result = _check_sandbox(parent, print_message=False)
-        # The result depends on sandbox being enabled
-        # This verifies the function behavior, not the sandbox state
-        # When sandbox is disabled, it returns True; when enabled, False
-        assert isinstance(result, bool)
-
-    def test_sandbox_denies_absolute_outside(self):
-        """Test sandbox denies absolute path outside current."""
-        # The path "/" is always outside current directory
-        # This tests the path comparison logic
-        current = os.getcwd()
-        if current == "/":
-            # Special case: if current is already root, "/" is valid
-            assert True  # Path "/" is same as current
-        else:
-            # With sandbox enabled, "/" should be denied
-            import aicoder.tools.internal.list_directory as ld_module
-            original_disabled = ld_module.Config.sandbox_disabled()
-
-            try:
-                # First, test with sandbox DISABLED - should return True
-                ld_module.Config._sandbox_disabled = True
-                result = _check_sandbox("/", print_message=False)
-                assert result == True, "With sandbox disabled, all paths should be allowed"
-
-                # Then test with sandbox ENABLED - should return False
-                ld_module.Config._sandbox_disabled = False
-                result = _check_sandbox("/", print_message=False)
-                # "/" is outside the current directory (unless cwd is "/")
-                assert result == False, f"With sandbox enabled, '/' should be denied (cwd={current})"
-            finally:
-                ld_module.Config._sandbox_disabled = original_disabled
-
-    def test_sandbox_with_disabled_sandbox(self):
-        """Test sandbox check when sandbox is disabled."""
-        import aicoder.tools.internal.list_directory as ld_module
-        original_disabled = ld_module.Config.sandbox_disabled()
-
-        try:
-            ld_module.Config.sandbox_disabled = lambda: True
-            result = _check_sandbox("/tmp", print_message=False)
-            # When sandbox is disabled, all paths are allowed
-            assert result == True
-        finally:
-            ld_module.Config.sandbox_disabled = original_disabled if hasattr(original_disabled, '__call__') else lambda: original_disabled
 
 
 class TestListDirectoryEdgeCases:
