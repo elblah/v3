@@ -41,6 +41,7 @@ class BlahContextPlugin:
         self.session_id = None
         self.is_organizing = False
         self.last_user_msg_before_org = None  # Track last user message before organization
+        self.organization_reason = ""  # Reason for current organization
         
         # Initialize session directory
         self._initialize_session_directory()
@@ -61,7 +62,11 @@ class BlahContextPlugin:
         self.current_session_dir = os.path.join(self.blah_dir, self.session_id)
         os.makedirs(self.current_session_dir, exist_ok=True)
         
-        # Create archives directory
+        # Create blah_files directory (AI creates/reads knowledge files here ONLY)
+        self.blah_files_dir = os.path.join(self.current_session_dir, 'blah_files')
+        os.makedirs(self.blah_files_dir, exist_ok=True)
+        
+        # Create archives directory (System-only - JSON and TXT of entire session)
         self.archives_dir = os.path.join(self.current_session_dir, 'archives')
         os.makedirs(self.archives_dir, exist_ok=True)
         
@@ -198,15 +203,15 @@ class BlahContextPlugin:
         return "\n".join(result)
     
     def _discover_blah_files(self):
-        """Discover all blah files in current session directory"""
+        """Discover all blah files in blah_files/ directory"""
         blah_files = {}
         
-        if not self.current_session_dir or not os.path.exists(self.current_session_dir):
+        if not self.blah_files_dir or not os.path.exists(self.blah_files_dir):
             return blah_files
         
-        for filename in os.listdir(self.current_session_dir):
+        for filename in os.listdir(self.blah_files_dir):
             if filename.endswith('.md') and not filename.startswith('session_info'):
-                file_path = os.path.join(self.current_session_dir, filename)
+                file_path = os.path.join(self.blah_files_dir, filename)
                 
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
@@ -249,7 +254,7 @@ class BlahContextPlugin:
         if not blah_files and archive_count == 0:
             return "[BLAH FILES] No organized knowledge files available yet.\nUse /blah organize to create knowledge files from current conversation."
         
-        source_info = f"Loading from: {self.current_session_dir} ({len(blah_files)} files found)"
+        source_info = f"Loading from: {self.blah_files_dir} ({len(blah_files)} files found)"
         
         files_list = []
         for file_name, file_info in sorted(blah_files.items()):
@@ -373,7 +378,7 @@ archive important patterns and decisions into structured memory files.
 ───────────────────────────────────────────────────────────────────────
 WHAT WILL HAPPEN NEXT:
 ───────────────────────────────────────────────────────────────────────
-1. You create/edit markdown files in: {self.current_session_dir}
+1. You create/edit markdown files ONLY in: {self.blah_files_dir}
 2. Each file contains extracted knowledge from this conversation
 3. When finished, end your LAST message with: <promise>BLAHDONE</promise>
 4. After that, your ENTIRE context is WIPED
@@ -439,14 +444,17 @@ For more detailed information about previous work, decisions, and patterns, refe
 ───────────────────────────────────────────────────────────────────────
 CURRENT FILES IN SESSION DIRECTORY:
 ───────────────────────────────────────────────────────────────────────
-Before creating new files, review the existing files in your target directory:
+BEFORE creating new files, review the existing files in blah_files/:
 
-{os.linesep.join([f"- {f}" for f in os.listdir(self.current_session_dir) if f.endswith('.md')]) if os.path.exists(self.current_session_dir) and os.listdir(self.current_session_dir) else "- No existing .md files in session directory"}
+{os.linesep.join([f"- {f}" for f in os.listdir(self.blah_files_dir) if f.endswith('.md')]) if os.path.exists(self.blah_files_dir) and os.listdir(self.blah_files_dir) else "- No existing .md files in blah_files/"}
 
 ───────────────────────────────────────────────────────────────────────
-TARGET DIRECTORY (ALREADY EXISTS - DO NOT CREATE):
+YOUR WORK DIRECTORY (ALREADY EXISTS - DO NOT CREATE):
 ───────────────────────────────────────────────────────────────────────
-{self.current_session_dir}
+{self.blah_files_dir}
+
+NOTE: archives/ directory contains system-only files. DO NOT READ OR MODIFY.
+      Only use blah_files/ for your knowledge files.
 
 ───────────────────────────────────────────────────────────────────────
 FILE FORMAT (follow exactly):
@@ -482,14 +490,35 @@ GUIDELINES:
 • Look at file names and descriptions to determine if existing files can be enhanced rather than creating new ones
 
 ───────────────────────────────────────────────────────────────────────
+SILENCE ENFORCEMENT (CRITICAL):
+───────────────────────────────────────────────────────────────────────
+SILENCE ENFORCEMENT (CRITICAL):
+───────────────────────────────────────────────────────────────────────
+🚨 ABSOLUTELY NO TEXT IN content FIELD - NOT EVEN "I understand"
+🚨 DO NOT WRITE: "I understand", "I will examine", "Now let me...", etc.
+🚨 DO NOT WRITE: Any explanation, summary, acknowledgment, or commentary
+🚨 YOUR content MUST BE: EMPTY STRING "" FOR ALL MESSAGES UNTIL DONE
+
+TOOL CALLS FORMAT (CORRECT):
+{{"role": "assistant", "tool_calls": [{{"name": "write_file", "arguments": {{"path": "...", "content": "..."}}}}]}}
+
+TOOL CALLS FORMAT (WRONG - DO NOT USE):
+{{"role": "assistant", "content": "<invoke>...<tool_calls>...</invoke>"}}
+
+USE write_file OR edit_file TO CREATE/UPDATE MEMORY FILES
+YOUR ONLY TEXT: <promise>BLAHDONE</promise> (in content field, FINAL message only)
+───────────────────────────────────────────────────────────────────────
 START NOW:
 ───────────────────────────────────────────────────────────────────────
-1. First, examine existing files in {self.current_session_dir}
+1. First, examine existing files in {self.blah_files_dir}
 2. Decide whether to update existing files or create new ones
 3. Use write_file or edit_file to manage your knowledge files
 4. Create 'next_session_summary.md' as your first priority
 5. End your final response with: <promise>BLAHDONE</promise>
 </system-reminder>"""
+
+            # Inject self-acknowledgment messages to ensure AI attention
+            self._inject_acknowledgment_messages()
 
             # Set as next prompt to trigger AI processing
             self.app.set_next_prompt(org_prompt)
@@ -502,7 +531,43 @@ START NOW:
             LogUtils.error(f"Organization start failed: {e}")
             self.is_organizing = False
             return {"success": False, "error": str(e)}
-    
+
+    def _inject_acknowledgment_messages(self):
+        """
+        Inject self-acknowledgment messages to ensure AI attention before organization.
+
+        This follows message ordering rules:
+        - If last message was user: inject assistant acknowledgment, then user org prompt
+        - If last message was NOT user: inject user critical notice, then assistant acknowledgment, then user org prompt
+        """
+        messages = self.app.message_history.get_messages()
+
+        # Get last message role
+        last_role = None
+        if messages:
+            last_role = messages[-1].get("role")
+
+        # Critical state user message (for non-user context)
+        critical_user_msg = "CRITICAL SYSTEM STATE. SESSION CONTEXT IS FULL. FOLLOW THE INSTRUCTIONS BELOW TO ORGANIZE THE SESSION NOW."
+
+        # Assistant acknowledgment message - ENFORCE SILENCE
+        assistant_ack_msg = (
+            "I AM AWARE THAT THE SYSTEM IS IN A CRITICAL STATE. "
+            "I WILL ORGANIZE THE SESSION CONTEXT INTO FILES. "
+            "TO SAVE TOKENS, I WILL BE COMPLETELY MUTE. "
+            "I WILL NOT SEND ANY TEXT MESSAGES. "
+            "I WILL ONLY USE TOOLS TO CREATE AND EDIT FILES. "
+            "I WILL NOT OUTPUT ANY TEXT UNTIL I HAVE COMPLETED ALL FILE OPERATIONS AND END WITH <promise>BLAHDONE</promise>."
+        )
+
+        if last_role == "user":
+            # Last was user - just add assistant acknowledgment
+            self.app.message_history.add_assistant_message({"content": assistant_ack_msg})
+        else:
+            # Last was not user (assistant, tool, etc.) - need user message first
+            self.app.message_history.add_user_message(critical_user_msg)
+            self.app.message_history.add_assistant_message({"content": assistant_ack_msg})
+
     def _complete_organization(self):
         """Complete the organization process - clear context and add [BLAH FILES]"""
         if not self.is_organizing:
@@ -523,7 +588,7 @@ START NOW:
                 print("[!] Warning: No saved last user message before organization")
 
             # Load next_session_summary.md if it exists and add it as a user message
-            next_session_file = os.path.join(self.current_session_dir, "next_session_summary.md")
+            next_session_file = os.path.join(self.blah_files_dir, "next_session_summary.md")
             if os.path.exists(next_session_file):
                 try:
                     with open(next_session_file, 'r', encoding='utf-8') as f:
@@ -586,17 +651,22 @@ Token Threshold: {self.token_threshold}
 Current Tokens: {current_tokens:,} ({percentage:.1f}%)
 Auto-organize: {'Triggered' if percentage >= 100 else 'Ready'}
 
-Knowledge Files: {len(blah_files)}
-Archives: {archive_count}
+Knowledge Files: {len(blah_files)} (in blah_files/)
+Archives: {archive_count} (in archives/)
 Session Directory: {self.current_session_dir}
+
+Directory Structure:
+  blah_files/  - AI creates knowledge files here
+  archives/    - System stores full session (JSON + TXT)
 
 Commands:
 /blah organize - Manual organization
-/blah status - Show current settings and status
+/blah cancel   - Cancel stuck organization
+/blah status   - Show current settings and status
 /blah set-threshold N - Set token threshold
-/blah reload - Refresh file listing
-/blah list - List all blah files with details
-/blah stats - Show comprehensive statistics and token efficiency
+/blah reload   - Refresh file listing
+/blah list     - List all blah files with details
+/blah stats    - Show comprehensive statistics and efficiency metrics
 """
         return status.strip()
     
@@ -616,6 +686,15 @@ Commands:
         """Handle /blah reload command"""
         self._ensure_blah_files_message()
         return f"BLAH FILES listing refreshed\nFound {len(self._discover_blah_files())} knowledge files"
+    
+    def _cmd_cancel(self, args_str):
+        """Handle /blah cancel command - cancel any pending organization"""
+        if not self.is_organizing:
+            return "No organization in progress to cancel"
+        
+        self.is_organizing = False
+        self.organization_reason = ""
+        return "Organization cancelled. You can start a new /blah organize when ready."
     
     def _cmd_list(self, args_str):
         """Handle /blah list command"""
@@ -828,9 +907,9 @@ Directory: {self.current_session_dir}
     
     def _after_file_write(self, path, content):
         """Hook called after any file is written - refresh [BLAH FILES] if it's a blah file"""
-        # Check if the written file is in our session directory and is a .md file
-        if (self.current_session_dir and 
-            path.startswith(self.current_session_dir) and 
+        # Check if the written file is in blah_files/ directory and is a .md file
+        if (self.blah_files_dir and 
+            path.startswith(self.blah_files_dir) and 
             path.endswith('.md')):
             # Force update the [BLAH FILES] message to include the new/updated file
             self._update_blah_files_message()
@@ -862,18 +941,40 @@ Directory: {self.current_session_dir}
         - False -> auto-deny
         - None  -> ask user
         """
-        # Auto-approve file operations within the session directory
+        # Auto-approve file operations within blah_files/ directory
         if tool_name in ['write_file', 'edit_file']:
             # Get the path from arguments
             path = arguments.get('path', '')
             
-            # Check if the path is within our session directory
-            if (self.current_session_dir and 
-                path.startswith(self.current_session_dir)):
-                return True  # Auto-approve file operations in session directory
+            # Check if the path is within blah_files/ directory
+            if (self.blah_files_dir and 
+                path.startswith(self.blah_files_dir)):
+                return True  # Auto-approve file operations in blah_files directory
         
         # For all other operations, return None to ask user
         return None
+    
+    def _after_messages_set(self, messages):
+        """
+        Hook called after messages are set (e.g., after compaction).
+        Clear is_organizing flag if compaction wiped the organization context.
+        """
+        # If we were organizing but the org prompt is no longer in messages,
+        # compaction likely happened and wiped our context
+        if self.is_organizing:
+            # Check if any message contains our org prompt markers
+            org_wiped = True
+            for msg in messages:
+                content = msg.get("content", "")
+                if "CONTEXT ARCHIVAL MODE" in content or "SILENCE ENFORCEMENT" in content:
+                    org_wiped = False
+                    break
+            
+            if org_wiped:
+                colors = Config.colors
+                print(f"{colors['yellow']}[!]{colors['reset']} Blah organization cancelled by compaction")
+                self.is_organizing = False
+                self.organization_reason = ""
     
     def _cmd_handler(self, args_str):
         """Handle all /blah commands (like skills plugin)"""
@@ -887,6 +988,8 @@ Directory: {self.current_session_dir}
         
         if command == "organize":
             return self._cmd_organize(command_args)
+        elif command == "cancel":
+            return self._cmd_cancel(command_args)
         elif command == "status":
             return self._cmd_status(command_args)
         elif command == "set-threshold":
@@ -901,12 +1004,17 @@ Directory: {self.current_session_dir}
             return """Blah Context Plugin Commands:
 
 /blah organize      - Manual organization of current conversation
+/blah cancel         - Cancel any pending organization (use if stuck)
 /blah status         - Show current settings and token usage
 /blah set-threshold N - Set auto-organization token threshold
 /blah reload         - Refresh [BLAH FILES] listing
 /blah list           - List all blah files with paths and descriptions
 /blah stats          - Show comprehensive statistics and efficiency metrics
 /blah help           - Show this help message
+
+Directory Structure:
+  blah_files/  - AI creates/updates knowledge files here
+  archives/    - System stores full session (JSON + TXT) - DO NOT ACCESS
 
 The plugin maintains AI coherence by organizing conversation knowledge
 when context grows beyond token threshold (default: 100,000 tokens).
@@ -945,13 +1053,16 @@ def create_plugin(ctx):
     ctx.register_hook('before_user_prompt', plugin._before_user_prompt)
     ctx.register_hook('after_file_write', plugin._after_file_write)
     ctx.register_hook('before_approval_prompt', plugin._before_approval_prompt)
+    ctx.register_hook('after_messages_set', plugin._after_messages_set)
     
     if Config.debug():
         print(f"[+] Blah Context plugin loaded")
         print(f"  - Session: {plugin.session_id}")
         print(f"  - Directory: {plugin.current_session_dir}")
+        print(f"  - blah_files/: {plugin.blah_files_dir}")
+        print(f"  - archives/: {plugin.archives_dir}")
         print(f"  - Token threshold: {plugin.token_threshold}")
-        print(f"  - /blah commands available (organize, status, set-threshold, reload, list, stats, help)")
+        print(f"  - /blah commands available (organize, cancel, status, set-threshold, reload, list, stats, help)")
         print(f"  - blah tool registered for AI")
     
     return {"cleanup": plugin.cleanup}
