@@ -903,6 +903,12 @@ Directory: {self.current_session_dir}
         if "<promise>BLAHDONE</promise>" in last_assistant_content:
             # Organization complete - clear context and add [BLAH FILES]
             self._complete_organization()
+        elif self.is_organizing:
+            # BLAHDONE phrase not found - continue processing with a prompt
+            # This prevents getting stuck if AI didn't use the phrase
+            colors = Config.colors
+            print(f"{colors['yellow']}[!]{colors['reset']} BLAHDONE phrase not found, continuing organization...")
+            self.app.set_next_prompt("CONTINUE: Complete your organization work and finish with <promise>BLAHDONE</promise> when done.")
         
         return None
     
