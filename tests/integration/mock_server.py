@@ -12,6 +12,7 @@ Features:
 """
 
 import json
+import sys
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -47,6 +48,8 @@ class MockServer:
         self._port = None
         self._responses: dict[str, Any] = {}
         self._tool_responses: dict[str, Any] = {}
+        self._sequential_responses: list[Any] = []
+        self._sequential_index = 0
         self._request_log: list[dict] = []
         self._lock = threading.Lock()
 
@@ -84,6 +87,8 @@ class MockServer:
             tool_responses=self._tool_responses,
             request_log=self._request_log,
             lock=self._lock,
+            sequential_responses=self._sequential_responses,
+            sequential_index=[self._sequential_index],  # Wrap in list for mutability
         )
 
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -149,6 +154,30 @@ class MockServer:
         """Clear request log."""
         with self._lock:
             self._request_log.clear()
+    
+    def set_sequential_responses(self, responses: list[Any]) -> None:
+        """
+        Set sequential responses that will be returned in order.
+        
+        Useful for multi-turn conversations where the same pattern might appear
+        in multiple requests but should return different responses.
+        
+        Args:
+            responses: List of response dicts to return in sequence
+        """
+        with self._lock:
+            self._sequential_responses.clear()
+            self._sequential_responses.extend(responses)
+            self._sequential_index = 0
+            # Reset server index if server is already running
+            if self._server:
+                self._server._sequential_index[0] = 0
+    
+    def clear_sequential_responses(self) -> None:
+        """Clear sequential responses and reset index."""
+        with self._lock:
+            self._sequential_responses.clear()
+            self._sequential_index = 0
 
     def __enter__(self):
         self.start()
@@ -164,12 +193,15 @@ class _MockHTTPServer(HTTPServer):
     allow_reuse_address = True
 
     def __init__(self, port: int, responses: dict, tool_responses: dict,
-                 request_log: list, lock: threading.Lock):
+                 request_log: list, lock: threading.Lock,
+                 sequential_responses: list, sequential_index: list):
         super().__init__(("localhost", port), _MockRequestHandler)
         self.responses = responses
         self.tool_responses = tool_responses
         self.request_log = request_log
         self.lock = lock
+        self._sequential_responses = sequential_responses
+        self._sequential_index = sequential_index
 
 
 class _MockRequestHandler(BaseHTTPRequestHandler):
@@ -196,20 +228,47 @@ class _MockRequestHandler(BaseHTTPRequestHandler):
                 "time": time.time(),
             })
 
-        # Find matching response
+        # Find matching response - check sequential first, then pattern matching
         response = None
         tool_response = None
-
+        
+        # Extract last user message content for matching (used by both paths)
+        last_user_content = ""
+        try:
+            data = json.loads(body)
+            messages = data.get("messages", [])
+            # Find last user message
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    last_user_content = msg.get("content", "")
+                    break
+        except (json.JSONDecodeError, KeyError):
+            last_user_content = body  # Fallback to full body
+        
+        # Check sequential responses first
         with self.server.lock:
-            for pattern, resp in self.server.responses.items():
-                if pattern in body:
-                    response = resp
-                    break
+            # DEBUG
+            import os
+            if os.environ.get("MOCK_SERVER_DEBUG"):
+                print(f"[MockServer] Sequential responses: {len(self.server._sequential_responses) if self.server._sequential_responses else 0}, Index: {self.server._sequential_index[0] if self.server._sequential_responses else 'N/A'}", file=sys.stderr)
+            
+            if (self.server._sequential_responses and 
+                self.server._sequential_index[0] < len(self.server._sequential_responses)):
+                response = self.server._sequential_responses[self.server._sequential_index[0]]
+                self.server._sequential_index[0] += 1
+                if os.environ.get("MOCK_SERVER_DEBUG"):
+                    print(f"[MockServer] Using sequential response {self.server._sequential_index[0] - 1}", file=sys.stderr)
+            else:
+                # Fall back to pattern matching
+                for pattern, resp in self.server.responses.items():
+                    if pattern in last_user_content:
+                        response = resp
+                        break
 
-            for pattern, resp in self.server.tool_responses.items():
-                if pattern in body:
-                    tool_response = resp
-                    break
+                for pattern, resp in self.server.tool_responses.items():
+                    if pattern in last_user_content:
+                        tool_response = resp
+                        break
 
         # Default response if no pattern matched
         if response is None:
@@ -223,6 +282,19 @@ class _MockRequestHandler(BaseHTTPRequestHandler):
 
         if tool_response:
             response["choices"][0]["message"]["tool_calls"] = [tool_response]
+        
+        # DEBUG: Log which pattern was matched
+        import os
+        if os.environ.get("MOCK_SERVER_DEBUG"):
+            print(f"[MockServer] Last user content: {last_user_content[:100]}", file=sys.stderr)
+            matched_pattern = None
+            with self.server.lock:
+                if not (self.server._sequential_responses and self.server._sequential_index[0] <= len(self.server._sequential_responses)):
+                    for pattern, resp in self.server.responses.items():
+                        if pattern in last_user_content:
+                            matched_pattern = pattern
+                            break
+            print(f"[MockServer] Matched pattern: {matched_pattern}", file=sys.stderr)
 
         # Send SSE response
         self.send_response(200)
@@ -231,9 +303,95 @@ class _MockRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
 
-        # Format as SSE
-        json_response = json.dumps(response)
-        self.wfile.write(f"data: {json_response}\n\n".encode("utf-8"))
+        # Convert non-streaming response to streaming chunks
+        # The streaming client expects delta.content, not message.content
+        if "choices" in response and response["choices"]:
+            choice = response["choices"][0]
+            message = choice.get("message", {})
+            content = message.get("content", "")
+            role = message.get("role", "assistant")
+            tool_calls = message.get("tool_calls")
+            finish_reason = choice.get("finish_reason", "stop")
+            
+            # Send streaming chunk with delta format
+            # First chunk: role
+            chunk1 = {
+                "id": response.get("id", "chatcmpl-123"),
+                "object": "chat.completion.chunk",
+                "created": response.get("created", 1234567890),
+                "model": response.get("model", "gpt-4"),
+                "choices": [{
+                    "index": 0,
+                    "delta": {"role": role},
+                    "finish_reason": None
+                }]
+            }
+            self.wfile.write(f"data: {json.dumps(chunk1)}\n\n".encode("utf-8"))
+            
+            # Second chunk: content (if any)
+            if content:
+                chunk2 = {
+                    "id": response.get("id", "chatcmpl-123"),
+                    "object": "chat.completion.chunk",
+                    "created": response.get("created", 1234567890),
+                    "model": response.get("model", "gpt-4"),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"content": content},
+                        "finish_reason": None
+                    }]
+                }
+                self.wfile.write(f"data: {json.dumps(chunk2)}\n\n".encode("utf-8"))
+            
+            # Third chunk: tool_calls (if any)
+            if tool_calls:
+                # Convert tool_calls to proper streaming format with index
+                formatted_tool_calls = []
+                for idx, tc in enumerate(tool_calls):
+                    # tc should be like: {"name": "read_file", "arguments": "{...}"}
+                    # Convert to streaming format: {"index": 0, "id": "...", "type": "function", "function": {...}}
+                    formatted_tc = {
+                        "index": idx,
+                        "id": f"call_{idx}_{int(time.time())}",
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name"),
+                            "arguments": tc.get("arguments", "")
+                        }
+                    }
+                    formatted_tool_calls.append(formatted_tc)
+                
+                chunk3 = {
+                    "id": response.get("id", "chatcmpl-123"),
+                    "object": "chat.completion.chunk",
+                    "created": response.get("created", 1234567890),
+                    "model": response.get("model", "gpt-4"),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"tool_calls": formatted_tool_calls},
+                        "finish_reason": None
+                    }]
+                }
+                self.wfile.write(f"data: {json.dumps(chunk3)}\n\n".encode("utf-8"))
+            
+            # Final chunk: finish_reason
+            chunk_final = {
+                "id": response.get("id", "chatcmpl-123"),
+                "object": "chat.completion.chunk",
+                "created": response.get("created", 1234567890),
+                "model": response.get("model", "gpt-4"),
+                "choices": [{
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": finish_reason
+                }]
+            }
+            self.wfile.write(f"data: {json.dumps(chunk_final)}\n\n".encode("utf-8"))
+        else:
+            # Fallback: send as-is if no choices
+            json_response = json.dumps(response)
+            self.wfile.write(f"data: {json_response}\n\n".encode("utf-8"))
+        
         self.wfile.write(b"data: [DONE]\n\n")
 
     def do_GET(self):
