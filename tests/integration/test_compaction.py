@@ -124,7 +124,10 @@ class TestCompactionWithMockAPI:
                 "message": {
                     "role": "assistant", 
                     "content": "Compacting context...",
-                    "tool_calls": [make_tool_response("run_shell_command", {"command": "echo done"})]
+                    "tool_calls": [{
+                        "name": "run_shell_command",
+                        "arguments": json.dumps({"command": "echo done"})
+                    }]
                 }
             }]
         }

@@ -386,6 +386,9 @@ class _MockRequestHandler(BaseHTTPRequestHandler):
                     "finish_reason": finish_reason
                 }]
             }
+            # Include usage stats if present
+            if "usage" in response:
+                chunk_final["usage"] = response["usage"]
             self.wfile.write(f"data: {json.dumps(chunk_final)}\n\n".encode("utf-8"))
         else:
             # Fallback: send as-is if no choices
