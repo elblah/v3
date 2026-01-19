@@ -244,6 +244,59 @@ class BlahContextPlugin:
         
         return None
     
+    def _get_files_listing_warning(self):
+        """
+        Return conditional files listing section for organization prompt.
+        Only includes directory listing if files already exist.
+        """
+        if not os.path.exists(self.blah_files_dir):
+            return ""
+
+        existing_files = [f for f in os.listdir(self.blah_files_dir) if f.endswith('.md')]
+        if not existing_files:
+            return ""
+
+        # Files exist - show listing with preference for updating
+        files_list = "\n".join([f"- {f}" for f in existing_files])
+        return f"""───────────────────────────────────────────────────────────────────────
+CURRENT FILES IN SESSION DIRECTORY:
+───────────────────────────────────────────────────────────────────────
+BEFORE creating new files, review the existing files in blah_files/:
+
+{files_list}
+
+PREFER UPDATING EXISTING FILES: Review current files first and update them
+instead of creating duplicates. Look at file names and descriptions to
+determine if existing files can be enhanced."""
+
+    def _get_start_now_section(self):
+        """
+        Return conditional START NOW section for organization prompt.
+        Adjusts instructions based on whether files already exist.
+        """
+        if not os.path.exists(self.blah_files_dir):
+            existing_files = []
+        else:
+            existing_files = [f for f in os.listdir(self.blah_files_dir) if f.endswith('.md')]
+
+        if existing_files:
+            return """───────────────────────────────────────────────────────────────────────
+START NOW:
+───────────────────────────────────────────────────────────────────────
+1. Examine existing files in blah_files/ (listed above)
+2. Decide whether to update existing files or create new ones
+3. Use write_file or edit_file to manage your knowledge files
+4. Create 'next_session_summary.md' as your first priority
+5. End your final response with: <promise>BLAHDONE</promise>"""
+        else:
+            return """───────────────────────────────────────────────────────────────────────
+START NOW:
+───────────────────────────────────────────────────────────────────────
+1. Create knowledge files in blah_files/ directory
+2. Create 'next_session_summary.md' as your first priority
+3. Add additional files as needed for important patterns/decisions
+4. End your final response with: <promise>BLAHDONE</promise>"""
+
     def _generate_blah_files_message(self):
         """Generate [BLAH FILES] message"""
         blah_files = self._discover_blah_files()
@@ -442,16 +495,11 @@ Immediate next actions:
 For more detailed information about previous work, decisions, and patterns, refer to the [BLAH FILES] listing above and examine the knowledge files as needed.
 
 ───────────────────────────────────────────────────────────────────────
-CURRENT FILES IN SESSION DIRECTORY:
-───────────────────────────────────────────────────────────────────────
-BEFORE creating new files, review the existing files in blah_files/:
-
-{os.linesep.join([f"- {f}" for f in os.listdir(self.blah_files_dir) if f.endswith('.md')]) if os.path.exists(self.blah_files_dir) and os.listdir(self.blah_files_dir) else "- No existing .md files in blah_files/"}
-
-───────────────────────────────────────────────────────────────────────
 YOUR WORK DIRECTORY:
 ───────────────────────────────────────────────────────────────────────
 {self.blah_files_dir}
+
+{self._get_files_listing_warning()}
 
 ⚠️  CRITICAL: ONLY USE blah_files/ FOR YOUR WORK
    - NEVER list or read ANY other directories (including archives/)
@@ -489,17 +537,8 @@ GUIDELINES:
 • Focus on information that's hard to re-discover
 • Include recent conversation context that led to current task state
 • Most importantly: Create 'next_session_summary.md' as your orientation guide
-• PREFER UPDATING EXISTING FILES: Review current files first and update them instead of creating duplicates
-• Look at file names and descriptions to determine if existing files can be enhanced rather than creating new ones
 
-───────────────────────────────────────────────────────────────────────
-START NOW:
-───────────────────────────────────────────────────────────────────────
-1. First, examine existing files in {self.blah_files_dir}
-2. Decide whether to update existing files or create new ones
-3. Use write_file or edit_file to manage your knowledge files
-4. Create 'next_session_summary.md' as your first priority
-5. End your final response with: <promise>BLAHDONE</promise>
+{self._get_start_now_section()}
 </system-reminder>"""
 
             # Inject self-acknowledgment messages to ensure AI attention
