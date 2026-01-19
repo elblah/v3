@@ -70,15 +70,6 @@ class BlahContextPlugin:
         self.archives_dir = os.path.join(self.current_session_dir, 'archives')
         os.makedirs(self.archives_dir, exist_ok=True)
         
-        # Update current_session symlink
-        current_link = os.path.join(self.blah_dir, 'current_session')
-        try:
-            if os.path.lexists(current_link):
-                os.unlink(current_link)
-            os.symlink(self.session_id, current_link)
-        except OSError:
-            pass  # Symlink not supported
-        
         # Load configuration
         self._load_configuration()
         
