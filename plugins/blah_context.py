@@ -449,12 +449,15 @@ BEFORE creating new files, review the existing files in blah_files/:
 {os.linesep.join([f"- {f}" for f in os.listdir(self.blah_files_dir) if f.endswith('.md')]) if os.path.exists(self.blah_files_dir) and os.listdir(self.blah_files_dir) else "- No existing .md files in blah_files/"}
 
 ───────────────────────────────────────────────────────────────────────
-YOUR WORK DIRECTORY (ALREADY EXISTS - DO NOT CREATE):
+YOUR WORK DIRECTORY:
 ───────────────────────────────────────────────────────────────────────
 {self.blah_files_dir}
 
-NOTE: archives/ directory contains system-only files. DO NOT READ OR MODIFY.
-      Only use blah_files/ for your knowledge files.
+⚠️  CRITICAL: ONLY USE blah_files/ FOR YOUR WORK
+   - NEVER list or read ANY other directories (including archives/)
+   - The archives/ directory is SYSTEM-ONLY AND INACCESSIBLE TO YOU
+   - If you need to reference past context, CREATE NEW knowledge files based on your memory
+   - DO NOT ATTEMPT TO ACCESS archives/ - IT WILL FAIL
 
 ───────────────────────────────────────────────────────────────────────
 FILE FORMAT (follow exactly):
@@ -489,24 +492,6 @@ GUIDELINES:
 • PREFER UPDATING EXISTING FILES: Review current files first and update them instead of creating duplicates
 • Look at file names and descriptions to determine if existing files can be enhanced rather than creating new ones
 
-───────────────────────────────────────────────────────────────────────
-SILENCE ENFORCEMENT (CRITICAL):
-───────────────────────────────────────────────────────────────────────
-SILENCE ENFORCEMENT (CRITICAL):
-───────────────────────────────────────────────────────────────────────
-🚨 ABSOLUTELY NO TEXT IN content FIELD - NOT EVEN "I understand"
-🚨 DO NOT WRITE: "I understand", "I will examine", "Now let me...", etc.
-🚨 DO NOT WRITE: Any explanation, summary, acknowledgment, or commentary
-🚨 YOUR content MUST BE: EMPTY STRING "" FOR ALL MESSAGES UNTIL DONE
-
-TOOL CALLS FORMAT (CORRECT):
-{{"role": "assistant", "tool_calls": [{{"name": "write_file", "arguments": {{"path": "...", "content": "..."}}}}]}}
-
-TOOL CALLS FORMAT (WRONG - DO NOT USE):
-{{"role": "assistant", "content": "<invoke>...<tool_calls>...</invoke>"}}
-
-USE write_file OR edit_file TO CREATE/UPDATE MEMORY FILES
-YOUR ONLY TEXT: <promise>BLAHDONE</promise> (in content field, FINAL message only)
 ───────────────────────────────────────────────────────────────────────
 START NOW:
 ───────────────────────────────────────────────────────────────────────
@@ -550,14 +535,12 @@ START NOW:
         # Critical state user message (for non-user context)
         critical_user_msg = "CRITICAL SYSTEM STATE. SESSION CONTEXT IS FULL. FOLLOW THE INSTRUCTIONS BELOW TO ORGANIZE THE SESSION NOW."
 
-        # Assistant acknowledgment message - ENFORCE SILENCE
+        # Assistant acknowledgment message
         assistant_ack_msg = (
             "I AM AWARE THAT THE SYSTEM IS IN A CRITICAL STATE. "
-            "I WILL ORGANIZE THE SESSION CONTEXT INTO FILES. "
-            "TO SAVE TOKENS, I WILL BE COMPLETELY MUTE. "
-            "I WILL NOT SEND ANY TEXT MESSAGES. "
-            "I WILL ONLY USE TOOLS TO CREATE AND EDIT FILES. "
-            "I WILL NOT OUTPUT ANY TEXT UNTIL I HAVE COMPLETED ALL FILE OPERATIONS AND END WITH <promise>BLAHDONE</promise>."
+            "I WILL FOLLOW THE INSTRUCTIONS BELOW TO ORGANIZE THE SESSION CONTEXT INTO FILES. "
+            "IN ORDER TO KEEP TOKEN USAGE AS LOW AS POSSIBLE, I WILL AVOID UNNECESSARY CONVERSATION AND KEEP FOCUSED ON THE FILES CREATION. "
+            "I WILL NOT ASK QUESTIONS DURING THIS PROCESS. I AM AUTONOMOUS."
         )
 
         if last_role == "user":
