@@ -180,12 +180,8 @@ class TestToolCalls:
     def test_tool_call_in_response(self, mock_server):
         """Test tool calls are properly formatted."""
         tool_call = {
-            "id": "call_123",
-            "type": "function",
-            "function": {
-                "name": "run_shell_command",
-                "arguments": '{"command": "echo hello"}',
-            }
+            "name": "run_shell_command",
+            "arguments": '{"command": "echo hello"}',
         }
         mock_server.set_response("execute", {
             "choices": [{
@@ -213,12 +209,12 @@ class TestToolCalls:
         """Test multiple tool calls in one response."""
         tool_calls = [
             {
-                "id": "call_1",
-                "function": {"name": "read_file", "arguments": '{"path": "/test"}'},
+                "name": "read_file",
+                "arguments": '{"path": "/test"}',
             },
             {
-                "id": "call_2",
-                "function": {"name": "run_shell_command", "arguments": '{"command": "ls"}'},
+                "name": "run_shell_command", 
+                "arguments": '{"command": "ls"}',
             },
         ]
         mock_server.set_response("multi", {
