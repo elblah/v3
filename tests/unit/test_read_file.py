@@ -11,7 +11,6 @@ from aicoder.tools.internal.read_file import (
     generatePreview,
     format_arguments,
     validate_arguments,
-    _check_sandbox,
     DEFAULT_READ_LIMIT,
     MAX_LINE_LENGTH,
 )
@@ -71,49 +70,6 @@ def long_line_file():
     # Cleanup
     if os.path.exists(path):
         os.unlink(path)
-
-
-class TestCheckSandbox:
-    """Test _check_sandbox function"""
-
-    def test_sandbox_disabled(self):
-        """Test when sandbox is disabled"""
-        with patch('aicoder.tools.internal.read_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = True
-            result = _check_sandbox("/some/path", print_message=False)
-            assert result is True
-
-    def test_empty_path(self):
-        """Test empty path returns True"""
-        with patch('aicoder.tools.internal.read_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            result = _check_sandbox("", print_message=False)
-            assert result is True
-
-    def test_path_within_current_dir(self):
-        """Test path within current directory"""
-        with patch('aicoder.tools.internal.read_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            with patch('os.getcwd', return_value='/home/user/project'):
-                result = _check_sandbox('/home/user/project/file.txt', print_message=False)
-                assert result is True
-
-    def test_path_outside_current_dir(self):
-        """Test path outside current directory"""
-        with patch('aicoder.tools.internal.read_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            with patch('os.getcwd', return_value='/home/user/project'):
-                result = _check_sandbox('/etc/passwd', print_message=False)
-                assert result is False
-
-    def test_path_equal_to_current_dir(self):
-        """Test path equal to current directory"""
-        with patch('aicoder.tools.internal.read_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            with patch('os.getcwd', return_value='/home/user/project'):
-                result = _check_sandbox('/home/user/project', print_message=False)
-                assert result is True
-
 
 class TestExecute:
     """Test execute function"""

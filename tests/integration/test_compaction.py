@@ -94,7 +94,9 @@ class TestCompactionWithMockAPI:
             long_context.append({"role": "user", "content": f"Message {i}"})
             long_context.append({"role": "assistant", "content": f"Response {i}"})
 
-        # Use "Message 0" as pattern since it will be in the body
+        # Add a final message with recognizable pattern to trigger compaction
+        long_context.append({"role": "user", "content": "compact now Message 0"})
+        
         mock_server.set_response("Message 0", make_compaction_response("Thread summarized to key points"))
 
         url = mock_server.get_url()
@@ -117,10 +119,16 @@ class TestCompactionWithMockAPI:
 
     def test_tool_calls_during_compaction(self, mock_server):
         """Test that tool calls work correctly after compaction."""
-        mock_server.set_response("compact", make_sse_response(
-            "Compacting context...",
-            tool_calls=[make_tool_response("run_shell_command", {"command": "echo done"})]
-        ))
+        response = {
+            "choices": [{
+                "message": {
+                    "role": "assistant", 
+                    "content": "Compacting context...",
+                    "tool_calls": [make_tool_response("run_shell_command", {"command": "echo done"})]
+                }
+            }]
+        }
+        mock_server.set_response("compact and run command", response)
 
         url = mock_server.get_url()
         data = json.dumps({

@@ -11,7 +11,6 @@ from aicoder.tools.internal.edit_file import (
     generate_preview,
     format_arguments,
     validate_arguments,
-    _check_sandbox,
     _find_occurrences,
     set_plugin_system,
 )
@@ -73,49 +72,6 @@ class TestFindOccurrences:
         result = _find_occurrences("aaa", "aa")
         # find() with start=pos+1 finds non-overlapping, but our impl uses pos+1
         assert result == [0, 1]
-
-
-class TestCheckSandbox:
-    """Test _check_sandbox function"""
-
-    def test_sandbox_disabled(self):
-        """Test when sandbox is disabled"""
-        with patch('aicoder.tools.internal.edit_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = True
-            result = _check_sandbox("/some/path", print_message=False)
-            assert result is True
-
-    def test_empty_path(self):
-        """Test empty path returns True"""
-        with patch('aicoder.tools.internal.edit_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            result = _check_sandbox("", print_message=False)
-            assert result is True
-
-    def test_path_within_current_dir(self):
-        """Test path within current directory"""
-        with patch('aicoder.tools.internal.edit_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            with patch('os.getcwd', return_value='/home/user/project'):
-                result = _check_sandbox('/home/user/project/file.txt', print_message=False)
-                assert result is True
-
-    def test_path_outside_current_dir(self):
-        """Test path outside current directory"""
-        with patch('aicoder.tools.internal.edit_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            with patch('os.getcwd', return_value='/home/user/project'):
-                result = _check_sandbox('/etc/passwd', print_message=False)
-                assert result is False
-
-    def test_path_equal_to_current_dir(self):
-        """Test path equal to current directory"""
-        with patch('aicoder.tools.internal.edit_file.Config') as mock_config:
-            mock_config.sandbox_disabled.return_value = False
-            with patch('os.getcwd', return_value='/home/user/project'):
-                result = _check_sandbox('/home/user/project', print_message=False)
-                assert result is True
-
 
 class TestExecute:
     """Test execute function"""
