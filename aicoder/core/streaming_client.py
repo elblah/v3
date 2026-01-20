@@ -62,7 +62,7 @@ class StreamingClient:
             try:
                 self._log_retry_attempt(config, attempt_num)
                 request_data = self._prepare_request_data(
-                    messages, config["model"], stream
+                    messages, config["model"], stream, send_tools
                 )
                 endpoint = f"{config['base_url']}/chat/completions"
 
