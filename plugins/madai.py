@@ -167,7 +167,7 @@ def create_plugin(ctx):
         description=(
             "Organize your thoughts and preserve important information.\n\n"
             "Research shows too much context makes AI confused and less effective. This tool solves that by letting you write a summary that REPLACES all current context.\n\n"
-            "Messages starting with [TAG] like [SKILLS], [SUMMARY] are automatically preserved. Focus on information NOT in tagged messages.\n\n"
+            "Messages starting with [TAG] like [SKILLS], [SUMMARY] are automatically preserved. System messages (your identity, instructions) are also preserved. Focus on information NOT in system or tagged messages.\n\n"
             "The summary you write becomes ALL the context you'll have. Everything not in it will be forgotten.\n\n"
             "Think: 'What do I need to remember? Names, preferences, important paths, file locations, key findings, where to find useful info...'\n\n"
             "Template:\n"
