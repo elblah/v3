@@ -14,13 +14,15 @@ class CommandHandler:
     """Command handler for AI Coder"""
 
     def __init__(
-        self, message_history: MessageHistory, input_handler: InputHandler, stats: Stats
+        self, message_history: MessageHistory, input_handler: InputHandler, stats: Stats, plugin_system=None
     ):
         # Create context first, then set command_handler reference
         self.context = CommandContext(message_history, input_handler, stats)
         self.registry = CommandRegistry(self.context)
         # Set the command_handler reference in context after creation
         self.context.command_handler = self
+        # Store plugin_system for command access
+        self.plugin_system = plugin_system
 
     def handle_command(self, command: str) -> CommandResult:
         """Handle a command"""

@@ -59,6 +59,7 @@ class AICoder:
             message_history=self.message_history,
             input_handler=self.input_handler,
             stats=self.stats,
+            plugin_system=self.plugin_system,
         )
 
         # Socket server for external control
