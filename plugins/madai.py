@@ -190,7 +190,11 @@ def create_plugin(ctx):
             "- Key finding 1\n"
             "- Key finding 2\n"
             "- Key finding <N>\n"
-            "Next: Specific task or 'Wait for user'\n\n"
+            "Next: What is the last thing that happened? What needs to happen next? Be SPECIFIC.\n"
+            "  - If user asked something: 'Answer user's question about X'\n"
+            "  - If you were doing something: 'Continue implementing feature X'\n"
+            "  - If user made a statement: 'Respond to user's point about X'\n"
+            "  - Only say 'Wait for user' if conversation is genuinely finished\n\n"
             "*IMPORTANT:* Only what you write in the summary survives. Everything else is lost."
         ),
         parameters={
