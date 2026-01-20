@@ -218,7 +218,7 @@ class ToolExecutor:
                     # Guidance mode: stop processing for user guidance
                     # This will be handled by session manager
                     self._guidance_mode = True
-                print()  # Blank line before context bar
+                LogUtils.print()  # Blank line before context bar
                 return False
                 
             # User approved
@@ -230,7 +230,7 @@ class ToolExecutor:
             
         except (EOFError, KeyboardInterrupt):
             LogUtils.error('[x] Tool execution cancelled.')
-            print()  # Blank line before context bar
+            LogUtils.print()  # Blank line before context bar
             return False
 
     def _execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str) -> Dict[str, Any]:
