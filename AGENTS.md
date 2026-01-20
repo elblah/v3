@@ -173,6 +173,7 @@ DEBUG=1 aicoder
 
 ### Streaming and Error Handling
 - Uses Server-Sent Events (SSE) format
-- Implements exponential backoff retry: 2s, 4s, 8s, 16s, 32s, 64s
+- Implements exponential backoff retry: 2s, 4s, 8s, 16s, 32s, max_backoff (configurable, default 64s)
 - Shows retry progress: "Attempt 1/3 failed: <error>. Retrying in 2s..."
 - Timeout handling per retry attempt
+- Configurable max backoff via `MAX_BACKOFF_SECONDS` env var or `/retry max_backoff` command
