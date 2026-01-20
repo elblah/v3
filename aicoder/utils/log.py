@@ -26,6 +26,7 @@ Usage:
 """
 
 import os
+import builtins
 from typing import Optional
 from dataclasses import dataclass
 
@@ -98,11 +99,11 @@ class LogUtils:
 
         if effective_color:
             format_code = f"{colors['bold']}{effective_color}" if effective_bold else effective_color
-            print(f"{format_code}{message}{colors['reset']}")
+            builtins.print(f"{format_code}{message}{colors['reset']}")
         elif effective_bold:
-            print(f"{colors['bold']}{message}{colors['reset']}")
+            builtins.print(f"{colors['bold']}{message}{colors['reset']}")
         else:
-            print(message)
+            builtins.print(message)
 
     # === Core Status Methods ===
 
@@ -218,3 +219,10 @@ def dim(message: str) -> None:
 def strong(message: str) -> None:
     """Print bold/emphasized message"""
     LogUtils.strong(message)
+
+
+def print(message: str, options: Optional[LogOptions] = None,
+          color: Optional[str] = None, bold: bool = False,
+          debug: bool = False) -> None:
+    """Print message with optional formatting"""
+    LogUtils.print(message, options=options, color=color, bold=bold, debug=debug)
