@@ -95,6 +95,7 @@ class Config:
 
     # Retry Configuration
     _runtime_max_retries = None
+    _runtime_max_backoff = None
 
     @staticmethod
     def max_retries() -> int:
@@ -112,6 +113,23 @@ class Config:
     def set_runtime_max_retries(cls, value: int | None) -> None:
         """Set runtime max retry override"""
         cls._runtime_max_retries = value
+
+    @staticmethod
+    def max_backoff() -> int:
+        """Get max backoff seconds from environment"""
+        return int(os.environ.get("MAX_BACKOFF_SECONDS", "64"))
+
+    @staticmethod
+    def effective_max_backoff() -> int:
+        """Get effective max backoff (runtime override or environment)"""
+        if Config._runtime_max_backoff is not None:
+            return Config._runtime_max_backoff
+        return Config.max_backoff()
+
+    @classmethod
+    def set_runtime_max_backoff(cls, value: int | None) -> None:
+        """Set runtime max backoff override"""
+        cls._runtime_max_backoff = value
 
     @staticmethod
     def sandbox_disabled() -> bool:
