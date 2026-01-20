@@ -8,6 +8,7 @@ from typing import Dict, Any
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file as file_read
+from aicoder.utils.log import LogUtils
 
 DEFAULT_READ_LIMIT = 300
 MAX_LINE_LENGTH = 2000
@@ -28,7 +29,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
         if print_message:
-            print(f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
+            LogUtils.error(f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True

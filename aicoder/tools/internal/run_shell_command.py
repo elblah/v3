@@ -9,6 +9,7 @@ import os
 import time
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 # Global reference to active subprocess for Ctrl+C cleanup
@@ -80,7 +81,7 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
         # Always clean up process group to ensure spawned children are killed
         if _active_proc is not None:
             if Config.debug():
-                print(f"[*] Killing active subprocess (PID: {_active_proc.pid})")
+                LogUtils.debug(f"[*] Killing active subprocess (PID: {_active_proc.pid})")
             _kill_process_group(_active_proc)
             # Reap the process to clean up zombies
             try:

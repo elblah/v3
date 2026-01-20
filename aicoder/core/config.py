@@ -5,6 +5,7 @@ Configuration module for AI Coder
 
 import os
 import sys
+from aicoder.utils.log import LogUtils
 
 
 class Config:
@@ -406,39 +407,19 @@ class Config:
         
         """
         if not Config.base_url():
-            print(
-                f"{Config.colors['red']}Error: Missing required environment variable:{Config.colors['reset']}"
-            )
-            print(
-                f"{Config.colors['red']}  - API_BASE_URL or OPENAI_BASE_URL{Config.colors['reset']}"
-            )
-            print(f"{Config.colors['reset']}")
-            print(
-                f"{Config.colors['cyan']}Example configuration:{Config.colors['reset']}"
-            )
-            print(
-                f'{Config.colors["cyan"]}  export API_BASE_URL="https://your-api-provider.com/v1"{Config.colors["reset"]}'
-            )
-            print(f"{Config.colors['reset']}")
-            print(
-                f"{Config.colors['yellow']}Optional variables:{Config.colors['reset']}"
-            )
-            print(
-                f'{Config.colors["yellow"]}  export API_KEY="your-api-key-here" (optional, some providers don\'t require it){Config.colors["reset"]}'
-            )
-            print(
-                f'{Config.colors["yellow"]}  export API_MODEL="your-model-name" (optional, some providers have a default){Config.colors["reset"]}'
-            )
-            print(
-                f"{Config.colors['yellow']}  export TEMPERATURE=0.0{Config.colors['reset']}"
-            )
-            print(
-                f"{Config.colors['yellow']}  export MAX_TOKENS=4096{Config.colors['reset']}"
-            )
-            print(f"{Config.colors['yellow']}  export DEBUG=1{Config.colors['reset']}")
-            print(
-                f'{Config.colors["yellow"]}  export AICODER_SYSTEM_PROMPT="your-custom-prompt"{Config.colors["reset"]}'
-            )
+            LogUtils.error("Error: Missing required environment variable:")
+            LogUtils.error("  - API_BASE_URL or OPENAI_BASE_URL")
+            LogUtils.print("")
+            LogUtils.success("Example configuration:")
+            LogUtils.success('  export API_BASE_URL="https://your-api-provider.com/v1"')
+            LogUtils.print("")
+            LogUtils.print("Optional variables:")
+            LogUtils.print('  export API_KEY="your-api-key-here" (optional, some providers don\'t require it)')
+            LogUtils.print('  export API_MODEL="your-model-name" (optional, some providers have a default)')
+            LogUtils.print("  export TEMPERATURE=0.0")
+            LogUtils.print("  export MAX_TOKENS=4096")
+            LogUtils.print("  export DEBUG=1")
+            LogUtils.print('  export AICODER_SYSTEM_PROMPT="your-custom-prompt"')
             sys.exit(1)
 
     # Print configuration info at startup
@@ -448,34 +429,34 @@ class Config:
         Print configuration info at startup
         
         """
-        print(f"{Config.colors['green']}Configuration:{Config.colors['reset']}")
-        print(
+        LogUtils.print(f"{Config.colors['green']}Configuration:{Config.colors['reset']}")
+        LogUtils.print(
             f"{Config.colors['green']}  API Endpoint: {Config.api_endpoint()}{Config.colors['reset']}"
         )
-        print(
+        LogUtils.print(
             f"{Config.colors['green']}  Model: {Config.model()}{Config.colors['reset']}"
         )
 
         if Config.debug():
-            print(f"{Config.colors['yellow']}DEBUG MODE IS ON{Config.colors['reset']}")
+            LogUtils.print(f"{Config.colors['yellow']}DEBUG MODE IS ON{Config.colors['reset']}")
 
         if os.environ.get("TEMPERATURE"):
-            print(
+            LogUtils.print(
                 f"{Config.colors['green']}  Temperature: {Config.temperature()}{Config.colors['reset']}"
             )
 
         if os.environ.get("MAX_TOKENS"):
-            print(
+            LogUtils.print(
                 f"{Config.colors['green']}  Max tokens: {Config.max_tokens()}{Config.colors['reset']}"
             )
 
         if Config.system_prompt():
-            print(
+            LogUtils.print(
                 f"{Config.colors['green']}  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable{Config.colors['reset']}"
             )
 
         if Config.auto_compact_enabled():
-            print(
+            LogUtils.print(
                 f"{Config.colors['green']}  Auto-compaction enabled (context: {Config.context_size()} tokens, triggers at {Config.context_compact_percentage()}%){Config.colors['reset']}"
             )
 

@@ -18,6 +18,7 @@ def create_plugin(ctx):
     # Luna color palette (exact RGB values from theme.py)
     # Config.colors is used throughout the codebase
     from aicoder.core.config import Config
+    from aicoder.utils.log import LogUtils
 
     # Update color codes (using \x1b for consistency)
     Config.colors["red"] = "\x1b[38;2;255;175;255m"           # Light Pink/Magenta (#FFAFFF)
@@ -38,4 +39,4 @@ def create_plugin(ctx):
     Config.colors["brightWhite"] = "\x1b[38;2;255;255;255m"   # Pure White
 
     if Config.debug():
-        print("  - Luna theme applied")
+        LogUtils.print("  - Luna theme applied")
