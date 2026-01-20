@@ -147,13 +147,13 @@ class SkillsManager:
         if self.skills_dir:
             source_info = f"\nLoading from: {self.skills_dir} ({len(self.skills)} skills found)\n"
 
-        return """[SKILLS] You have access to these skills. Load a skill by reading its SKILL.md file when the task requires it.
+        return """[SKILLS] Available skills (informational only - load when the user requests it or when the scenario clearly requires it):
 """ + source_info + """
-Available Skills:
+Skills:
 
 """ + "\n".join(skills_list) + """
 
-To load a skill, use: read_file(path/to/SKILL.md)
+To load a skill when needed, use: read_file(path/to/SKILL.md)
 """
 
     def ensure_skills_message(self, message_history) -> None:
