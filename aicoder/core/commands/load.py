@@ -5,7 +5,6 @@ Load command implementation
 
 from typing import List
 from .base import BaseCommand, CommandResult
-from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 from aicoder.utils.file_utils import file_exists
 from aicoder.utils.json_utils import read_file
@@ -38,6 +37,9 @@ class LoadCommand(BaseCommand):
             args = []
 
         filename = args[0] if args else "session.json"
+
+        # Call session change hooks before loading new session (allows plugins to cleanup state)
+        self.context.plugin_system.call_hooks("on_session_change")
 
         try:
             if not file_exists(filename):
