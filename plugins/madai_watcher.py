@@ -62,13 +62,16 @@ def create_plugin(ctx):
         current_size = stats.current_prompt_size or 0
         max_size = Config.context_size()
 
-        print(f"[madai_watch] Hook called - context: {current_size}/{max_size} ({100*current_size/max_size:.0f}%)")
+        debug = Config.debug()
+        if debug:
+            print(f"[madai_watch] Hook called - context: {current_size}/{max_size} ({100*current_size/max_size:.0f}%)")
 
         current_range = _get_range_level(current_size, max_size)
 
         # Below threshold, no warning needed
         if current_range < 0:
-            print(f"[madai_watch] Below threshold (25%), no warning")
+            if debug:
+                print(f"[madai_watch] Below threshold (25%), no warning")
             return
 
         # Range changed? Warn immediately and reset
@@ -76,25 +79,30 @@ def create_plugin(ctx):
             _counter = 0
             _last_range = current_range
             level_name = ["gentle", "strong", "urgent"][current_range]
-            print(f"[madai_watch] WARNING! Range changed to {level_name}")
+            if debug:
+                print(f"[madai_watch] WARNING! Range changed to {level_name}")
             warning = _get_warning_message(current_range)
-            print(f"[madai_watch] Injecting warning: '{warning}'")
+            if debug:
+                print(f"[madai_watch] Injecting warning: '{warning}'")
             app.message_history.add_user_message(warning)
             return
 
         # Same range, use counter
         if _counter < _warn_interval:
             _counter += 1
-            print(f"[madai_watch] Counter: {_counter}/{_warn_interval}, not warning")
+            if debug:
+                print(f"[madai_watch] Counter: {_counter}/{_warn_interval}, not warning")
             return
 
         # Counter reached, warn
         _counter = 0
         _last_range = current_range
         level_name = ["gentle", "strong", "urgent"][current_range]
-        print(f"[madai_watch] WARNING! Level: {level_name}")
+        if debug:
+            print(f"[madai_watch] WARNING! Level: {level_name}")
         warning = _get_warning_message(current_range)
-        print(f"[madai_watch] Injecting warning: '{warning}'")
+        if debug:
+            print(f"[madai_watch] Injecting warning: '{warning}'")
         app.message_history.add_user_message(warning)
 
     # Register hooks
