@@ -4,6 +4,8 @@ Tests for
 CRITICAL: This must preserve the exact algorithm, not divide by 4
 """
 
+import json
+
 import pytest
 from aicoder.core.token_estimator import (
     _estimate_weighted_tokens,
@@ -142,20 +144,26 @@ def test_set_tool_tokens():
 
 
 def test_clear_cache():
-    """Test clearing token cache"""
+    """Test clearing token cache preserves tool tokens"""
     # Import fresh module state
     from aicoder.core import token_estimator
 
-    # Add something to cache
+    # Start fresh
+    token_estimator.clear_cache()
+
+    # Set tool tokens via the proper API (this stores the original value)
+    token_estimator.set_tool_tokens(100)
+
+    # Add something to message cache
     token_estimator._message_cache["test"] = 10
-    token_estimator._tools_tokens = 100
 
     # Clear cache
     token_estimator.clear_cache()
 
-    # Should be empty
+    # Message cache should be empty
     assert len(token_estimator._message_cache) == 0
-    assert token_estimator._tools_tokens == 0
+    # Tool tokens should be preserved (they don't change during session)
+    assert token_estimator._tools_tokens == 100
 
 
 def test_estimate_messages_multiple():
@@ -249,3 +257,39 @@ def test_punctuation_set_completeness():
     }
 
     assert PUNCTUATION_SET == expected_punct
+
+
+def test_set_messages_preserves_tool_tokens():
+    """Test that tool tokens are preserved after cache clear (simulates /m command)"""
+    # Import fresh module state
+    from aicoder.core import token_estimator
+
+    # Clear everything first
+    token_estimator.clear_cache()
+
+    # Simulate startup: tool definitions loaded
+    token_estimator.set_tool_tokens(15000)  # ~15k tokens for tools
+
+    # Simulate normal operation: some messages
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "Hello world"},
+    ]
+
+    # First estimation with tool tokens
+    tokens_before = token_estimator.estimate_messages(messages)
+    # Should include tool tokens + message tokens
+    assert tokens_before > 15000  # Must be greater than just tool tokens
+
+    # Simulate /m command: messages replaced and cache cleared
+    token_estimator.clear_cache()
+
+    # Tool tokens should still be 15000 (not reset to 0)
+    assert token_estimator._tools_tokens == 15000
+
+    # Re-estimate with same messages
+    tokens_after = token_estimator.estimate_messages(messages)
+
+    # Token count should be the same as before
+    assert tokens_after == tokens_before
+
