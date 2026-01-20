@@ -28,7 +28,7 @@ class NewCommand(BaseCommand):
 
     def execute(self, args: List[str] = None) -> CommandResult:
         # Call session change hooks before clearing (allows plugins to cleanup state)
-        self.context.plugin_system.call_hooks("on_session_change")
+        self.context.command_handler.plugin_system.call_hooks("on_session_change")
         # Reset stats first (this clears prompt size)
         self.context.stats.reset()
         # Then clear message history (this preserves system prompt and recalculates prompt size)

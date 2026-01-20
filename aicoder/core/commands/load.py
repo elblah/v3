@@ -39,7 +39,7 @@ class LoadCommand(BaseCommand):
         filename = args[0] if args else "session.json"
 
         # Call session change hooks before loading new session (allows plugins to cleanup state)
-        self.context.plugin_system.call_hooks("on_session_change")
+        self.context.command_handler.plugin_system.call_hooks("on_session_change")
 
         try:
             if not file_exists(filename):
