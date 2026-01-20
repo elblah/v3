@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aicoder-v3"
-version = "0.2.0"
+version = "1.0.0"
 description = "An AI-assisted coding tool"
 readme = "README.md"
 authors = [
