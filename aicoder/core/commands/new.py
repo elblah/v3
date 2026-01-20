@@ -6,7 +6,6 @@ New command - Reset the entire session (formerly reset)
 from typing import List
 
 from .base import BaseCommand, CommandResult
-from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
 
@@ -28,6 +27,8 @@ class NewCommand(BaseCommand):
         return ["n"]
 
     def execute(self, args: List[str] = None) -> CommandResult:
+        # Call session change hooks before clearing (allows plugins to cleanup state)
+        self.context.plugin_system.call_hooks("on_session_change")
         # Reset stats first (this clears prompt size)
         self.context.stats.reset()
         # Then clear message history (this preserves system prompt and recalculates prompt size)
