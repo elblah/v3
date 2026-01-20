@@ -523,3 +523,29 @@ class MessageHistory:
             if total_size > 0
             else 0,
         }
+
+    def prune_old_summaries(self) -> int:
+        """Keep only the last [SUMMARY] message, remove all older ones.
+
+        This is the 'highlander' mode - there can be only one [SUMMARY].
+        Useful when context is cluttered with many compaction summaries.
+        """
+        summary_indices = [
+            i for i, msg in enumerate(self.messages)
+            if msg.get("content", "").startswith("[SUMMARY]")
+        ]
+
+        if len(summary_indices) <= 1:
+            return 0  # Nothing to prune
+
+        # Keep only the last summary
+        keep_index = summary_indices[-1]
+        prune_indices = summary_indices[:-1]
+
+        pruned_count = 0
+        for idx in sorted(prune_indices, reverse=True):
+            self.messages.pop(idx)
+            pruned_count += 1
+
+        self.estimate_context()
+        return pruned_count
