@@ -52,7 +52,7 @@ def create_plugin(ctx):
             return "Save progress NOW! Compaction will happen soon. Call save_progress NOW!"
         if level == 1:  # strong
             return "Save progress NOW! Call save_progress tool."
-        return "please save progress"  # gentle
+        return "please save_progress when you have a moment to organize your thoughts"  # gentle
 
     def _check_context(has_tool_calls=None):
         """Check context size and inject warning if needed"""
