@@ -740,3 +740,90 @@ class TestToolResultInsertPosition:
             if "[SUMMARY]" in msg.get("content", "")
         )
         assert summary_idx == 4
+
+    def test_remove_orphan_tool_results(self, message_history):
+        """Test cleanup of orphan tool results without parent calls.
+        
+        This can happen when compaction removes tool calls but leaves results.
+        """
+        message_history.messages = [
+            {"role": "system", "content": "System"},
+            # Valid tool call
+            {
+                "role": "assistant",
+                "content": "Calling tool A",
+                "tool_calls": [{"id": "call_A", "function": {"name": "tool_a", "arguments": "{}"}}]
+            },
+            {"role": "tool", "content": "Result A", "tool_call_id": "call_A"},
+            # Compaction removed this tool call but left the result (orphan)
+            {"role": "tool", "content": "Orphan result", "tool_call_id": "orphan_call"},
+            # Another orphan with no ID
+            {"role": "tool", "content": "Orphan with no ID"},
+            {"role": "user", "content": "hello"},
+        ]
+
+        # Before cleanup: 6 messages (1 system, 1 assistant, 3 tool, 1 user)
+        assert len(message_history.messages) == 6
+
+        # Clean up orphans
+        removed = message_history.remove_orphan_tool_results()
+
+        # Should have removed 2 orphans
+        assert removed == 2
+
+        # After cleanup: 4 messages
+        assert len(message_history.messages) == 4
+
+        # Check remaining messages
+        roles = [msg.get("role") for msg in message_history.messages]
+        assert roles == ["system", "assistant", "tool", "user"]
+
+        # Only the valid tool result should remain
+        tool_results = [msg for msg in message_history.messages if msg.get("role") == "tool"]
+        assert len(tool_results) == 1
+        assert tool_results[0]["tool_call_id"] == "call_A"
+
+    def test_remove_orphan_tool_results_none_to_remove(self, message_history):
+        """Test cleanup when no orphans exist."""
+        message_history.messages = [
+            {"role": "system", "content": "System"},
+            {
+                "role": "assistant",
+                "content": "Calling tool",
+                "tool_calls": [{"id": "call_1", "function": {"name": "tool", "arguments": "{}"}}]
+            },
+            {"role": "tool", "content": "Result", "tool_call_id": "call_1"},
+        ]
+
+        removed = message_history.remove_orphan_tool_results()
+
+        assert removed == 0
+        assert len(message_history.messages) == 3
+
+    def test_set_messages_cleans_orphans(self, message_history):
+        """Test that set_messages cleans up orphan tool results.
+        
+        This ensures compaction/load operations don't leave orphans.
+        """
+        messages_with_orphans = [
+            {"role": "system", "content": "System"},
+            {
+                "role": "assistant",
+                "content": "Calling tool",
+                "tool_calls": [{"id": "valid_call", "function": {"name": "tool", "arguments": "{}"}}]
+            },
+            {"role": "tool", "content": "Valid result", "tool_call_id": "valid_call"},
+            # Orphan from compaction
+            {"role": "tool", "content": "Orphan", "tool_call_id": "orphan_id"},
+        ]
+
+        # Set messages - should clean up orphans automatically
+        message_history.set_messages(messages_with_orphans)
+
+        # Should have 3 messages (1 system, 1 assistant, 1 tool)
+        assert len(message_history.messages) == 3
+
+        # Only valid tool result should remain
+        tool_results = [msg for msg in message_history.messages if msg.get("role") == "tool"]
+        assert len(tool_results) == 1
+        assert tool_results[0]["tool_call_id"] == "valid_call"
