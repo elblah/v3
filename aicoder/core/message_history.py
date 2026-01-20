@@ -339,11 +339,11 @@ class MessageHistory:
         """Compact memory using CompactionService"""
         # Prevent concurrent compactions
         if self.is_compacting:
-            print("[!] Compaction already in progress, skipping...")
+            LogUtils.warn("Compaction already in progress, skipping...")
             return
 
         if not self.api_client:
-            print("[!] API client not available for compaction")
+            LogUtils.error("API client not available for compaction")
             return
 
         self.is_compacting = True
@@ -361,7 +361,7 @@ class MessageHistory:
 
             if len(self.messages) < original_count:
                 self.increment_compaction_count()
-                print("[✓] Conversation compacted successfully")
+                LogUtils.success("Conversation compacted successfully")
 
                 # Call after_compaction hook (after compaction is complete)
                 if self._plugin_system:
