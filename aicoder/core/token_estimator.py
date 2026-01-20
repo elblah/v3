@@ -23,6 +23,7 @@ PUNCTUATION_SET = {
 # Performance caches - cache-once strategy
 _message_cache: Dict[int, int] = {}  # id(msg) -> tokens
 _tools_tokens = 0
+_original_tool_tokens = 0  # Preserved across cache clears (tool definitions don't change during session)
 _MAX_CACHE_SIZE = 1000  # Prevent unbounded growth
 
 
@@ -102,12 +103,15 @@ def estimate_messages(messages: List[Dict[str, Any]]) -> int:
 
 def set_tool_tokens(tokens: int) -> None:
     """Set tool definition tokens (cached separately)"""
-    global _tools_tokens
+    global _tools_tokens, _original_tool_tokens
     _tools_tokens = tokens
+    # Store original value to preserve across cache clears
+    _original_tool_tokens = tokens
 
 
 def clear_cache() -> None:
-    """Clear all caches - called when messages are replaced"""
-    global _message_cache, _tools_tokens
+    """Clear message cache but preserve tool tokens (they don't change during session)"""
+    global _message_cache, _tools_tokens, _original_tool_tokens
     _message_cache.clear()
-    _tools_tokens = 0
+    # Restore tool tokens from stored value instead of resetting to 0
+    _tools_tokens = _original_tool_tokens
