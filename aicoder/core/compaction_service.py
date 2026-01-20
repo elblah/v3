@@ -38,13 +38,11 @@ class CompactionService:
         system_message = messages[0]
         other_summaries = []
         messages_to_compact = []
-        last_summary_index = 0  # After system message by default
 
         for i, msg in enumerate(messages):
             content = msg.get("content", "")
             if content.startswith("[SUMMARY]"):
                 other_summaries.append(msg)
-                last_summary_index = i + 1  # After this summary
             elif i == 0 and msg.get("role") == "system":
                 # Skip system message for now, add it back later
                 continue
@@ -61,6 +59,8 @@ class CompactionService:
 
         try:
             summary = self._get_ai_summary(old_groups)
+            if summary is None:
+                return messages  # Summary failed validation, skip compaction
             summary_message = self._create_summary_message(summary)
 
             # Rebuild: system + existing summaries + new summary + recent messages
@@ -111,6 +111,8 @@ class CompactionService:
                 for msg in filtered_messages
             ]
         )
+        if summary is None:
+            return messages  # Summary failed validation, skip compaction
         summary_message = self._create_summary_message(summary)
 
         return self._replace_messages_with_summary(messages, filtered_messages, summary_message)
@@ -136,6 +138,8 @@ class CompactionService:
                 for msg in messages_to_compact
             ]
         )
+        if summary is None:
+            return messages  # Summary failed validation, skip compaction
         summary_message = self._create_summary_message(summary)
 
         return self._replace_messages_with_summary(messages, messages_to_compact, summary_message)
@@ -204,7 +208,7 @@ class CompactionService:
 
         return rounds
 
-    def _get_ai_summary(self, groups: List[MessageGroup]) -> str:
+    def _get_ai_summary(self, groups: List[MessageGroup]) -> Optional[str]:
         """Get AI summary using existing streaming client"""
         messages = []
         for g in groups:
@@ -260,7 +264,8 @@ Your summary should be comprehensive enough to provide context but concise enoug
                     full_response += content
 
             if not self._validate_summary(full_response):
-                LogUtils.warn("[!] Generated summary appears too short, using anyway")
+                LogUtils.warn("[!] Generated summary too short - skipping compaction")
+                return None  # Signal to skip compaction
 
             return full_response or "Conversation summarized"
 
