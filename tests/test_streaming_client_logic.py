@@ -37,9 +37,34 @@ class TestStreamingClient:
         assert client._calculate_backoff(2) == 4
         assert client._calculate_backoff(3) == 8
 
-        # Test cap at 64
+        # Test cap at default 64
         assert client._calculate_backoff(6) == 64
         assert client._calculate_backoff(10) == 64
+
+    def test_backoff_calculation_custom_max(self):
+        """Test backoff calculation with custom max backoff"""
+        client = StreamingClient()
+        
+        # Test with custom max backoff
+        with patch.object(Config, 'effective_max_backoff', return_value=30):
+            assert client._calculate_backoff(0) == 1
+            assert client._calculate_backoff(1) == 2
+            assert client._calculate_backoff(2) == 4
+            assert client._calculate_backoff(3) == 8
+            assert client._calculate_backoff(4) == 16
+            assert client._calculate_backoff(5) == 30  # Capped at custom max
+            assert client._calculate_backoff(10) == 30  # Still capped
+
+    def test_backoff_calculation_small_max(self):
+        """Test backoff calculation with small max backoff"""
+        client = StreamingClient()
+        
+        with patch.object(Config, 'effective_max_backoff', return_value=5):
+            assert client._calculate_backoff(0) == 1
+            assert client._calculate_backoff(1) == 2
+            assert client._calculate_backoff(2) == 4
+            assert client._calculate_backoff(3) == 5  # Capped at 5
+            assert client._calculate_backoff(10) == 5  # Still capped
 
 
 class TestWaitForRetry:
