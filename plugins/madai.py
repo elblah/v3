@@ -134,17 +134,21 @@ def create_plugin(ctx):
         if _pending_summary is None:
             return
 
+        # Collect tagged messages BEFORE clearing
+        messages = app.message_history.get_messages()
+        tagged_messages = [
+            msg for msg in messages
+            if _is_tagged_message(msg.get("content", ""))
+        ]
+
         # Clear messages (keeps system prompt)
         app.message_history.clear()
 
-        # Collect tagged messages and append summary
-        messages = app.message_history.get_messages()
-        for msg in messages:
-            content = msg.get("content", "")
-            if _is_tagged_message(content):
-                app.message_history.add_user_message(content)
+        # Restore all tagged messages (including old [CONTEXT])
+        for msg in tagged_messages:
+            app.message_history.add_user_message(msg["content"])
 
-        # Append the [CONTEXT] summary
+        # Append the new [CONTEXT] summary
         app.message_history.add_user_message(_pending_summary)
 
         # Clear pending state
