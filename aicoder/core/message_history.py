@@ -363,6 +363,10 @@ class MessageHistory:
                 self.increment_compaction_count()
                 print("[✓] Conversation compacted successfully")
 
+                # Call after_compaction hook (after compaction is complete)
+                if self._plugin_system:
+                    self._plugin_system.call_hooks("after_compaction")
+
         finally:
             self.is_compacting = False
 
