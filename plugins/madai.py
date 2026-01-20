@@ -182,6 +182,7 @@ def create_plugin(ctx):
             "Think: 'What do I need to remember? Names, preferences, important paths, file locations, key findings, where to find useful info...'\n\n"
             "Template:\n"
             "[CONTEXT]\n"
+            "Last Round: What was the last thing that happened? From the last user message up until now. Include: what the user asked/said, what you responded, tool calls (just summary of results - not the full output). This preserves conversation continuity so you don't repeat yourself.\n"
             "Task: What the user asked for\n"
             "Notes:\n"
             "- Names, preferences, important paths\n"
@@ -200,7 +201,7 @@ def create_plugin(ctx):
         parameters={
             "summary": {
                 "type": "string",
-                "description": "The [CONTEXT] content to preserve: Task, Notes, Accomplished, Next",
+                "description": "The [CONTEXT] content to preserve: Last Round, Task, Notes, Accomplished, Next",
             }
         },
         auto_approved=True,
