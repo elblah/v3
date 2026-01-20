@@ -6,7 +6,7 @@ import os
 import time
 from typing import List, Dict, Any, Optional, Tuple
 
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import print as log_print, error, warn, LogOptions
 from aicoder.core.config import Config
 
 
@@ -222,10 +222,10 @@ class CouncilService:
         council_dir = self.get_council_directory()
 
         if not council_dir:
-            LogUtils.error("Council directory not found")
-            LogUtils.print("Create either:")
-            LogUtils.print("  - .aicoder/council/ (project-specific)", LogOptions(color=Config.colors["dim"]))
-            LogUtils.print("  - ~/.config/aicoder-v3/council/ (global)", LogOptions(color=Config.colors["dim"]))
+            error("Council directory not found")
+            log_print("Create either:")
+            log_print("  - .aicoder/council/ (project-specific)", LogOptions(color=Config.colors["dim"]))
+            log_print("  - ~/.config/aicoder-v3/council/ (global)", LogOptions(color=Config.colors["dim"]))
             return [], None
 
         files = os.listdir(council_dir)
@@ -286,7 +286,7 @@ class CouncilService:
 
             except Exception as e:
                 if Config.debug():
-                    LogUtils.warn(f"Failed to load member {filename}: {e}")
+                    warn(f"Failed to load member {filename}: {e}")
 
         return members, moderator
 
@@ -381,11 +381,11 @@ class CouncilService:
 
             except Exception as e:
                 if attempt >= max_retries and max_retries > 0:
-                    LogUtils.error(f"Council member {member['name']} failed after {max_retries} attempts: {e}")
+                    error(f"Council member {member['name']} failed after {max_retries} attempts: {e}")
                     return f"Error: Failed to get opinion from {member['name']}"
 
                 delay = min(2 ** attempt, 64)
-                LogUtils.warn(f"Council member {member['name']} - Attempt {attempt}/{max_retries if max_retries > 0 else 'unlimited'} failed: {e}. Retrying in {delay}s...")
+                warn(f"Council member {member['name']} - Attempt {attempt}/{max_retries if max_retries > 0 else 'unlimited'} failed: {e}. Retrying in {delay}s...")
                 time.sleep(delay)
 
         return f"Error: Failed to get opinion from {member['name']}"
@@ -420,7 +420,7 @@ Provide a prioritized list of improvements and a clear summary."""
         opinions = []
 
         for member in members:
-            LogUtils.print(f"\n{member['name']}:", LogOptions(color=Config.colors["cyan"]))
+            log_print(f"\n{member['name']}:", LogOptions(color=Config.colors["cyan"]))
 
             opinion = self.get_member_opinion(member, user_request, include_spec=False)
             opinions.append(f"{member['name']}:\n{opinion}")
@@ -436,7 +436,7 @@ Provide a prioritized list of improvements and a clear summary."""
             "final_plan": None,
             "is_auto_mode": auto_mode
         }
-        LogUtils.print("Council session started", LogOptions(color=Config.colors["cyan"]))
+        log_print("Council session started", LogOptions(color=Config.colors["cyan"]))
 
     def get_session_status(self) -> Optional[Dict[str, Any]]:
         """Get current session status"""
@@ -445,7 +445,7 @@ Provide a prioritized list of improvements and a clear summary."""
     def clear_session(self) -> None:
         """Clear current session"""
         self.session = None
-        LogUtils.print("Council session cleared")
+        log_print("Council session cleared")
 
     # Spec management (static methods)
     @staticmethod
@@ -497,12 +497,12 @@ Provide a prioritized list of improvements and a clear summary."""
 
         max_iterations = int(os.getenv("COUNCIL_MAX_ITERATIONS", "10"))
         if CouncilService._auto_council_iteration >= max_iterations:
-            LogUtils.warn("Auto-council max iterations reached")
+            warn("Auto-council max iterations reached")
             self.disable_auto_council()
             return None
 
         CouncilService._auto_council_iteration += 1
-        LogUtils.print(f"\n[Auto-Council] Iteration {CouncilService._auto_council_iteration}", LogOptions(color=Config.colors["cyan"]))
+        log_print(f"\n[Auto-Council] Iteration {CouncilService._auto_council_iteration}", LogOptions(color=Config.colors["cyan"]))
 
         # Get context for council review
         messages = self.app.message_history.get_messages() if self.app.message_history else []
@@ -512,7 +512,7 @@ Provide a prioritized list of improvements and a clear summary."""
 
         # If implementation complete, disable auto-council
         if "All council members approve" in feedback:
-            LogUtils.print("Auto-council complete - implementation approved!", LogOptions(color=Config.colors["green"]))
+            log_print("Auto-council complete - implementation approved!", LogOptions(color=Config.colors["green"]))
             self.disable_auto_council()
             return None
 
@@ -529,13 +529,13 @@ Provide a prioritized list of improvements and a clear summary."""
         CouncilService._auto_council_enabled = True
         CouncilService._auto_council_reset_context = reset_context
         CouncilService._auto_council_iteration = 0
-        LogUtils.print("Auto-council enabled", LogOptions(color=Config.colors["green"]))
+        log_print("Auto-council enabled", LogOptions(color=Config.colors["green"]))
 
     def disable_auto_council(self) -> None:
         """Disable auto-council mode"""
         CouncilService._auto_council_enabled = False
         CouncilService.clear_spec()
-        LogUtils.print("Auto-council disabled", LogOptions(color=Config.colors["yellow"]))
+        log_print("Auto-council disabled", LogOptions(color=Config.colors["yellow"]))
 
     def run_auto_council_review(self, messages: List[Dict[str, Any]]) -> str:
         """Run auto-council review without moderator API call"""
@@ -549,7 +549,7 @@ Provide a prioritized list of improvements and a clear summary."""
         votes = {}
 
         for member in members:
-            LogUtils.print(f"\n{member['name']}:", LogOptions(color=Config.colors["cyan"]))
+            log_print(f"\n{member['name']}:", LogOptions(color=Config.colors["cyan"]))
 
             opinion = self.get_member_opinion(member, "Review this implementation", include_spec=True)
             opinions[member['name']] = opinion
@@ -557,7 +557,7 @@ Provide a prioritized list of improvements and a clear summary."""
             vote = self.parse_vote(opinion)
             votes[member['name']] = vote
 
-            LogUtils.print(opinion)
+            log_print(opinion)
 
         # Build vote summary
         finished_count = sum(1 for v in votes.values() if v == "FINISHED")
@@ -595,13 +595,13 @@ Provide a prioritized list of improvements and a clear summary."""
     def enable_prompt_append() -> None:
         """Enable prompt append"""
         CouncilService._prompt_append_enabled = True
-        LogUtils.print("Prompt append enabled", LogOptions(color=Config.colors["green"]))
+        log_print("Prompt append enabled", LogOptions(color=Config.colors["green"]))
 
     @staticmethod
     def disable_prompt_append() -> None:
         """Disable prompt append"""
         CouncilService._prompt_append_enabled = False
-        LogUtils.print("Prompt append disabled", LogOptions(color=Config.colors["yellow"]))
+        log_print("Prompt append disabled", LogOptions(color=Config.colors["yellow"]))
 
     @staticmethod
     def is_prompt_append_enabled() -> bool:
@@ -693,7 +693,7 @@ class CouncilCommand:
             elif " " not in message:
                 spec_file = message
                 if not os.path.exists(spec_file):
-                    LogUtils.error(f"File not found: {spec_file}")
+                    error(f"File not found: {spec_file}")
                     return ""
 
                 with open(spec_file, "r") as f:
@@ -701,8 +701,8 @@ class CouncilCommand:
 
                 CouncilService.load_spec(spec_content, spec_file)
                 CouncilService.enable_auto_council(reset_context)
-                LogUtils.print("Specification loaded", LogOptions(color=Config.colors["green"]))
-                LogUtils.print("\nStarting implementation...", LogOptions(color=Config.colors["cyan"]))
+                log_print("Specification loaded", LogOptions(color=Config.colors["green"]))
+                log_print("\nStarting implementation...", LogOptions(color=Config.colors["cyan"]))
 
                 self.app.message_history.add_user_message(f"Specification to implement:\n\n{spec_content}")
                 self.app.set_next_prompt("Implement this specification")
@@ -710,8 +710,8 @@ class CouncilCommand:
 
             CouncilService.load_spec(message, "inline-spec.md")
             CouncilService.enable_auto_council(reset_context)
-            LogUtils.print("Specification loaded from text", LogOptions(color=Config.colors["green"]))
-            LogUtils.print("\nStarting implementation...", LogOptions(color=Config.colors["cyan"]))
+            log_print("Specification loaded from text", LogOptions(color=Config.colors["green"]))
+            log_print("\nStarting implementation...", LogOptions(color=Config.colors["cyan"]))
 
             self.app.message_history.add_user_message(f"Specification to implement:\n\n{message}")
             self.app.set_next_prompt("Implement this specification")
@@ -736,19 +736,19 @@ class CouncilCommand:
         members, moderator = self.service.load_members(filters, auto_mode=False)
 
         if not members and not moderator:
-            LogUtils.error("No council members found")
+            error("No council members found")
             return
 
-        LogUtils.print(f"\nCouncil review ({len(members)} members)", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print("", LogOptions(color=Config.colors["white"]))
+        log_print(f"\nCouncil review ({len(members)} members)", LogOptions(color=Config.colors["cyan"]))
+        log_print("", LogOptions(color=Config.colors["white"]))
 
         # Get all opinions first (always display them)
         opinions = {}
         for member in members:
-            LogUtils.print(f"\n{member['name']}:", LogOptions(color=Config.colors["cyan"]))
+            log_print(f"\n{member['name']}:", LogOptions(color=Config.colors["cyan"]))
             opinion = self.service.get_member_opinion(member, message, include_spec=False)
             opinions[member['name']] = opinion
-            LogUtils.print(opinion)
+            log_print(opinion)
 
         # Build final plan based on mode and moderator availability
         if direct_mode:
@@ -757,19 +757,19 @@ class CouncilCommand:
         elif moderator:
             # Normal mode with moderator: ask moderator to synthesize
             result = self.service.get_consensus(moderator, opinions)
-            LogUtils.print("\n[Moderator] Synthesis (token-efficient)", LogOptions(color=Config.colors["cyan"]))
+            log_print("\n[Moderator] Synthesis (token-efficient)", LogOptions(color=Config.colors["cyan"]))
         else:
             # Normal mode without moderator: opinions are the plan
             result = ""
-            LogUtils.print("\n[Direct] Using expert opinions (no moderator available)", LogOptions(color=Config.colors["yellow"]))
+            log_print("\n[Direct] Using expert opinions (no moderator available)", LogOptions(color=Config.colors["yellow"]))
 
         if self.service.session:
             self.service.session["opinions"] = opinions
             self.service.session["final_plan"] = result
 
         if result:
-            LogUtils.print("", LogOptions(color=Config.colors["white"]))
-            LogUtils.print(result, LogOptions(color=Config.colors["green"]))
+            log_print("", LogOptions(color=Config.colors["white"]))
+            log_print(result, LogOptions(color=Config.colors["green"]))
 
         # Auto-mode: automatically inject feedback
 
@@ -803,7 +803,7 @@ Write your specification here...
 
         CouncilService.load_spec(spec_content, spec_file)
         CouncilService.enable_auto_council()
-        LogUtils.print("Specification loaded", LogOptions(color=Config.colors["green"]))
+        log_print("Specification loaded", LogOptions(color=Config.colors["green"]))
 
         return ""
 
@@ -812,11 +812,11 @@ Write your specification here...
         session = self.service.get_session_status()
 
         if not session or not session.get("final_plan"):
-            LogUtils.print("No active council session", LogOptions(color=Config.colors["yellow"]))
+            log_print("No active council session", LogOptions(color=Config.colors["yellow"]))
             return ""
 
-        LogUtils.print("Current Council Review:", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print(session["final_plan"], LogOptions(color=Config.colors["green"]))
+        log_print("Current Council Review:", LogOptions(color=Config.colors["cyan"]))
+        log_print(session["final_plan"], LogOptions(color=Config.colors["green"]))
         return ""
 
     def accept_plan(self) -> str:
@@ -824,15 +824,15 @@ Write your specification here...
         session = self.service.get_session_status()
 
         if not session or not session.get("final_plan"):
-            LogUtils.print("No final plan to accept", LogOptions(color=Config.colors["yellow"]))
+            log_print("No final plan to accept", LogOptions(color=Config.colors["yellow"]))
             return ""
 
         final_plan = session["final_plan"]
 
         self.app.message_history.add_user_message(f"Council feedback: {final_plan}")
 
-        LogUtils.print("Council plan injected into conversation", LogOptions(color=Config.colors["green"]))
-        LogUtils.print("AI will now consider this feedback", LogOptions(color=Config.colors["cyan"]))
+        log_print("Council plan injected into conversation", LogOptions(color=Config.colors["green"]))
+        log_print("AI will now consider this feedback", LogOptions(color=Config.colors["cyan"]))
 
         self.service.clear_session()
 
@@ -848,48 +848,48 @@ Write your specification here...
         council_dir = self.service.get_council_directory()
 
         if not council_dir:
-            LogUtils.error("Council directory not found")
-            LogUtils.print("Create either:", LogOptions(color=Config.colors["dim"]))
-            LogUtils.print("  - .aicoder/council/ (project-specific)", LogOptions(color=Config.colors["dim"]))
-            LogUtils.print("  - ~/.config/aicoder-v3/council/ (global)", LogOptions(color=Config.colors["dim"]))
+            error("Council directory not found")
+            log_print("Create either:", LogOptions(color=Config.colors["dim"]))
+            log_print("  - .aicoder/council/ (project-specific)", LogOptions(color=Config.colors["dim"]))
+            log_print("  - ~/.config/aicoder-v3/council/ (global)", LogOptions(color=Config.colors["dim"]))
             return ""
 
         files = os.listdir(council_dir)
         sorted_files = self.service.natural_sort(files)
         member_files = [f for f in sorted_files if f.endswith(".txt") and "moderator" not in f.lower()]
 
-        LogUtils.print("Council Members:", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print("", LogOptions(color=Config.colors["white"]))
-        LogUtils.print(f"Directory: {council_dir}", LogOptions(color=Config.colors["yellow"]))
-        LogUtils.print("", LogOptions(color=Config.colors["white"]))
+        log_print("Council Members:", LogOptions(color=Config.colors["cyan"]))
+        log_print("", LogOptions(color=Config.colors["white"]))
+        log_print(f"Directory: {council_dir}", LogOptions(color=Config.colors["yellow"]))
+        log_print("", LogOptions(color=Config.colors["white"]))
 
         if member_files:
-            LogUtils.print("Members:", LogOptions(color=Config.colors["blue"]))
+            log_print("Members:", LogOptions(color=Config.colors["blue"]))
             for idx, member_file in enumerate(member_files, 1):
                 name = member_file.replace(".txt", "")
                 is_disabled = name.startswith("_")
                 color = Config.colors["dim"] if is_disabled else Config.colors["white"]
                 status = " (disabled)" if is_disabled else ""
-                LogUtils.print(f"  {idx}) {name}{status}", LogOptions(color=color))
+                log_print(f"  {idx}) {name}{status}", LogOptions(color=color))
 
         if any("moderator" in f.lower() for f in sorted_files):
-            LogUtils.print("", LogOptions(color=Config.colors["white"]))
-            LogUtils.print("Moderator (always included):", LogOptions(color=Config.colors["green"]))
-            LogUtils.print("  - moderator", LogOptions(color=Config.colors["white"]))
+            log_print("", LogOptions(color=Config.colors["white"]))
+            log_print("Moderator (always included):", LogOptions(color=Config.colors["green"]))
+            log_print("  - moderator", LogOptions(color=Config.colors["white"]))
 
         return ""
 
     def edit_member(self, args: List[str]) -> str:
         """Edit council member file"""
         if not args:
-            LogUtils.print("Usage: /council edit <number|name>", LogOptions(color=Config.colors["yellow"]))
+            log_print("Usage: /council edit <number|name>", LogOptions(color=Config.colors["yellow"]))
             return ""
 
         identifier = args[0]
         council_dir = self.service.get_council_directory()
 
         if not council_dir:
-            LogUtils.error("Council directory not found")
+            error("Council directory not found")
             return ""
 
         files = os.listdir(council_dir)
@@ -909,27 +909,27 @@ Write your specification here...
                     break
 
         if not target_file:
-            LogUtils.error(f"Member not found: {identifier}")
+            error(f"Member not found: {identifier}")
             return ""
 
         editor = os.getenv("EDITOR", "vim")
         filepath = os.path.join(council_dir, target_file)
         os.system(f"{editor} {filepath}")
-        LogUtils.print(f"Edited: {target_file}", LogOptions(color=Config.colors["green"]))
+        log_print(f"Edited: {target_file}", LogOptions(color=Config.colors["green"]))
 
         return ""
 
     def toggle_member(self, args: List[str], enabled: bool) -> str:
         """Enable or disable council member"""
         if not args:
-            LogUtils.print(f"Usage: /council {'enable' if enabled else 'disable'} <number|name>", LogOptions(color=Config.colors["yellow"]))
+            log_print(f"Usage: /council {'enable' if enabled else 'disable'} <number|name>", LogOptions(color=Config.colors["yellow"]))
             return ""
 
         identifier = args[0]
         council_dir = self.service.get_council_directory()
 
         if not council_dir:
-            LogUtils.error("Council directory not found")
+            error("Council directory not found")
             return ""
 
         files = os.listdir(council_dir)
@@ -949,7 +949,7 @@ Write your specification here...
                     break
 
         if not target_file:
-            LogUtils.error(f"Member not found: {identifier}")
+            error(f"Member not found: {identifier}")
             return ""
 
         filepath = os.path.join(council_dir, target_file)
@@ -959,13 +959,13 @@ Write your specification here...
             new_filepath = os.path.join(council_dir, new_name)
             if new_filepath != filepath:
                 os.rename(filepath, new_filepath)
-                LogUtils.print(f"Enabled: {new_name}", LogOptions(color=Config.colors["green"]))
+                log_print(f"Enabled: {new_name}", LogOptions(color=Config.colors["green"]))
         else:
             new_name = f"_{target_file}" if not target_file.startswith("_") else target_file
             new_filepath = os.path.join(council_dir, new_name)
             if new_filepath != filepath:
                 os.rename(filepath, new_filepath)
-                LogUtils.print(f"Disabled: {new_name}", LogOptions(color=Config.colors["yellow"]))
+                log_print(f"Disabled: {new_name}", LogOptions(color=Config.colors["yellow"]))
 
         return ""
 
@@ -973,7 +973,7 @@ Write your specification here...
         """Toggle prompt append on/off"""
         if not args:
             status = "enabled" if CouncilService.is_prompt_append_enabled() else "disabled"
-            LogUtils.print(f"Prompt append is currently {status}", LogOptions(color=Config.colors["cyan"]))
+            log_print(f"Prompt append is currently {status}", LogOptions(color=Config.colors["cyan"]))
             return ""
 
         action = args[0].lower()
@@ -982,7 +982,7 @@ Write your specification here...
         elif action in ["off", "disable", "0", "false"]:
             CouncilService.disable_prompt_append()
         else:
-            LogUtils.print("Usage: /council prompt-append on|off (enable|disable)", LogOptions(color=Config.colors["yellow"]))
+            log_print("Usage: /council prompt-append on|off (enable|disable)", LogOptions(color=Config.colors["yellow"]))
             return ""
 
         return ""
@@ -999,7 +999,7 @@ Write your specification here...
         # Clear the spec
         CouncilService.clear_spec()
 
-        LogUtils.print("Council cancelled. All state cleared.", LogOptions(color=Config.colors["yellow"]))
+        log_print("Council cancelled. All state cleared.", LogOptions(color=Config.colors["yellow"]))
         return ""
 
     def show_help(self) -> str:
@@ -1053,7 +1053,7 @@ Prompt Append:
   Or via environment variable: COUNCIL_DISABLE_PROMPT_APPEND=1
 """
 
-        LogUtils.print(help_text)
+        log_print(help_text)
         return ""
 
 
@@ -1072,9 +1072,9 @@ def create_plugin(ctx):
     ctx.register_hook("after_ai_processing", after_ai_processing_hook)
 
     if Config.debug():
-        LogUtils.print("[+] Council plugin loaded")
-        LogUtils.print("  - /council command")
-        LogUtils.print("  - /council-cancel command")
-        LogUtils.print("  - Auto-council support")
+        log_print("[+] Council plugin loaded")
+        log_print("  - /council command")
+        log_print("  - /council-cancel command")
+        log_print("  - Auto-council support")
 
     return {"cleanup": council_service.cleanup}
