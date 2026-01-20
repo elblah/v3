@@ -12,7 +12,7 @@ Commands:
 
 Tag Pattern:
 - Any message starting with [WORD...] is preserved
-- [CONTEXT] is special: controlled by new_context parameter
+- [CONTEXT] is created by switch_context_phase tool
 - Other tags like [SUMMARY], [SKILLS], [NOTES] are always preserved
 """
 
@@ -20,7 +20,7 @@ import re
 from aicoder.core.config import Config
 
 # Module-level state (shared across plugin invocations)
-_pending_new_messages = None  # noqa: F841 - set during tool call, used in hook
+_pending_summary = None  # noqa: F841 - set during tool call, used in hook
 
 
 def create_plugin(ctx):
@@ -38,11 +38,7 @@ def create_plugin(ctx):
         - Only UPPERCASE letters (A-Z), underscores (_), or hyphens (-)
         - Minimum 4 chars (e.g., [TEST]), maximum 50 chars
         """
-        return bool(re.match(r'^\[[A-Z_-]{4,50}\]', content))
-
-    def _is_context_message(content):
-        """Check if message is a [CONTEXT] tag"""
-        return content.strip().startswith("[CONTEXT]")
+        return bool(re.match(r"^\[[A-Z_-]{4,50}\]", content))
 
     def _get_phase_count():
         return len(phases)
@@ -109,73 +105,56 @@ def create_plugin(ctx):
             return {
                 "tool": "switch_context_phase",
                 "friendly": "Error: summary is required",
-                "detailed": "The 'summary' argument is required. Example: {\"summary\": \"Implementing OAuth2...\"}"
+                "detailed": "The 'summary' argument is required. Follow the tool description format.",
             }
-
-        new_context = args.get("new_context", False)
 
         # Store phase
         phase_num = _get_current_phase()
         phases.append({"phase": phase_num, "summary": summary})
 
-        # Get all messages
-        messages = app.message_history.get_messages()
-
-        # Build new message list
-        new_messages = []
-
-        for msg in messages:
-            content = msg.get("content", "")
-            role = msg.get("role")
-
-            # Always preserve tagged messages (any [TAG_NAME] pattern)
-            if _is_tagged_message(content):
-                if _is_context_message(content):
-                    # Keep context only if NOT new_context mode
-                    if not new_context:
-                        new_messages.append(msg)
-                else:
-                    # Other tags like [SUMMARY], [SKILLS], [NOTES] - always keep
-                    new_messages.append(msg)
-            elif role == "system":
-                # Always preserve system messages
-                new_messages.append(msg)
-
-        # Add new [CONTEXT] message with AI summary
-        context_msg = {
-            "role": "user",
-            "content": f"[CONTEXT] Phase {phase_num}: {summary}"
-        }
-        new_messages.append(context_msg)
-
-        # Store pending messages for replacement after tool response is added
-        global _pending_new_messages
-        _pending_new_messages = new_messages
+        # Store summary for hook to use
+        global _pending_summary
+        if summary.strip().startswith("[CONTEXT]"):
+            _pending_summary = summary.strip()
+        else:
+            _pending_summary = f"[CONTEXT] {summary}"
 
         # Notify
-        action = "new notebook started" if new_context else "cumulative notebook continued"
-
         return {
             "tool": "switch_context_phase",
-            "friendly": f"[✓] Phase {phase_num} started - {action}",
-            "detailed": f"Phase {phase_num} ready with {len(new_messages)} messages.\n"
-                       f"Summary: {summary}\n"
-                       f"Mode: {'Fresh start (new_context=true)' if new_context else 'Cumulative (new_context=false)'}"
+            "friendly": f"[✓] Phase {phase_num}: Context switched",
+            "detailed": f"Phase {phase_num} started",
         }
 
     def _after_tool_results_added(message):
         """Hook called after tool results are added to history.
-        Apply pending context phase replacement."""
-        global _pending_new_messages
-        if _pending_new_messages is not None:
-            app.message_history.replace_messages(_pending_new_messages)
-            _pending_new_messages = None
+        Apply pending phase switch."""
+        global _pending_summary
+
+        if _pending_summary is None:
+            return
+
+        # Clear messages (keeps system prompt)
+        app.message_history.clear()
+
+        # Collect tagged messages and append summary
+        messages = app.message_history.get_messages()
+        for msg in messages:
+            content = msg.get("content", "")
+            if _is_tagged_message(content):
+                app.message_history.add_user_message(content)
+
+        # Append the [CONTEXT] summary
+        app.message_history.add_user_message(_pending_summary)
+
+        # Clear pending state
+        _pending_summary = None
 
     def _on_session_change():
         """Hook called before /new or /load clears the session.
         Clear session-specific state to prevent cross-session contamination."""
-        global _pending_new_messages, phases
-        _pending_new_messages = None
+        global _pending_summary, phases
+        _pending_summary = None
         phases = []
 
     # Register commands
@@ -183,26 +162,34 @@ def create_plugin(ctx):
 
     # Register tool
     ctx.register_tool(
-        name="switch_context_phase",
+        name="save_progress",
         fn=_switch_context_phase,
         description=(
-            "Archive current context and start a new phase with a summary. "
-            "Use when you've completed a logical chunk of work and want a clean slate. "
-            "All non-tagged messages are pruned. "
-            "Tags preserved: any [TAG_NAME] pattern like [SUMMARY], [SKILLS]. "
-            "[CONTEXT] tags preserved based on new_context parameter."
+            "Organize your thoughts and preserve important information.\n\n"
+            "Research shows too much context makes AI confused and less effective. This tool solves that by letting you write a summary that REPLACES all current context.\n\n"
+            "Messages starting with [TAG] like [SKILLS], [SUMMARY] are automatically preserved. Focus on information NOT in tagged messages.\n\n"
+            "The summary you write becomes ALL the context you'll have. Everything not in it will be forgotten.\n\n"
+            "Think: 'What do I need to remember? Names, preferences, important paths, file locations, key findings, where to find useful info...'\n\n"
+            "Template:\n"
+            "[CONTEXT]\n"
+            "Task: What the user asked for\n"
+            "Notes:\n"
+            "- Names, preferences, important paths\n"
+            "- File locations and line numbers\n"
+            "Accomplished:\n"
+            "- Key finding 1\n"
+            "- Key finding 2\n"
+            "- Key finding <N>\n"
+            "Next: Specific task or 'Wait for user'\n\n"
+            "*IMPORTANT:* Only what you write in the summary survives. Everything else is lost."
         ),
         parameters={
             "summary": {
                 "type": "string",
-                "description": "What you need to remember for the next phase (required)"
-            },
-            "new_context": {
-                "type": "boolean",
-                "description": "If true, prune old [CONTEXT] messages (fresh start). If false, keep cumulative (default: false)"
+                "description": "The [CONTEXT] content to preserve: Task, Notes, Accomplished, Next",
             }
         },
-        auto_approved=True
+        auto_approved=True,
     )
 
     # Register hook to clear session state before /new or /load
