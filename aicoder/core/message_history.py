@@ -174,7 +174,10 @@ class MessageHistory:
             from .token_estimator import cache_message
             cache_message(tool_message)
             
-            self.messages.append(tool_message)
+            # Insert AFTER the matching tool call, not at the end
+            # This fixes issues when compaction inserted summaries between call and result
+            insert_index = self._find_tool_insert_position(tool_call_id)
+            self.messages.insert(insert_index, tool_message)
             
             # Call plugin hooks for each tool message
             if self._plugin_system:
@@ -182,6 +185,29 @@ class MessageHistory:
         
         # Update context size estimate
         self.estimate_context()
+
+    def _find_tool_insert_position(self, tool_call_id: str) -> int:
+        """Find the correct insertion position for a tool result.
+        
+        Inserts immediately after the matching tool call to ensure
+        tool calls and results stay paired, even if compaction broke them apart.
+        Searches from end (bottom-up) to find the most recent matching call.
+        """
+        if not tool_call_id:
+            return len(self.messages)  # No ID, append as before
+        
+        # Search from END to find the MOST RECENT matching tool call
+        for i in range(len(self.messages) - 1, -1, -1):
+            msg = self.messages[i]
+            if msg.get("role") == "assistant":
+                tool_calls = msg.get("tool_calls") or []
+                for call in tool_calls:
+                    if call.get("id") == tool_call_id:
+                        # Found the matching call - insert after this message
+                        return i + 1
+        
+        # No matching call found, append at end
+        return len(self.messages)
 
     def get_messages(self) -> List[Dict[str, Any]]:
         """Get all messages"""
