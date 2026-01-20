@@ -15,7 +15,7 @@ class CompactCommand(BaseCommand):
         super().__init__(context)
         self._name = "compact"
         self._description = "Compact conversation history"
-        self.usage = "/compact [force <N> | force-messages <N> | prune [all|stats|<N>]]"
+        self.usage = "/compact [force <N> | force-messages <N> | prune [all|stats|<N>] | highlander]"
 
     def get_name(self) -> str:
         """Command name"""
@@ -85,6 +85,8 @@ class CompactCommand(BaseCommand):
         elif command == "stats":
             # Stats is handled in execute() method to avoid type issues
             parsed["stats"] = True
+        elif command == "highlander":
+            parsed["highlander"] = True
         elif command == "help":
             self._show_help()
         else:
@@ -107,6 +109,15 @@ class CompactCommand(BaseCommand):
 
         if args.get("force_messages"):
             message_history.force_compact_messages(args.get("count", 1))
+            return
+
+        if args.get("highlander"):
+            pruned = message_history.prune_old_summaries()
+            if pruned > 0:
+                LogUtils.success(f"[✓] Highlander: removed {pruned} old [SUMMARY] message(s)")
+                LogUtils.print(f"    Only the last [SUMMARY] remains")
+            else:
+                LogUtils.warn("[i] Highlander: 0 or 1 [SUMMARY] messages found - nothing to prune")
             return
 
         # Normal auto-compaction
@@ -211,6 +222,7 @@ class CompactCommand(BaseCommand):
             "    /compact prune <N>           Prune N oldest tool call results"
         )
         LogUtils.print("    /compact stats               Show conversation statistics")
+        LogUtils.print("    /compact highlander          Keep only last [SUMMARY] (there can be only one)")
         LogUtils.print("    /compact help                Show this help")
         LogUtils.print("  ")
         LogUtils.print("  Examples:")
@@ -219,6 +231,7 @@ class CompactCommand(BaseCommand):
         LogUtils.print("    /compact prune all           Clear all tool results")
         LogUtils.print("    /compact prune 5             Clear 5 oldest tool results")
         LogUtils.print("    /compact prune stats         Show tool call stats")
+        LogUtils.print("    /compact highlander          Keep only last [SUMMARY]")
         LogUtils.print("  ")
         LogUtils.print("  Definitions:")
         LogUtils.print("    Round = User + Assistant response (with tool calls)")
