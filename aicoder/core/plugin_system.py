@@ -18,6 +18,7 @@ import importlib.util
 import threading
 import subprocess
 from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
+from aicoder.utils.log import LogUtils
 from pathlib import Path
 
 from aicoder.core.config import Config
@@ -201,7 +202,7 @@ class PluginSystem:
             return
 
         if source_name == "global":
-            print(f"[i] Loading plugins from global directory: {self.global_plugins_dir}")
+            LogUtils.print(f"[i] Loading plugins from global directory: {self.global_plugins_dir}")
 
         # Get plugin files sorted numerically then alphabetically
         plugin_files = []
@@ -244,10 +245,10 @@ class PluginSystem:
                     self.cleanup_handlers.append(result["cleanup"])
 
                 if Config.debug():
-                    print(f"[+] Loaded plugin: {Path(plugin_path).name}")
+                    LogUtils.print(f"[+] Loaded plugin: {Path(plugin_path).name}")
 
         except Exception as e:
-            print(f"[!] Failed to load plugin {plugin_path}: {e}")
+            LogUtils.error(f"[!] Failed to load plugin {plugin_path}: {e}")
 
     def get_plugin_tools(self) -> Dict[str, Dict]:
         """Get all tools from plugins"""
@@ -268,7 +269,7 @@ class PluginSystem:
                 result = hook(*args, **kwargs)
                 results.append(result)
             except Exception as e:
-                print(f"[!] Hook {event_name} failed: {e}")
+                LogUtils.error(f"[!] Hook {event_name} failed: {e}")
 
         return results if results else None
 
@@ -289,7 +290,7 @@ class PluginSystem:
                 if result is not None:
                     current_value = result
             except Exception as e:
-                print(f"[!] Hook {event_name} failed: {e}")
+                LogUtils.error(f"[!] Hook {event_name} failed: {e}")
 
         return current_value
 
@@ -299,4 +300,4 @@ class PluginSystem:
             try:
                 cleanup_fn()
             except Exception as e:
-                print(f"[!] Plugin cleanup failed: {e}")
+                LogUtils.error(f"Plugin cleanup failed: {e}")

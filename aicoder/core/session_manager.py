@@ -70,13 +70,13 @@ class SessionManager:
                 self._force_compaction()
 
         # Show context bar before AI response
-        print()
+        LogUtils.print()
         self.context_bar.print_context_bar(self.stats, self.message_history)
         LogUtils.print("AI: ", LogOptions(color=Config.colors["cyan"], bold=True))
 
         # Check if interrupted
         if not self.is_processing:
-            print("\n[AI response interrupted before starting]")
+            LogUtils.print("\n[AI response interrupted before starting]")
             return {"should_continue": False, "messages": []}
 
         messages = self.message_history.get_messages()
@@ -175,13 +175,13 @@ class SessionManager:
             self.message_history.add_assistant_message(
                 {"content": full_response}
             )
-            print("")
+            LogUtils.print("")
         else:
             # AI provided no text response (this is normal when AI has nothing to say)
             # Add a minimal message to show AI responded, then continue
 
             self.message_history.add_assistant_message({"content": ""})
-            print("")
+            LogUtils.print("")
 
     def _validate_tool_calls(self, tool_calls: dict) -> list:
         """Validate tool calls"""

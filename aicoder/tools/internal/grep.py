@@ -7,6 +7,7 @@ import os
 import subprocess
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def validateArguments(args: Dict[str, Any]) -> None:
@@ -138,7 +139,7 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
     # Check if resolved path is within current directory
     if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
         if print_message:
-            print(f'[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
+            LogUtils.error(f'[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
         return False
     
     return True

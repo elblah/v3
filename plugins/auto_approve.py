@@ -32,6 +32,7 @@ import json
 from pathlib import Path
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 RULES_FILE = Path(".aicoder/auto-approve-rules.json")
 
@@ -42,7 +43,7 @@ def load_rules():
         try:
             return json.loads(RULES_FILE.read_text())
         except json.JSONDecodeError as e:
-            print(f"[!] Invalid JSON in {RULES_FILE}: {e}")
+            LogUtils.error(f"[!] Invalid JSON in {RULES_FILE}: {e}")
             return []
     return []
 
@@ -81,7 +82,7 @@ def create_plugin(ctx):
             # Rule matched - return decision
             decision = rule.get("decision", True)
             decision_str = "approved" if decision else "denied"
-            print(f"[auto-{decision_str}] {tool_name}: {rule.get('match', '.*')}")
+            LogUtils.print(f"[auto-{decision_str}] {tool_name}: {rule.get('match', '.*')}")
             return decision
 
         # No rule matched
@@ -91,7 +92,7 @@ def create_plugin(ctx):
     ctx.register_hook("before_approval_prompt", before_approval_prompt)
 
     if Config.debug():
-        print("[+] Loaded auto_approve plugin")
-        print(f"    Rules file: {RULES_FILE}")
-        print("    Copy .aicoder/auto-approve-rules.json.sample to .aicoder/auto-approve-rules.json")
-        print("    and edit to define your rules.")
+        LogUtils.print("[+] Loaded auto_approve plugin")
+        LogUtils.print(f"    Rules file: {RULES_FILE}")
+        LogUtils.print("    Copy .aicoder/auto-approve-rules.json.sample to .aicoder/auto-approve-rules.json")
+        LogUtils.print("    and edit to define your rules.")

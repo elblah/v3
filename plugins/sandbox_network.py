@@ -15,6 +15,7 @@ import shutil
 from typing import Dict, Any
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 # Plugin state
 _network_blocking_enabled = False
@@ -143,9 +144,9 @@ def compile_blocknet_executable() -> str | None:
 
     requirements_ok, missing = check_requirements()
     if not requirements_ok:
-        print(f"[X] Network blocking unavailable - missing requirements:")
+        LogUtils.error(f"[X] Network blocking unavailable - missing requirements:")
         for req in missing:
-            print(f"    - {req}")
+            LogUtils.print(f"    - {req}")
         return None
 
     _compilation_in_progress = True
@@ -172,8 +173,8 @@ def compile_blocknet_executable() -> str | None:
             )
             
             if result.returncode != 0:
-                print(f"[X] Failed to compile network blocker:")
-                print(f"    stderr: {result.stderr.strip()}")
+                LogUtils.error(f"[X] Failed to compile network blocker:")
+                LogUtils.print(f"    stderr: {result.stderr.strip()}")
                 return None
             
             permanent_path = "/tmp/block-net-aicoder"
@@ -181,11 +182,11 @@ def compile_blocknet_executable() -> str | None:
             os.chmod(permanent_path, 0o755)
             
             _blocknet_executable_path = permanent_path
-            print(f"[+] Network blocker compiled successfully: {permanent_path}")
+            LogUtils.success(f"[+] Network blocker compiled successfully: {permanent_path}")
             return permanent_path
             
     except Exception as e:
-        print(f"[X] Failed to compile network blocker: {e}")
+        LogUtils.error(f"[X] Failed to compile network blocker: {e}")
         return None
     finally:
         _compilation_in_progress = False
@@ -203,44 +204,44 @@ def create_plugin(ctx):
         if not args or args == "":
             # Show current status
             status = "enabled" if _network_blocking_enabled else "disabled"
-            print(f"Network sandbox: {status}")
+            LogUtils.print(f"Network sandbox: {status}")
             return
 
         if args in ("on", "enable", "1"):
             _network_blocking_enabled = True
-            print("[+] Network sandbox enabled")
-            print("    Seccomp binary will be compiled on first shell command")
+            LogUtils.success("[+] Network sandbox enabled")
+            LogUtils.print("    Seccomp binary will be compiled on first shell command")
         elif args in ("off", "disable", "0"):
             _network_blocking_enabled = False
-            print("[-] Network sandbox disabled")
+            LogUtils.print("[-] Network sandbox disabled")
         elif args == "toggle":
             _network_blocking_enabled = not _network_blocking_enabled
             if _network_blocking_enabled:
-                print("[+] Network sandbox enabled")
-                print("    Seccomp binary will be compiled on first shell command")
+                LogUtils.success("[+] Network sandbox enabled")
+                LogUtils.print("    Seccomp binary will be compiled on first shell command")
             else:
-                print("[-] Network sandbox disabled")
+                LogUtils.print("[-] Network sandbox disabled")
         elif args in ("help", "-h", "--help"):
-            print("Network Sandbox Command:")
-            print("  /snet          - Show current status")
-            print("  /snet on       - Enable network blocking")
-            print("  /snet off      - Disable network blocking")
-            print("  /snet toggle   - Toggle between enabled/disabled")
-            print("  /snet help     - Show this help")
+            LogUtils.print("Network Sandbox Command:")
+            LogUtils.print("  /snet          - Show current status")
+            LogUtils.print("  /snet on       - Enable network blocking")
+            LogUtils.print("  /snet off      - Disable network blocking")
+            LogUtils.print("  /snet toggle   - Toggle between enabled/disabled")
+            LogUtils.print("  /snet help     - Show this help")
         else:
-            print(f"Unknown argument: {args}")
-            print("Use /snet help for usage")
+            LogUtils.error(f"Unknown argument: {args}")
+            LogUtils.print("Use /snet help for usage")
 
     def patch_run_shell_command():
         """Patch run_shell_command tool to prepend network blocker."""
         tool_def = ctx.app.tool_manager.tools.get("run_shell_command")
         if not tool_def:
-            print("[X] Cannot patch run_shell_command - tool not found")
+            LogUtils.error("[X] Cannot patch run_shell_command - tool not found")
             return
         
         original_execute = tool_def.get("execute")
         if not original_execute:
-            print("[X] Cannot patch run_shell_command - no execute method")
+            LogUtils.error("[X] Cannot patch run_shell_command - no execute method")
             return
         
         def patched_execute(args_obj: Dict[str, Any]) -> Dict[str, Any]:
@@ -251,7 +252,7 @@ def create_plugin(ctx):
                 if not _blocknet_executable_path or not os.path.exists(_blocknet_executable_path):
                     executable = compile_blocknet_executable()
                     if not executable:
-                        print("[WARNING] Network sandbox unavailable - running without network blocking")
+                        LogUtils.warn("[WARNING] Network sandbox unavailable - running without network blocking")
                         return original_execute(args_obj)
                 
                 command = args_obj.get("command", "")
@@ -274,10 +275,10 @@ def create_plugin(ctx):
     requirements_ok, missing = check_requirements()
     if Config.debug():
         if requirements_ok:
-            print("[+] Network sandbox plugin loaded (requirements satisfied)")
-            print("    Use /snet on to enable network blocking for shell commands")
+            LogUtils.print("[+] Network sandbox plugin loaded (requirements satisfied)")
+            LogUtils.print("    Use /snet on to enable network blocking for shell commands")
         else:
-            print("[+] Network sandbox plugin loaded (missing requirements):")
+            LogUtils.print("[+] Network sandbox plugin loaded (missing requirements):")
             for req in missing:
-                print(f"      - {req}")
-            print("    Install requirements to use network blocking")
+                LogUtils.print(f"      - {req}")
+            LogUtils.print("    Install requirements to use network blocking")

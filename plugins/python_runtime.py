@@ -256,8 +256,8 @@ Examples:
 
     # Print what was registered
     if Config.debug():
-        print("  - run_inline_python tool")
-        print("  - /python-runtime command")
+        LogUtils.print("  - run_inline_python tool")
+        LogUtils.print("  - /python-runtime command")
 
     # No cleanup needed
     return None
