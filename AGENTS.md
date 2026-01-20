@@ -33,7 +33,7 @@ Ultra-fast plugin system:
 All tools return dict with `tool`, `friendly`, and `detailed` keys:
 
 1. **read_file** - Read file with pagination
-   - Parameters: `path` (required), `offset` (default: 0), `limit` (default: 2000)
+   - Parameters: `path` (required), `offset` (optional), `limit` (optional)
    - Sandbox: Blocks access outside current directory unless `MINI_SANDBOX=0`
 
 2. **write_file** - Write file with preview and hooks
