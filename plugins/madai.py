@@ -151,6 +151,20 @@ def create_plugin(ctx):
         # Append the new [CONTEXT] summary
         app.message_history.add_user_message(_pending_summary)
 
+        # Add instruction message to guide AI behavior
+        instruction = (
+            "---\n"
+            "[SYSTEM REMINDER - internal note, don't reply to this specific message]\n"
+            "You ran save_progress. The [CONTEXT] above summarizes what happened.\n"
+            "Your task: Continue from where you left off.\n"
+            "  - If you were answering a question: Complete your answer\n"
+            "  - If implementing something: Continue the task\n"
+            "  - If mid tool use: Re-assess and continue\n"
+            "DON'T repeat yourself - [CONTEXT] captured continuity.\n"
+            "Just proceed naturally with the conversation."
+        )
+        app.message_history.add_user_message(instruction)
+
         # Reestimate context size after pruning
         app.message_history.estimate_context()
 
@@ -196,7 +210,7 @@ def create_plugin(ctx):
             "  - If you were doing something: 'Continue implementing feature X'\n"
             "  - If user made a statement: 'Respond to user's point about X'\n"
             "  - Only say 'Wait for user' if conversation is genuinely finished\n\n"
-            "*IMPORTANT:* Only what you write in the summary survives. Everything else is lost."
+            "*IMPORTANT:* Don't repeat yourself. Previous [CONTEXT] messages are preserved. If you've already introduced yourself, answered a question, or established something, don't do it again. Continue naturally from where you left off. Only new information needs to be written."
         ),
         parameters={
             "summary": {
