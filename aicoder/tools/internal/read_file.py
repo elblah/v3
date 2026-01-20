@@ -9,7 +9,7 @@ from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file as file_read
 
-DEFAULT_READ_LIMIT = 2000
+DEFAULT_READ_LIMIT = 300
 MAX_LINE_LENGTH = 2000
 
 
