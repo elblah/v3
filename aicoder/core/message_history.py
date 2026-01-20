@@ -174,10 +174,17 @@ class MessageHistory:
             from .token_estimator import cache_message
             cache_message(tool_message)
             
-            # Insert AFTER the matching tool call, not at the end
-            # This fixes issues when compaction inserted summaries between call and result
-            insert_index = self._find_tool_insert_position(tool_call_id)
-            self.messages.insert(insert_index, tool_message)
+            # Try to insert after matching tool call, fallback to append
+            if tool_call_id:
+                insert_index = self._find_tool_insert_position(tool_call_id)
+                if insert_index != -1:
+                    self.messages.insert(insert_index, tool_message)
+                else:
+                    # No matching call found - append at end (backward compatible)
+                    self.messages.append(tool_message)
+            else:
+                # No ID provided - append at end
+                self.messages.append(tool_message)
             
             # Call plugin hooks for each tool message
             if self._plugin_system:
@@ -192,10 +199,11 @@ class MessageHistory:
         Inserts immediately after the matching tool call to ensure
         tool calls and results stay paired, even if compaction broke them apart.
         Searches from end (bottom-up) to find the most recent matching call.
-        """
-        if not tool_call_id:
-            return len(self.messages)  # No ID, append as before
         
+        Returns:
+            int: Position to insert at (0 to len(messages))
+            -1: No matching call found (caller should append)
+        """
         # Search from END to find the MOST RECENT matching tool call
         for i in range(len(self.messages) - 1, -1, -1):
             msg = self.messages[i]
@@ -206,8 +214,46 @@ class MessageHistory:
                         # Found the matching call - insert after this message
                         return i + 1
         
-        # No matching call found, append at end
-        return len(self.messages)
+        # No matching call found
+        return -1
+
+    def remove_orphan_tool_results(self) -> int:
+        """Remove tool results that have no matching parent tool call.
+        
+        This can happen when compaction removes tool calls but leaves results.
+        Returns the number of orphan tool results removed.
+        """
+        # Collect all valid tool_call_ids from assistant messages
+        valid_call_ids = set()
+        for msg in self.messages:
+            if msg.get("role") == "assistant":
+                tool_calls = msg.get("tool_calls") or []
+                for call in tool_calls:
+                    call_id = call.get("id")
+                    if call_id:
+                        valid_call_ids.add(call_id)
+        
+        # Find and remove orphan tool results
+        orphan_count = 0
+        new_messages = []
+        for msg in self.messages:
+            if msg.get("role") == "tool":
+                call_id = msg.get("tool_call_id")
+                if call_id and call_id in valid_call_ids:
+                    # Valid tool result - keep it
+                    new_messages.append(msg)
+                else:
+                    # Orphan - discard it
+                    orphan_count += 1
+            else:
+                # Non-tool message - keep it
+                new_messages.append(msg)
+        
+        if orphan_count > 0:
+            self.messages = new_messages
+            self.estimate_context()
+        
+        return orphan_count
 
     def get_messages(self) -> List[Dict[str, Any]]:
         """Get all messages"""
@@ -259,6 +305,9 @@ class MessageHistory:
         clear_cache()
         for msg in self.messages:
             cache_message(msg)
+        
+        # Clean up any orphan tool results (e.g., from compaction)
+        self.remove_orphan_tool_results()
         
         self.estimate_context()
         
