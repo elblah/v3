@@ -10,7 +10,7 @@ import time
 
 from aicoder.core.aicoder import AICoder
 from aicoder.core.config import Config
-from aicoder.utils.log import success, warn, error
+from aicoder.utils.log import LogUtils, LogOptions
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     
     # Show startup info
     if Config.debug():
-        success("AI Coder starting in debug mode")
+        LogUtils.success("AI Coder starting in debug mode")
 
     # Create and run AI Coder
     app = AICoder()
@@ -34,17 +34,17 @@ def main():
                 start_time = float(start_time_str)
                 current_time = time.time()
                 startup_time = current_time - start_time
-                print(f"{Config.colors['brightCyan']}Total startup time: {startup_time:.2f} seconds{Config.colors['reset']}")
+                LogUtils.print(f"Total startup time: {startup_time:.2f} seconds", LogOptions(color=Config.colors['brightCyan']))
             except ValueError:
                 # If parsing fails, silently ignore
                 pass
         
         app.run()
     except KeyboardInterrupt:
-        print("\n👋 Goodbye!")
+        LogUtils.print("\n👋 Goodbye!")
         sys.exit(0)
     except Exception as e:
-        error(f"Fatal error: {e}")
+        LogUtils.error(f"Fatal error: {e}")
         sys.exit(1)
 
 

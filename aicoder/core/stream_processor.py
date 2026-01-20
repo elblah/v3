@@ -55,7 +55,7 @@ class StreamProcessor:
                     if content:
                         full_response += content
                         colored_content = self.streaming_client.process_with_colorization(content)
-                        print(colored_content, end="", flush=True)
+                        LogUtils.print(colored_content, end="", flush=True)
 
                 # Tool calls
                 if "delta" in choice and choice["delta"].get("tool_calls"):
