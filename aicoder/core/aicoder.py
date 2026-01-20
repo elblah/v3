@@ -122,8 +122,27 @@ class AICoder:
                 cmd_name, cmd_data["fn"], cmd_data.get("description")
             )
 
+        # Calculate tool tokens once at startup (after all plugins loaded)
+        self._calculate_tool_tokens()
+
+        # Update stats to include tool tokens (estimate_context adds _tools_tokens)
+        self.message_history.estimate_context()
+
         # Start socket server for external control
         self.socket_server.start()
+
+    def _calculate_tool_tokens(self) -> None:
+        """Calculate tool definition tokens once at startup"""
+        import json
+        from aicoder.core.token_estimator import set_tool_tokens, _estimate_weighted_tokens
+
+        tools = self.tool_manager.get_tool_definitions()
+        if tools:
+            tools_json = json.dumps(tools, separators=(',', ':'))
+            tokens = _estimate_weighted_tokens(tools_json)
+            set_tool_tokens(tokens)
+            if Config.debug():
+                print(f"[*] Tool tokens estimated: {tokens}")
 
     def initialize_system_prompt(self) -> None:
         """Initialize with system prompt focused on internal tools"""

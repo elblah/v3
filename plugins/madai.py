@@ -151,6 +151,12 @@ def create_plugin(ctx):
         # Append the new [CONTEXT] summary
         app.message_history.add_user_message(_pending_summary)
 
+        # Reestimate context size after pruning
+        app.message_history.estimate_context()
+
+        # Notify other plugins (e.g., madai_watcher) to reset their counters
+        app.plugin_system.call_hooks("madai_progress_saved")
+
         # Clear pending state
         _pending_summary = None
 

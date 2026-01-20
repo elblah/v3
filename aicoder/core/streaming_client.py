@@ -253,17 +253,8 @@ class StreamingClient:
             data["tools"] = tool_definitions
             data["tool_choice"] = "auto"
 
-            # Cache tool definition tokens for accurate estimation
-            from .token_estimator import set_tool_tokens
-            import json
-            tools_json = json.dumps(tool_definitions, separators=(',', ':'))
-            from .token_estimator import _estimate_weighted_tokens
-            tool_tokens = _estimate_weighted_tokens(tools_json)
-            set_tool_tokens(tool_tokens)
-
             if Config.debug():
                 LogUtils.debug(f"*** Tool definitions count: {len(tool_definitions)}")
-                LogUtils.debug(f"*** Tool tokens estimated: {tool_tokens}")
                 LogUtils.debug(f"*** Message count: {len(data.get('messages', []))}")
 
     def _format_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
