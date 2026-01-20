@@ -22,6 +22,7 @@ from aicoder.core.config import Config
 # Module-level state (shared across plugin invocations)
 _pending_summary = None  # noqa: F841 - set during tool call, used in hook
 _pending_prune_old_contexts = False  # noqa: F841 - set during tool call, used in hook
+_pending_context_for_compaction = None  # noqa: F841 - saved before compaction, restored after
 
 
 def create_plugin(ctx):
@@ -213,6 +214,55 @@ def create_plugin(ctx):
         _pending_prune_old_contexts = False
         phases = []
 
+    def _after_compaction():
+        """Hook called after compaction completes.
+        If [CONTEXT] was removed by compaction, restore the last one from phases."""
+        print(f"[madai] after_compaction called, phases count: {len(phases)}")
+
+        if not phases:
+            print("[madai] No phases - returning")
+            return  # No phases to restore
+
+        messages = app.message_history.get_messages()
+        has_context = any(
+            msg.get("content", "").startswith("[CONTEXT]")
+            for msg in messages
+        )
+        print(f"[madai] has_context in history: {has_context}")
+
+        if has_context:
+            print("[madai] [CONTEXT] exists - nothing to restore")
+            return  # [CONTEXT] still exists, nothing to do
+
+        # No [CONTEXT] found - restore the last one
+        print(f"[madai] Restoring last [CONTEXT] from phases")
+        last_context = phases[-1]["summary"]
+        if not last_context.startswith("[CONTEXT]"):
+            last_context = f"[CONTEXT] {last_context}"
+
+        # Find position after last [SUMMARY]
+        last_summary_idx = -1
+        for i, msg in enumerate(messages):
+            if msg.get("content", "").startswith("[SUMMARY]"):
+                last_summary_idx = i
+                print(f"[madai] Found [SUMMARY] at index {i}")
+
+        if last_summary_idx >= 0:
+            # Insert after last [SUMMARY]
+            messages.insert(last_summary_idx + 1, {"role": "user", "content": last_context})
+            print(f"[madai] Inserted [CONTEXT] at index {last_summary_idx + 1}")
+        else:
+            # No [SUMMARY], just append
+            messages.append({"role": "user", "content": last_context})
+            print("[madai] No [SUMMARY] found - appended [CONTEXT]")
+
+        # Update phases to keep only the last one
+        phases[:] = [phases[-1]]
+        print(f"[madai] Updated phases to keep only last one")
+
+        app.message_history.estimate_context()
+        print("[madai] after_compaction complete")
+
     # Register commands
     ctx.register_command("madai", _cmd_handler, description="madai context management")
 
@@ -263,6 +313,9 @@ def create_plugin(ctx):
 
     # Register hook to apply pending replacement after tool results are added
     ctx.register_hook("after_tool_results_added", _after_tool_results_added)
+
+    # Register hook to restore [CONTEXT] after compaction
+    ctx.register_hook("after_compaction", _after_compaction)
 
     if Config.debug():
         print("[+] madai plugin loaded")
