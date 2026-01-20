@@ -216,52 +216,13 @@ def create_plugin(ctx):
 
     def _after_compaction():
         """Hook called after compaction completes.
-        If [CONTEXT] was removed by compaction, restore the last one from phases."""
-        print(f"[madai] after_compaction called, phases count: {len(phases)}")
+        When compaction runs, we trust its summary - clear phases."""
+        phases.clear()
 
-        if not phases:
-            print("[madai] No phases - returning")
-            return  # No phases to restore
-
-        messages = app.message_history.get_messages()
-        has_context = any(
-            msg.get("content", "").startswith("[CONTEXT]")
-            for msg in messages
-        )
-        print(f"[madai] has_context in history: {has_context}")
-
-        if has_context:
-            print("[madai] [CONTEXT] exists - nothing to restore")
-            return  # [CONTEXT] still exists, nothing to do
-
-        # No [CONTEXT] found - restore the last one
-        print(f"[madai] Restoring last [CONTEXT] from phases")
-        last_context = phases[-1]["summary"]
-        if not last_context.startswith("[CONTEXT]"):
-            last_context = f"[CONTEXT] {last_context}"
-
-        # Find position after last [SUMMARY]
-        last_summary_idx = -1
-        for i, msg in enumerate(messages):
-            if msg.get("content", "").startswith("[SUMMARY]"):
-                last_summary_idx = i
-                print(f"[madai] Found [SUMMARY] at index {i}")
-
-        if last_summary_idx >= 0:
-            # Insert after last [SUMMARY]
-            messages.insert(last_summary_idx + 1, {"role": "user", "content": last_context})
-            print(f"[madai] Inserted [CONTEXT] at index {last_summary_idx + 1}")
-        else:
-            # No [SUMMARY], just append
-            messages.append({"role": "user", "content": last_context})
-            print("[madai] No [SUMMARY] found - appended [CONTEXT]")
-
-        # Update phases to keep only the last one
-        phases[:] = [phases[-1]]
-        print(f"[madai] Updated phases to keep only last one")
-
-        app.message_history.estimate_context()
-        print("[madai] after_compaction complete")
+    def _after_messages_set(messages):
+        """Hook called when messages are set (e.g., after load, /m).
+        Clear phases since we trust the loaded state."""
+        phases.clear()
 
     # Register commands
     ctx.register_command("madai", _cmd_handler, description="madai context management")
@@ -314,8 +275,11 @@ def create_plugin(ctx):
     # Register hook to apply pending replacement after tool results are added
     ctx.register_hook("after_tool_results_added", _after_tool_results_added)
 
-    # Register hook to restore [CONTEXT] after compaction
+    # Clear phases after compaction - trust the compaction summary
     ctx.register_hook("after_compaction", _after_compaction)
+
+    # Clear phases when messages are set (load, /m) - trust the loaded state
+    ctx.register_hook("after_messages_set", _after_messages_set)
 
     if Config.debug():
         print("[+] madai plugin loaded")
