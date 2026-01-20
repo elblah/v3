@@ -12,6 +12,7 @@ import subprocess
 from typing import Dict, Any
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def create_plugin(ctx):
@@ -166,5 +167,5 @@ def create_plugin(ctx):
     )
 
     if Config.debug():
-        print("  - web_search tool (auto-approved)")
-        print("  - get_url_content tool")
+        LogUtils.print("  - web_search tool (auto-approved)")
+        LogUtils.print("  - get_url_content tool")

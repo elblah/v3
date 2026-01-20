@@ -19,6 +19,7 @@ import json
 from typing import Dict, List, Optional, Any
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def create_plugin(ctx):
@@ -85,7 +86,7 @@ def create_plugin(ctx):
     def print_color(color_name: str, text: str) -> None:
         """Print text with color"""
         color_code = colors.get(color_name, "")
-        print(f"{color_code}{text}{colors['reset']}")
+        LogUtils.print(f"{color_code}{text}{colors['reset']}")
 
     def load_presets_from_env() -> None:
         """Load presets from AICODER_PRESETS_JSON env var"""
@@ -229,18 +230,18 @@ def create_plugin(ctx):
             print_color("yellow", f"    (variables are in custom mode)")
 
         if info['description'] and not info['is_custom']:
-            print(f"    {info['description']}")
+            LogUtils.print(f"    {info['description']}")
 
         if info['parameters']:
-            print(f"{colors['cyan']}    Values:{colors['reset']}")
-            print(format_parameters(info['parameters']))
+            LogUtils.print(f"{colors['cyan']}    Values:{colors['reset']}")
+            LogUtils.print(format_parameters(info['parameters']))
 
     def list_presets() -> None:
         """List all available presets"""
         info = get_current_preset_info()
 
         print_color("brightGreen", f"[*] Current Profile: {info['name']} ({presets.index(get_preset_by_identifier(info['original_name'])) + 1 if get_preset_by_identifier(info['original_name']) else '?'}")
-        print()
+        LogUtils.print()
 
         for idx, preset in enumerate(presets, 1):
             is_current = preset["name"] == info['original_name'] or preset["name"] == info['name']
@@ -250,21 +251,21 @@ def create_plugin(ctx):
             suffix = colors['reset'] if is_current else ""
             marker = "* " if is_current else "  "
 
-            print(f"{prefix}{marker}{idx}) {preset['name']}: {preset['description']}{suffix}")
+            LogUtils.print(f"{prefix}{marker}{idx}) {preset['name']}: {preset['description']}{suffix}")
 
             # Aliases
             aliases = preset.get("aliases", [])
             if aliases:
                 alias_str = ", ".join(aliases)
-                print(f"        Aliases: {alias_str}")
+                LogUtils.print(f"        Aliases: {alias_str}")
 
             # Parameters
             parameters = preset.get("parameters", {})
             if parameters:
-                print(f"{colors['cyan']}        Values:{colors['reset']}")
-                print(format_parameters(parameters))
+                LogUtils.print(f"{colors['cyan']}        Values:{colors['reset']}")
+                LogUtils.print(format_parameters(parameters))
 
-            print()
+            LogUtils.print()
 
     def initialize_preset() -> None:
         """Initialize preset from AICODER_PRESET env var"""
@@ -306,16 +307,16 @@ def create_plugin(ctx):
                 info = get_current_preset_info()
                 desc = info['description'] if not info['is_custom'] else "(variables are in custom mode)"
                 print_color("brightGreen", f"[*] Current Profile: Custom - {desc}")
-                print(f"{colors['cyan']}        Values:{colors['reset']}")
-                print(format_parameters(info['parameters']))
+                LogUtils.print(f"{colors['cyan']}        Values:{colors['reset']}")
+                LogUtils.print(format_parameters(info['parameters']))
             return
 
         # Apply preset by name, alias, or number
         if apply_preset(args):
             info = get_current_preset_info()
             print_color("brightGreen", f"[*] Current Profile: {info['name']} - {info['description']}")
-            print(f"{colors['cyan']}        Values:{colors['reset']}")
-            print(format_parameters(info['parameters']))
+            LogUtils.print(f"{colors['cyan']}        Values:{colors['reset']}")
+            LogUtils.print(format_parameters(info['parameters']))
         else:
             # Show helpful message
             print_color("yellow", f"[!] Unknown preset: {args}")

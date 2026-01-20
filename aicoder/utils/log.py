@@ -1,6 +1,28 @@
 """Minimal logging utility for consistent output formatting
 
 Colors are imported from Config.colors to maintain single source of truth.
+
+Usage:
+    # Simple usage with keyword arguments
+    LogUtils.print("message", color="red", bold=True)
+    LogUtils.print("error", color="green")
+
+    # Convenience methods
+    LogUtils.success("Done!")
+    LogUtils.warn("Check this")
+    LogUtils.error("Failed!")
+    LogUtils.info(" FYI")
+    LogUtils.debug("details")  # Only shows when DEBUG=1
+
+    # Additional formatting methods
+    LogUtils.tip("Pro tip")
+    LogUtils.hint("Quick hint")
+    LogUtils.note("Important note")
+    LogUtils.dim("Subtle text")
+    LogUtils.strong("Emphasized text")
+
+    # Standalone functions also available
+    from aicoder.utils.log import success, warn, error, info, debug
 """
 
 import os
@@ -37,87 +59,162 @@ class LogUtils:
     """
 
     @staticmethod
-    def print(message: str, options: Optional[LogOptions] = None, **kwargs) -> None:
+    def print(message: str, options: Optional[LogOptions] = None,
+              color: Optional[str] = None, bold: bool = False,
+              debug: bool = False) -> None:
         """
-        Print message with optional formatting
-        @param message: Message to print
-        @param options: Optional formatting options
+        Print message with optional formatting.
+
+        Args:
+            message: Message to print
+            options: LogOptions instance (for backward compatibility)
+            color: Color name from Config.colors (e.g., "red", "green", "yellow")
+            bold: Apply bold formatting
+            debug: Only print when DEBUG=1
+
+        Usage:
+            LogUtils.print("text")
+            LogUtils.print("text", color="red")
+            LogUtils.print("text", color="red", bold=True)
+            LogUtils.print("text", LogOptions(color="red"))  # backward compatible
         """
-        if options is None:
-            # Allow direct keyword arguments for convenience
-            if kwargs:
-                options = LogOptions(
-                    color=kwargs.get("color"),
-                    debug=kwargs.get("debug", False),
-                    bold=kwargs.get("bold", False),
-                )
-            else:
-                options = LogOptions()
+        # Handle kwargs-style arguments (priority over LogOptions)
+        effective_color = color
+        effective_debug = debug
+        effective_bold = bold
 
-        color = options.color
-        debug = options.debug
-        bold = options.bold
+        if options is not None:
+            # Backward compatibility: LogOptions takes precedence if no kwargs provided
+            # This allows: LogUtils.print("msg", LogOptions(color="red"))
+            if color is None and not bold and not debug:
+                effective_color = options.color
+                effective_debug = options.debug
+                effective_bold = options.bold
 
-        if debug and not _is_debug():
+        if effective_debug and not _is_debug():
             return
 
         colors = _get_colors()
 
-        if color:
-            format_code = f"{colors['bold']}{color}" if bold else color
+        if effective_color:
+            format_code = f"{colors['bold']}{effective_color}" if effective_bold else effective_color
             print(f"{format_code}{message}{colors['reset']}")
-        elif bold:
+        elif effective_bold:
             print(f"{colors['bold']}{message}{colors['reset']}")
         else:
             print(message)
 
+    # === Core Status Methods ===
+
     @staticmethod
     def error(message: str) -> None:
-        """Print error message (always shows, red by default)"""
+        """Print error message (red)"""
         colors = _get_colors()
-        LogUtils.print(message, LogOptions(color=colors["red"]))
+        LogUtils.print(message, color=colors["red"])
 
     @staticmethod
     def success(message: str) -> None:
-        """Print success message (always shows, green by default)"""
+        """Print success message (green)"""
         colors = _get_colors()
-        LogUtils.print(message, LogOptions(color=colors["green"]))
+        LogUtils.print(message, color=colors["green"])
 
     @staticmethod
     def warn(message: str) -> None:
-        """Print warning message (always shows, yellow by default)"""
+        """Print warning message (yellow)"""
         colors = _get_colors()
-        LogUtils.print(message, LogOptions(color=colors["yellow"]))
+        LogUtils.print(message, color=colors["yellow"])
+
+    @staticmethod
+    def info(message: str) -> None:
+        """Print info message (blue)"""
+        colors = _get_colors()
+        LogUtils.print(message, color=colors["blue"])
 
     @staticmethod
     def debug(message: str, color: Optional[str] = None) -> None:
-        """Print debug message (only shows when debug enabled)"""
+        """Print debug message (only when DEBUG=1, yellow by default)"""
         colors = _get_colors()
-        LogUtils.print(message, LogOptions(color=color or colors["yellow"], debug=True))
+        LogUtils.print(message, color=color or colors["yellow"], debug=True)
+
+    # === Additional Formatting Methods ===
+
+    @staticmethod
+    def tip(message: str) -> None:
+        """Print tip message (cyan)"""
+        colors = _get_colors()
+        LogUtils.print(message, color=colors["cyan"])
+
+    @staticmethod
+    def hint(message: str) -> None:
+        """Print hint message (magenta)"""
+        colors = _get_colors()
+        LogUtils.print(message, color=colors["magenta"])
+
+    @staticmethod
+    def note(message: str) -> None:
+        """Print note message (bright blue)"""
+        colors = _get_colors()
+        LogUtils.print(message, color=colors["brightBlue"])
+
+    @staticmethod
+    def dim(message: str) -> None:
+        """Print dim/subtle message (grey)"""
+        colors = _get_colors()
+        LogUtils.print(message, color=colors["dim"])
+
+    @staticmethod
+    def strong(message: str) -> None:
+        """Print bold/emphasized message"""
+        LogUtils.print(message, bold=True)
 
 
-# Standalone convenience functions
+# === Standalone Convenience Functions ===
+
 def success(message: str) -> None:
-    """Print success message"""
+    """Print success message (green)"""
     LogUtils.success(message)
 
 
 def warn(message: str) -> None:
-    """Print warning message"""
+    """Print warning message (yellow)"""
     LogUtils.warn(message)
 
 
 def error(message: str) -> None:
-    """Print error message"""
+    """Print error message (red)"""
     LogUtils.error(message)
 
 
+def info(message: str) -> None:
+    """Print info message (blue)"""
+    LogUtils.info(message)
+
+
 def debug(message: str, color: Optional[str] = None) -> None:
-    """Print debug message"""
+    """Print debug message (only when DEBUG=1)"""
     LogUtils.debug(message, color)
 
 
-def info(message: str) -> None:
-    """Print info message"""
-    colors = _get_colors()
-    LogUtils.print(message, LogOptions(color=colors["blue"]))
+def tip(message: str) -> None:
+    """Print tip message (cyan)"""
+    LogUtils.tip(message)
+
+
+def hint(message: str) -> None:
+    """Print hint message (magenta)"""
+    LogUtils.hint(message)
+
+
+def note(message: str) -> None:
+    """Print note message (bright blue)"""
+    LogUtils.note(message)
+
+
+def dim(message: str) -> None:
+    """Print dim/subtle message"""
+    LogUtils.dim(message)
+
+
+def strong(message: str) -> None:
+    """Print bold/emphasized message"""
+    LogUtils.strong(message)

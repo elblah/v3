@@ -1072,9 +1072,9 @@ def create_plugin(ctx):
     ctx.register_hook("after_ai_processing", after_ai_processing_hook)
 
     if Config.debug():
-        print("[+] Council plugin loaded")
-        print("  - /council command")
-        print("  - /council-cancel command")
-        print("  - Auto-council support")
+        LogUtils.print("[+] Council plugin loaded")
+        LogUtils.print("  - /council command")
+        LogUtils.print("  - /council-cancel command")
+        LogUtils.print("  - Auto-council support")
 
     return {"cleanup": council_service.cleanup}

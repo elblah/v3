@@ -30,7 +30,7 @@ class StreamProcessor:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
                 # Check if user interrupted
                 if not is_processing_callback():
-                    print("\n[AI response interrupted]")
+                    LogUtils.print("\n[AI response interrupted]")
                     return {
                         "should_continue": False,
                         "full_response": full_response,

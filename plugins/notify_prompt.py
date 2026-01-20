@@ -12,6 +12,7 @@ import os
 import subprocess
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def create_plugin(ctx):
@@ -74,5 +75,5 @@ def create_plugin(ctx):
     ctx.register_hook("before_approval_prompt", on_before_approval_prompt)
 
     if Config.debug():
-        print("  - before_user_prompt hook")
-        print("  - before_approval_prompt hook")
+        LogUtils.print("  - before_user_prompt hook")
+        LogUtils.print("  - before_approval_prompt hook")
