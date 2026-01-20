@@ -21,6 +21,7 @@ from aicoder.core.config import Config
 
 # Module-level state (shared across plugin invocations)
 _pending_summary = None  # noqa: F841 - set during tool call, used in hook
+_pending_prune_old_contexts = False  # noqa: F841 - set during tool call, used in hook
 
 
 def create_plugin(ctx):
@@ -50,6 +51,25 @@ def create_plugin(ctx):
         if phases:
             return phases[-1].get("summary", "No summary")
         return None
+
+    def _prune_old_contexts():
+        """Remove all [CONTEXT] messages except the last one.
+        Used by /madai prune and keep_only_last_context_after option."""
+        messages = app.message_history.get_messages()
+        context_indices = [
+            i for i, msg in enumerate(messages)
+            if msg.get("content", "").startswith("[CONTEXT]")
+        ]
+        if len(context_indices) <= 1:
+            return 0  # Nothing to prune
+        # Remove old [CONTEXT]s (keep last)
+        pruned_count = 0
+        for idx in context_indices[:-1]:
+            del messages[idx]
+            pruned_count += 1
+        # Reestimate context size
+        app.message_history.estimate_context()
+        return pruned_count
 
     def _cmd_status(args_str):
         """Show current phase status"""
@@ -87,7 +107,7 @@ def create_plugin(ctx):
         args = args_str.strip().split(maxsplit=1) if args_str.strip() else []
 
         if not args:
-            return "Use: /madai status | /madai list"
+            return "Use: /madai status | /madai list | /madai prune"
 
         command = args[0]
 
@@ -95,8 +115,13 @@ def create_plugin(ctx):
             return _cmd_status(args[1] if len(args) > 1 else "")
         elif command == "list":
             return _cmd_list(args[1] if len(args) > 1 else "")
+        elif command == "prune":
+            pruned = _prune_old_contexts()
+            if pruned == 0:
+                return "Only one [CONTEXT] - nothing to prune"
+            return f"Pruned {pruned} old [CONTEXT] message(s)"
         else:
-            return f"Unknown command: {command}. Use /madai status or /madai list"
+            return f"Unknown command: {command}. Use /madai status, list, or prune"
 
     def _switch_context_phase(args):
         """Switch to a new context phase"""
@@ -113,11 +138,12 @@ def create_plugin(ctx):
         phases.append({"phase": phase_num, "summary": summary})
 
         # Store summary for hook to use
-        global _pending_summary
+        global _pending_summary, _pending_prune_old_contexts
         if summary.strip().startswith("[CONTEXT]"):
             _pending_summary = summary.strip()
         else:
             _pending_summary = f"[CONTEXT] {summary}"
+        _pending_prune_old_contexts = args.get("keep_only_last_context_after", False)
 
         # Notify
         return {
@@ -129,7 +155,7 @@ def create_plugin(ctx):
     def _after_tool_results_added(message):
         """Hook called after tool results are added to history.
         Apply pending phase switch."""
-        global _pending_summary
+        global _pending_summary, _pending_prune_old_contexts
 
         if _pending_summary is None:
             return
@@ -165,6 +191,10 @@ def create_plugin(ctx):
         )
         app.message_history.add_user_message(instruction)
 
+        # Prune old [CONTEXT]s if requested
+        if _pending_prune_old_contexts:
+            _prune_old_contexts()
+
         # Reestimate context size after pruning
         app.message_history.estimate_context()
 
@@ -173,12 +203,14 @@ def create_plugin(ctx):
 
         # Clear pending state
         _pending_summary = None
+        _pending_prune_old_contexts = False
 
     def _on_session_change():
         """Hook called before /new or /load clears the session.
         Clear session-specific state to prevent cross-session contamination."""
-        global _pending_summary, phases
+        global _pending_summary, _pending_prune_old_contexts, phases
         _pending_summary = None
+        _pending_prune_old_contexts = False
         phases = []
 
     # Register commands
@@ -210,12 +242,17 @@ def create_plugin(ctx):
             "  - If you were doing something: 'Continue implementing feature X'\n"
             "  - If user made a statement: 'Respond to user's point about X'\n"
             "  - Only say 'Wait for user' if conversation is genuinely finished\n\n"
-            "*IMPORTANT:* Don't repeat yourself. Previous [CONTEXT] messages are preserved. If you've already introduced yourself, answered a question, or established something, don't do it again. Continue naturally from where you left off. Only new information needs to be written."
+            "*IMPORTANT:* Don't repeat yourself. Previous [CONTEXT] messages are preserved. If you've already introduced yourself, answered a question, or established something, don't do it again. Continue naturally from where you left off. Only new information needs to be written.\n\n"
+            "Optionally set keep_only_last_context_after=true to remove old [CONTEXT] messages after this save, keeping only the new one."
         ),
         parameters={
             "summary": {
                 "type": "string",
                 "description": "The [CONTEXT] content to preserve: Last Round, Task, Notes, Accomplished, Next",
+            },
+            "keep_only_last_context_after": {
+                "type": "boolean",
+                "description": "If true, remove all previous [CONTEXT] messages after this save, keeping only the new one",
             }
         },
         auto_approved=True,
@@ -229,7 +266,7 @@ def create_plugin(ctx):
 
     if Config.debug():
         print("[+] madai plugin loaded")
-        print("  - switch_context_phase tool")
-        print("  - /madai status | /madai list commands")
+        print("  - save_progress tool (with keep_only_last_context_after option)")
+        print("  - /madai status | /madai list | /madai prune commands")
         print("  - on_session_change hook for session cleanup")
         print("  - after_tool_results_added hook for deferred replacement")

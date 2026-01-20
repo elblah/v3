@@ -568,3 +568,175 @@ def test_set_messages_calls_hook(message_history):
     message_history.set_messages(messages)
 
     mock_plugin_system.call_hooks.assert_called_once_with("after_messages_set", messages)
+
+
+class TestToolResultInsertPosition:
+    """Tests for tool result insertion after matching tool call (fixes compaction breakage)"""
+
+    def test_tool_result_inserted_after_matching_call(self, message_history):
+        """Tool result should insert after its matching tool call, not at end.
+        
+        This fixes the issue where compaction inserts [SUMMARY] between tool call and result,
+        breaking the conversation structure. Tool results should repair the structure.
+        """
+        # Simulate: user -> assistant (tool call) -> compaction (summary) -> tool result
+        message_history.messages = [
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": "read_file the file"},
+            {
+                "role": "assistant",
+                "content": "I'll read the file for you",
+                "tool_calls": [{"id": "call_123", "function": {"name": "read_file", "arguments": "{}"}}]
+            },
+            # Compaction inserted a summary here (breaks the structure)
+            {"role": "user", "content": "[SUMMARY] Old conversation..."},
+        ]
+
+        # Add tool result - it should go AFTER the tool call, not at end
+        message_history.add_tool_results({
+            "tool_call_id": "call_123",
+            "content": "File content here..."
+        })
+
+        # Tool result should be at position 3 (after tool call at position 2)
+        assert len(message_history.messages) == 5
+        
+        # Find positions
+        tool_call_idx = None
+        tool_result_idx = None
+        summary_idx = None
+
+        for i, msg in enumerate(message_history.messages):
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                tool_call_idx = i
+            if msg.get("role") == "tool":
+                tool_result_idx = i
+            if "[SUMMARY]" in msg.get("content", ""):
+                summary_idx = i
+
+        assert tool_call_idx == 2, "Tool call should be at index 2"
+        assert tool_result_idx == 3, "Tool result should be at index 3 (right after call)"
+        assert summary_idx == 4, "Summary should be after tool result"
+
+    def test_tool_result_appended_when_no_matching_call(self, message_history):
+        """If no matching tool call found, append at end (backward compatible)"""
+        message_history.messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "hello"},
+        ]
+
+        # Add tool result with unknown call ID
+        message_history.add_tool_results({
+            "tool_call_id": "unknown_call",
+            "content": "Some result"
+        })
+
+        # Should append at end
+        assert len(message_history.messages) == 3
+        assert message_history.messages[-1]["role"] == "tool"
+        assert message_history.messages[-1]["content"] == "Some result"
+
+    def test_tool_result_finds_most_recent_call_when_multiple(self, message_history):
+        """When multiple tool calls exist, find the most recent one (bottom-up search)"""
+        message_history.messages = [
+            {"role": "system", "content": "System"},
+            # First tool call
+            {
+                "role": "assistant",
+                "content": "Calling tool A",
+                "tool_calls": [{"id": "call_A", "function": {"name": "tool_a", "arguments": "{}"}}]
+            },
+            {"role": "tool", "content": "Result A", "tool_call_id": "call_A"},
+            # Second tool call
+            {
+                "role": "assistant",
+                "content": "Calling tool B",
+                "tool_calls": [{"id": "call_B", "function": {"name": "tool_b", "arguments": "{}"}}]
+            },
+            # Compaction broke it - inserted summary
+            {"role": "user", "content": "[SUMMARY] Some old stuff"},
+        ]
+
+        # Add result for call_B - should go after call_B, not call_A
+        message_history.add_tool_results({
+            "tool_call_id": "call_B",
+            "content": "Result B"
+        })
+
+        # Find positions
+        call_b_idx = None
+        result_b_idx = None
+
+        for i, msg in enumerate(message_history.messages):
+            if msg.get("role") == "assistant":
+                calls = msg.get("tool_calls", [])
+                for call in calls:
+                    if call.get("id") == "call_B":
+                        call_b_idx = i
+            if msg.get("role") == "tool" and msg.get("content") == "Result B":
+                result_b_idx = i
+
+        assert result_b_idx == call_b_idx + 1, \
+            f"Result B should be after call B: call_b={call_b_idx}, result={result_b_idx}"
+
+    def test_tool_result_with_no_id_appended_at_end(self, message_history):
+        """When tool result has no ID, append at end (backward compatible)"""
+        message_history.messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "hello"},
+        ]
+
+        # Add tool result without ID
+        message_history.add_tool_results({
+            "content": "Some result without ID"
+        })
+
+        # Should append at end
+        assert len(message_history.messages) == 3
+        assert message_history.messages[-1]["role"] == "tool"
+
+    def test_multiple_tool_results_maintain_order(self, message_history):
+        """Multiple tool results should both go after the matching assistant message.
+        
+        When multiple tool calls are in the same assistant message and results are
+        added together, they both insert at the same position. This is correct -
+        each result is placed right after its tool call (the same assistant message).
+        """
+        message_history.messages = [
+            {"role": "system", "content": "System"},
+            {
+                "role": "assistant",
+                "content": "Calling multiple tools",
+                "tool_calls": [
+                    {"id": "call_1", "function": {"name": "tool1", "arguments": "{}"}},
+                    {"id": "call_2", "function": {"name": "tool2", "arguments": "{}"}},
+                ]
+            },
+            {"role": "user", "content": "[SUMMARY] Old..."},
+        ]
+
+        # Add results in order
+        message_history.add_tool_results([
+            {"tool_call_id": "call_1", "content": "Result 1"},
+            {"tool_call_id": "call_2", "content": "Result 2"},
+        ])
+
+        # Both should be after the assistant message (positions 2 and 3)
+        assert len(message_history.messages) == 5
+        
+        # Find tool result positions
+        tool_positions = [
+            (i, msg) for i, msg in enumerate(message_history.messages)
+            if msg.get("role") == "tool"
+        ]
+        
+        assert len(tool_positions) == 2
+        # Both results should be after the assistant (at index 1)
+        assert tool_positions[0][0] == 2, "First result should be at position 2"
+        assert tool_positions[1][0] == 3, "Second result should be at position 3"
+        # Summary should be after both
+        summary_idx = next(
+            i for i, msg in enumerate(message_history.messages)
+            if "[SUMMARY]" in msg.get("content", "")
+        )
+        assert summary_idx == 4
