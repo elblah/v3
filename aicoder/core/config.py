@@ -310,9 +310,35 @@ class Config:
     def max_tool_result_size() -> int:
         """
         Get max tool result size
-        
+
         """
-        return int(os.environ.get("MAX_TOOL_RESULT_SIZE", "300000"))
+        return int(os.environ.get("MAX_TOOL_RESULT_SIZE", "20000"))
+
+    @staticmethod
+    def default_read_limit() -> int:
+        """
+        Get default read file limit
+
+        """
+        return int(os.environ.get("DEFAULT_READ_LIMIT", "150"))
+
+    @staticmethod
+    def default_grep_max_results() -> int:
+        """
+        Get default grep max results
+
+        """
+        return int(os.environ.get("DEFAULT_GREP_MAX_RESULTS", "500"))
+
+    @staticmethod
+    def default_shell_timeout() -> int:
+        """
+        Get default shell command timeout
+
+        """
+        return int(os.environ.get("DEFAULT_SHELL_TIMEOUT", "30"))
+
+
 
     # Default directories to ignore when listing files
     DEFAULT_IGNORE_DIRS = [

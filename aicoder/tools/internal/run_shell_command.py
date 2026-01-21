@@ -10,6 +10,9 @@ import time
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
 
+# Configuration
+DEFAULT_TIMEOUT = Config.default_shell_timeout()
+
 
 # Global reference to active subprocess for Ctrl+C cleanup
 _active_proc: Optional[subprocess.Popen] = None
@@ -93,7 +96,7 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute shell command with timeout"""
     command = args.get("command")
-    timeout = args.get("timeout", 30)
+    timeout = args.get("timeout", DEFAULT_TIMEOUT)
     cwd = args.get("cwd")
 
     if not command:
@@ -157,8 +160,8 @@ TOOL_DEFINITION = {
             "command": {"type": "string", "description": "Shell command to execute"},
             "timeout": {
                 "type": "integer",
-                "description": "Timeout in seconds (default: 30)",
-                "default": 30,
+                "description": f"Timeout in seconds (default: {DEFAULT_TIMEOUT})",
+                "default": DEFAULT_TIMEOUT,
             },
             "cwd": {
                 "type": "string",
@@ -174,7 +177,7 @@ TOOL_DEFINITION = {
 def format_arguments(args):
     """Format arguments for display ()"""
     command = args.get("command")
-    timeout = args.get("timeout", 30)
+    timeout = args.get("timeout", DEFAULT_TIMEOUT)
     reason = args.get("reason")
 
     lines = []
@@ -184,7 +187,7 @@ def format_arguments(args):
     if reason:
         lines.append(f"Reason: {reason}")
 
-    if timeout != 30:
+    if timeout != DEFAULT_TIMEOUT:
         lines.append(f"Timeout: {timeout}s")
 
     return "\n".join(lines)
