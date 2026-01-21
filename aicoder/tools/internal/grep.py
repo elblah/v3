@@ -8,6 +8,9 @@ import subprocess
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
 
+# Configuration
+DEFAULT_MAX_RESULTS = Config.default_grep_max_results()
+
 
 def validateArguments(args: Dict[str, Any]) -> None:
     """Validate grep arguments"""
@@ -20,13 +23,13 @@ def formatArguments(args: Dict[str, Any]) -> str:
     """Format arguments for approval display"""
     text = args.get("text", "")
     path = args.get("path", ".")
-    max_results = args.get("max_results", 2000)
+    max_results = args.get("max_results", DEFAULT_MAX_RESULTS)
     context = args.get("context", 2)
 
     parts = [f'Text: "{text}"']
     if path and path != ".":
         parts.append(f"Path: {path}")
-    if max_results != 2000:
+    if max_results != DEFAULT_MAX_RESULTS:
         parts.append(f"Max results: {max_results}")
     if context != 2:
         parts.append(f"Context: {context} lines")
@@ -38,7 +41,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search for text in files using ripgrep or grep"""
     text = args.get("text")
     path = args.get("path", ".")
-    max_results = args.get("max_results", 2000)
+    max_results = args.get("max_results", DEFAULT_MAX_RESULTS)
     context = args.get("context", 2)
 
     if not text:
@@ -162,7 +165,7 @@ TOOL_DEFINITION = {
             },
             "max_results": {
                 "type": "number",
-                "description": "Maximum number of results (defaults to 2000).",
+                "description": f"Maximum number of results (defaults to {DEFAULT_MAX_RESULTS}).",
             },
             "context": {
                 "type": "number",
