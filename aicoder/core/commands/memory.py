@@ -5,9 +5,8 @@ Memory command - Export conversation JSON to temp file, edit with $EDITOR, then 
 import json
 import os
 import secrets
-import time
 from aicoder.core.commands.base import BaseCommand, CommandResult, CommandContext
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
 from aicoder.core.config import Config
 
@@ -53,7 +52,6 @@ class MemoryCommand(BaseCommand):
                 # Add tool calls if present
                 tool_calls = msg.get("tool_calls")
                 if tool_calls:
-                    # tool_calls should already be dicts, no need for __dict__
                     msg_dict["tool_calls"] = tool_calls
 
                 # Add tool_call_id if present
@@ -67,18 +65,9 @@ class MemoryCommand(BaseCommand):
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(messages_dict, f, indent=2, ensure_ascii=False)
 
-            LogUtils.print(
-                f"Exported {len(messages)} messages to {temp_file}",
-                LogOptions(color=Config.colors["cyan"]),
-            )
-            LogUtils.print(
-                f"Opening {editor} in tmux window...",
-                LogOptions(color=Config.colors["cyan"]),
-            )
-            LogUtils.print(
-                "Save and exit when done. The editor is running in a separate tmux window.",
-                LogOptions(color=Config.colors["dim"]),
-            )
+            LogUtils.info(f"Exported {len(messages)} messages to {temp_file}")
+            LogUtils.info(f"Opening {editor} in tmux window...")
+            LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
 
             sync_point = f"memory_done_{random_suffix}"
             window_name = f"memory_{random_suffix}"
@@ -103,16 +92,14 @@ class MemoryCommand(BaseCommand):
                 # Replace messages directly - no special handling needed
                 self.context.message_history.set_messages(edited_messages)
 
-                LogUtils.success(
-                    f"Reloaded {len(edited_messages)} messages from editor"
-                )
+                LogUtils.success(f"Reloaded {len(edited_messages)} messages from editor")
             else:
                 LogUtils.error("Invalid session file format")
 
             # Clean up temp file
             try:
                 os.unlink(temp_file)
-            except:
+            except Exception:
                 pass
 
         except Exception as error:
@@ -120,7 +107,7 @@ class MemoryCommand(BaseCommand):
             # Clean up temp file on error
             try:
                 os.unlink(temp_file)
-            except:
+            except Exception:
                 pass
 
         return CommandResult(should_quit=False, run_api_call=False)

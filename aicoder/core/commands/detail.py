@@ -5,7 +5,7 @@ Detail command implementation
 from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 
 
 class DetailCommand(BaseCommand):
@@ -30,34 +30,20 @@ class DetailCommand(BaseCommand):
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute detail command"""
         status = "ENABLED" if Config.detail_mode() else "DISABLED"
-        status_color = (
-            Config.colors["green"] if Config.detail_mode() else Config.colors["yellow"]
-        )
+        status_color = "green" if Config.detail_mode() else "yellow"
 
         if not args:
             # Show status
-            LogUtils.print(
-                f"Detail Mode Status: {status}",
-                LogOptions(color=status_color, bold=True),
-            )
+            LogUtils.print(f"Detail Mode Status: {status}", color=status_color, bold=True)
 
             if Config.detail_mode():
                 LogUtils.success("All tool parameters and results will be shown")
-                LogUtils.print(
-                    "Use Ctrl+Z or /detail off to switch to simple mode",
-                    LogOptions(color=Config.colors["cyan"]),
-                )
+                LogUtils.info("Use Ctrl+Z or /detail off to switch to simple mode")
             else:
                 LogUtils.warn("Only important tool information will be shown")
-                LogUtils.print(
-                    "Use Ctrl+Z or /detail on to switch to detailed mode",
-                    LogOptions(color=Config.colors["cyan"]),
-                )
+                LogUtils.info("Use Ctrl+Z or /detail on to switch to detailed mode")
 
-            LogUtils.print(
-                "Quick toggle: Ctrl+Z | Command: /detail [on|off]",
-                LogOptions(color=Config.colors["dim"]),
-            )
+            LogUtils.dim("Quick toggle: Ctrl+Z | Command: /detail [on|off]")
             return CommandResult(should_quit=False, run_api_call=False)
 
         action = args[0].lower()
@@ -67,56 +53,29 @@ class DetailCommand(BaseCommand):
             else:
                 Config.set_detail_mode(True)
                 LogUtils.success("[*] Detail mode ENABLED")
-                LogUtils.print(
-                    "All tool parameters and results will now be shown",
-                    LogOptions(color=Config.colors["cyan"]),
-                )
+                LogUtils.info("All tool parameters and results will now be shown")
         elif action in ("off", "0", "disable", "false"):
             if Config.detail_mode():
                 Config.set_detail_mode(False)
                 LogUtils.warn("[*] Detail mode DISABLED")
-                LogUtils.print(
-                    "Only important tool information will be shown",
-                    LogOptions(color=Config.colors["cyan"]),
-                )
+                LogUtils.info("Only important tool information will be shown")
             else:
                 LogUtils.warn("[*] Detail mode is already disabled")
         elif action == "toggle":
             Config.set_detail_mode(not Config.detail_mode())
-            new_status = "ENABLED" if Config.detail_mode() else "DISABLED"
 
             if Config.detail_mode():
-                LogUtils.success(f"[*] Detail mode ENABLED")
-                LogUtils.print(
-                    "All tool parameters and results will now be shown",
-                    LogOptions(color=Config.colors["cyan"]),
-                )
+                LogUtils.success("[*] Detail mode ENABLED")
+                LogUtils.info("All tool parameters and results will now be shown")
             else:
-                LogUtils.warn(f"[*] Detail mode DISABLED")
-                LogUtils.print(
-                    "Only important tool information will be shown",
-                    LogOptions(color=Config.colors["cyan"]),
-                )
+                LogUtils.warn("[*] Detail mode DISABLED")
+                LogUtils.info("Only important tool information will be shown")
         else:
             LogUtils.error("Invalid argument. Use: /detail [on|off|toggle]")
-            LogUtils.print(
-                "  /detail - Show current status",
-                LogOptions(color=Config.colors["dim"]),
-            )
-            LogUtils.print(
-                "  /detail on - Enable detailed output",
-                LogOptions(color=Config.colors["dim"]),
-            )
-            LogUtils.print(
-                "  /detail off - Disable detailed output (show friendly messages)",
-                LogOptions(color=Config.colors["dim"]),
-            )
-            LogUtils.print(
-                "  /detail toggle - Toggle between on/off",
-                LogOptions(color=Config.colors["dim"]),
-            )
-            LogUtils.print(
-                "  Ctrl+Z - Quick toggle", LogOptions(color=Config.colors["dim"])
-            )
+            LogUtils.dim("  /detail - Show current status")
+            LogUtils.dim("  /detail on - Enable detailed output")
+            LogUtils.dim("  /detail off - Disable detailed output (show friendly messages)")
+            LogUtils.dim("  /detail toggle - Toggle between on/off")
+            LogUtils.dim("  Ctrl+Z - Quick toggle")
 
         return CommandResult(should_quit=False, run_api_call=False)
