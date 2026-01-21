@@ -3,6 +3,7 @@ Stream Processor - Handles streaming response processing and chunk accumulation
 Extracted from AICoder class for better separation of concerns
 """
 
+import builtins
 import time
 from typing import Dict, Any, List
 
@@ -17,8 +18,8 @@ class StreamProcessor:
         self.streaming_client = streaming_client
 
     def process_stream(
-        self, 
-        messages: List[Dict[str, Any]], 
+        self,
+        messages: List[Dict[str, Any]],
         is_processing_callback,
         process_chunk_callback
     ) -> Dict[str, Any]:
@@ -55,7 +56,7 @@ class StreamProcessor:
                     if content:
                         full_response += content
                         colored_content = self.streaming_client.process_with_colorization(content)
-                        LogUtils.print(colored_content, end="", flush=True)
+                        builtins.print(colored_content, end="", flush=True)
 
                 # Tool calls
                 if "delta" in choice and choice["delta"].get("tool_calls"):

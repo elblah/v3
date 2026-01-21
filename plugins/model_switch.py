@@ -21,7 +21,7 @@ import threading
 from typing import Dict, Optional, Callable
 from typing import TYPE_CHECKING
 
-from aicoder.utils.log import print as log_print, warn, error, success, LogOptions
+from aicoder.utils.log import print as log_print, warn, error, success, info, dim, LogOptions, print
 
 if TYPE_CHECKING:
     from aicoder.core.plugin_system import PluginContext
@@ -136,7 +136,7 @@ def _handle_model_command(args_str: str) -> Optional[str]:
         return None
 
     # Debug: show the path being used
-    log_print(f"Using selector: {bin_path}", LogOptions(color=Config.colors["dim"]))
+    dim(f"Using selector: {bin_path}")
 
     # Check if file exists
     if not os.path.exists(bin_path):
@@ -151,10 +151,10 @@ def _handle_model_command(args_str: str) -> Optional[str]:
     # Execute selector
     exit_code, stdout, stderr = _execute_selector(bin_path)
 
-    log_print(f"Selector exit code: {exit_code}", LogOptions(color=Config.colors["dim"]))
-    log_print(f"Selector stdout: {stdout[:100] if stdout else '(empty)'}", LogOptions(color=Config.colors["dim"]))
+    dim(f"Selector exit code: {exit_code}")
+    dim(f"Selector stdout: {stdout[:100] if stdout else '(empty)'}")
     if stderr:
-        log_print(f"Selector stderr: {stderr}", LogOptions(color=Config.colors["red"]))
+        error(f"Selector stderr: {stderr}")
 
     if exit_code != 0:
         warn("Model selection cancelled or failed")
@@ -212,127 +212,129 @@ def _handle_model_back_command(args_str: str) -> Optional[str]:
 
 def _show_help() -> None:
     """Show basic help"""
-    from aicoder.core.config import Config
+    warn("Model Switch Configuration")
+    print("")
 
-    log_print("Model Switch Configuration", LogOptions(color=Config.colors["yellow"], bold=True))
-    log_print("")
-    log_print("To use model switching, set the AICODER_MODELS_BIN environment variable:", LogOptions(color=Config.colors["white"]))
-    log_print("  export AICODER_MODELS_BIN=\"/path/to/your/model-selector\"", LogOptions(color=Config.colors["green"]))
-    log_print("")
-    log_print("This should be a script or binary that:", LogOptions(color=Config.colors["white"]))
-    log_print("  - Presents a model selection interface (fzf, etc.)", LogOptions(color=Config.colors["dim"]))
-    log_print("  - Returns key=value pairs on stdout (one per line)", LogOptions(color=Config.colors["dim"]))
-    log_print("  - Exits with code 0 on success, non-zero on cancellation", LogOptions(color=Config.colors["dim"]))
-    log_print("")
-    log_print("Example output:", LogOptions(color=Config.colors["cyan"]))
-    log_print("  API_MODEL=gpt-4", LogOptions(color=Config.colors["dim"]))
-    log_print("  API_KEY=your-key-here", LogOptions(color=Config.colors["dim"]))
-    log_print("  TEMPERATURE=0.7", LogOptions(color=Config.colors["dim"]))
-    log_print("")
-    log_print("Commands:", LogOptions(color=Config.colors["cyan"]))
-    log_print("  /model or /mc   - Change model", LogOptions(color=Config.colors["green"]))
-    log_print("  /model help     - Show detailed help and current configuration", LogOptions(color=Config.colors["green"]))
-    log_print("  /model info     - Show current and previous model information", LogOptions(color=Config.colors["green"]))
-    log_print("  /mb             - Toggle back to previous model", LogOptions(color=Config.colors["green"]))
-    log_print("")
-    log_print("Note:", LogOptions(color=Config.colors["yellow"]))
-    log_print("When switching models, all model-specific configuration variables are reset to prevent", LogOptions(color=Config.colors["dim"]))
-    log_print("state pollution between different model types and configurations.", LogOptions(color=Config.colors["dim"]))
+    info("To use model switching, set the AICODER_MODELS_BIN environment variable:")
+    success('  export AICODER_MODELS_BIN="/path/to/your/model-selector"')
+    print("")
+
+    info("This should be a script or binary that:")
+    dim("  - Presents a model selection interface (fzf, etc.)")
+    dim("  - Returns key=value pairs on stdout (one per line)")
+    dim("  - Exits with code 0 on success, non-zero on cancellation")
+    print("")
+
+    info("Example output:")
+    dim("  API_MODEL=gpt-4")
+    dim("  API_KEY=your-key-here  TEMPERATURE=0.7")
+    print("")
+    dim("")
+
+    info("Commands:")
+    success("  /model or /mc   - Change model")
+    success("  /model help     - Show detailed help and current configuration")
+    success("  /model info     - Show current and previous model information")
+    success("  /mb             - Toggle back to previous model")
+    print("")
+
+    warn("Note:")
+    dim("When switching models, all model-specific configuration variables are reset to prevent")
+    dim("state pollution between different model types and configurations.")
 
 
 def _show_detailed_help() -> None:
     """Show detailed help with current and previous config"""
-    from aicoder.core.config import Config
-
     current_config = _get_current_config()
     previous_config = _get_previous_config()
 
-    log_print("Model Command Detailed Help", LogOptions(color=Config.colors["yellow"], bold=True))
-    log_print("")
+    warn("Model Command Detailed Help")
+    print("")
 
     # Available variables
-    log_print("Available Model Variables:", LogOptions(color=Config.colors["cyan"]))
+    info("Available Model Variables:")
     for var in MODEL_VARIABLES:
-        log_print(f"  {var}", LogOptions(color=Config.colors["cyan"]))
-    log_print("")
+        print(f"  {var}")
+    print("")
 
     # Current config
-    log_print("Current Model Configuration:", LogOptions(color=Config.colors["cyan"]))
+    info("Current Model Configuration:")
     if current_config:
         for key, value in sorted(current_config.items()):
             display_value = value[:8] + '...' if (key in ('API_KEY', 'OPENAI_API_KEY') and len(value) > 8) else value
-            log_print(f"  {key} = {display_value}", LogOptions(color=Config.colors["green"]))
+            success(f"  {key} = {display_value}")
     else:
-        log_print("  No model configuration currently set", LogOptions(color=Config.colors["yellow"]))
-    log_print("")
+        warn("  No model configuration currently set")
+    print("")
 
     # Previous config
-    log_print("Previous Model Configuration:", LogOptions(color=Config.colors["cyan"]))
+    info("Previous Model Configuration:")
     if previous_config:
         for key, value in sorted(previous_config.items()):
             display_value = value[:8] + '...' if (key in ('API_KEY', 'OPENAI_API_KEY') and len(value) > 8) else value
-            log_print(f"  {key} = {display_value}", LogOptions(color=Config.colors["green"]))
+            success(f"  {key} = {display_value}")
     else:
-        log_print("  No previous model configuration available", LogOptions(color=Config.colors["yellow"]))
-    log_print("")
+        warn("  No previous model configuration available")
+    print("")
 
     # Commands
-    log_print("Available Commands:", LogOptions(color=Config.colors["cyan"]))
-    log_print("  /model or /mc   - Switch to a new model using external selector", LogOptions(color=Config.colors["green"]))
-    log_print("  /model help     - Show this detailed help", LogOptions(color=Config.colors["green"]))
-    log_print("  /model info     - Show current and previous model information", LogOptions(color=Config.colors["green"]))
-    log_print("  /mb             - Toggle back to previous model", LogOptions(color=Config.colors["green"]))
-    log_print("")
+    info("Available Commands:")
+    success("  /model or /mc   - Switch to a new model using external selector")
+    success("  /model help     - Show this detailed help")
+    success("  /model info     - Show current and previous model information")
+    success("  /mb             - Toggle back to previous model")
+    print("")
 
     # Setup instructions
-    log_print("Setup Instructions:", LogOptions(color=Config.colors["cyan"]))
-    log_print("To use model switching, set the AICODER_MODELS_BIN environment variable:", LogOptions(color=Config.colors["white"]))
-    log_print("  export AICODER_MODELS_BIN=\"/path/to/your/model-selector\"", LogOptions(color=Config.colors["green"]))
-    log_print("")
-    log_print("The model selector should:", LogOptions(color=Config.colors["white"]))
-    log_print("  - Present a model selection interface (fzf, etc.)", LogOptions(color=Config.colors["dim"]))
-    log_print("  - Return key=value pairs on stdout (one per line)", LogOptions(color=Config.colors["dim"]))
-    log_print("  - Exit with code 0 on success, non-zero on cancellation", LogOptions(color=Config.colors["dim"]))
-    log_print("")
-    log_print("Example Output from Model Selector:", LogOptions(color=Config.colors["cyan"]))
-    log_print("  API_MODEL=gpt-4", LogOptions(color=Config.colors["dim"]))
-    log_print("  API_KEY=your-key-here", LogOptions(color=Config.colors["dim"]))
-    log_print("  TEMPERATURE=0.7", LogOptions(color=Config.colors["dim"]))
-    log_print("  MAX_TOKENS=4096", LogOptions(color=Config.colors["dim"]))
-    log_print("")
-    log_print("Note:", LogOptions(color=Config.colors["yellow"]))
-    log_print("When switching models, all model-specific configuration variables are reset to prevent", LogOptions(color=Config.colors["dim"]))
-    log_print("state pollution between different model types and configurations.", LogOptions(color=Config.colors["dim"]))
+    info("Setup Instructions:")
+    info("To use model switching, set the AICODER_MODELS_BIN environment variable:")
+    success('  export AICODER_MODELS_BIN="/path/to/your/model-selector"')
+    print("")
+
+    info("The model selector should:")
+    dim("  - Present a model selection interface (fzf, etc.)")
+    dim("  - Return key=value pairs on stdout (one per line)")
+    dim("  - Exit with code 0 on success, non-zero on cancellation")
+    print("")
+
+    info("Example Output from Model Selector:")
+    dim("  API_MODEL=gpt-4")
+    dim("  API_KEY=your-key-here")
+    dim("  TEMPERATURE=0.7")
+    dim("  MAX_TOKENS=4096")
+    print("")
+
+    warn("Note:")
+    dim("When switching models, all model-specific configuration variables are reset to prevent")
+    dim("state pollution between different model types and configurations.")
 
 
 def _show_model_info() -> None:
     """Show current and previous model information"""
-    from aicoder.core.config import Config
-
     current_config = _get_current_config()
     previous_config = _get_previous_config()
 
-    log_print("Model Information", LogOptions(color=Config.colors["yellow"], bold=True))
-    log_print("")
+    warn("Model Information")
+    print("")
 
     # Current config
-    log_print("Current Model Configuration:", LogOptions(color=Config.colors["cyan"]))
+    info("Current Model Configuration:")
     if current_config:
         for key, value in sorted(current_config.items()):
             display_value = value[:8] + '...' if (key in ('API_KEY', 'OPENAI_API_KEY') and len(value) > 8) else value
-            log_print(f"  {key} = {display_value}", LogOptions(color=Config.colors["green"]))
+            success(f"  {key} = {display_value}")
     else:
-        log_print("  No model configuration currently set", LogOptions(color=Config.colors["yellow"]))
-    log_print("")
+        warn("  No model configuration currently set")
+    print("")
 
     # Previous config
-    log_print("Previous Model Configuration:", LogOptions(color=Config.colors["cyan"]))
+    info("Previous Model Configuration:")
     if previous_config:
         for key, value in sorted(previous_config.items()):
             display_value = value[:8] + '...' if (key in ('API_KEY', 'OPENAI_API_KEY') and len(value) > 8) else value
-            log_print(f"  {key} = {display_value}", LogOptions(color=Config.colors["green"]))
+            success(f"  {key} = {display_value}")
     else:
-        log_print("  No previous model configuration available", LogOptions(color=Config.colors["yellow"]))
+        warn("  No previous model configuration available")
 
 
 def create_plugin(ctx: 'PluginContext') -> Optional[Dict[str, Callable]]:
@@ -345,10 +347,10 @@ def create_plugin(ctx: 'PluginContext') -> Optional[Dict[str, Callable]]:
     ctx.register_command('mb', _handle_model_back_command, 'Toggle back to previous model')
 
     if Config.debug():
-        log_print("[+] model_switch plugin loaded", LogOptions(color=Config.colors["green"]))
-        log_print("  - /model or /mc - Switch model using external selector", LogOptions(color=Config.colors["cyan"]))
-        log_print("  - /model help   - Show detailed help", LogOptions(color=Config.colors["cyan"]))
-        log_print("  - /model info   - Show current/previous model info", LogOptions(color=Config.colors["cyan"]))
-        log_print("  - /mb           - Toggle back to previous model", LogOptions(color=Config.colors["cyan"]))
+        success("model_switch plugin loaded")
+        info("  - /model or /mc - Switch model using external selector")
+        info("  - /model help   - Show detailed help")
+        info("  - /model info   - Show current/previous model info")
+        info("  - /mb           - Toggle back to previous model")
 
     return None
