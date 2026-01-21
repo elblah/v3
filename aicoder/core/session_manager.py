@@ -72,7 +72,7 @@ class SessionManager:
         # Show context bar before AI response
         LogUtils.print()
         self.context_bar.print_context_bar(self.stats, self.message_history)
-        LogUtils.print("AI: ", LogOptions(color=Config.colors["cyan"], bold=True))
+        LogUtils.printc("AI: ", color="cyan", bold=True)
 
         # Check if interrupted
         if not self.is_processing:
