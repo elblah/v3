@@ -3,11 +3,11 @@
 Colors are imported from Config.colors to maintain single source of truth.
 
 Usage:
-    # Simple usage with keyword arguments
-    LogUtils.print("message", color="red", bold=True)
-    LogUtils.print("error", color="green")
+    # Colored print with color name (preferred)
+    LogUtils.printc("message", color="red")
+    LogUtils.printc("error", color="green")
 
-    # Convenience methods
+    # Convenience methods (recommended for readability)
     LogUtils.success("Done!")
     LogUtils.warn("Check this")
     LogUtils.error("Failed!")
@@ -22,7 +22,7 @@ Usage:
     LogUtils.strong("Emphasized text")
 
     # Standalone functions also available
-    from aicoder.utils.log import success, warn, error, info, debug
+    from aicoder.utils.log import success, warn, error, info, debug, printc
 """
 
 import os
@@ -60,24 +60,24 @@ class LogUtils:
     """
 
     @staticmethod
-    def print(message: str, options: Optional[LogOptions] = None,
-              color: Optional[str] = None, bold: bool = False,
-              debug: bool = False) -> None:
+    def printc(message: str, options: Optional[LogOptions] = None,
+               color: Optional[str] = None, bold: bool = False,
+               debug: bool = False) -> None:
         """
-        Print message with optional formatting.
+        Print message with optional coloring.
 
         Args:
             message: Message to print
             options: LogOptions instance (for backward compatibility)
-            color: Color name from Config.colors (e.g., "red", "green", "yellow")
+            color: Color name from Config.colors (e.g., "red", "green", "yellow", "cyan")
             bold: Apply bold formatting
             debug: Only print when DEBUG=1
 
         Usage:
-            LogUtils.print("text")
-            LogUtils.print("text", color="red")
-            LogUtils.print("text", color="red", bold=True)
-            LogUtils.print("text", LogOptions(color="red"))  # backward compatible
+            LogUtils.printc("text")
+            LogUtils.printc("text", color="red")
+            LogUtils.printc("text", color="red", bold=True)
+            LogUtils.printc("text", LogOptions(color="red"))  # backward compatible
         """
         # Handle kwargs-style arguments (priority over LogOptions)
         effective_color = color
@@ -98,75 +98,93 @@ class LogUtils:
         colors = _get_colors()
 
         if effective_color:
-            format_code = f"{colors['bold']}{effective_color}" if effective_bold else effective_color
-            builtins.print(f"{format_code}{message}{colors['reset']}")
+            # Check if it's an ANSI code (starts with escape character) or a color name
+            if effective_color.startswith('\x1b'):
+                # It's already an ANSI escape code, use it directly
+                ansi_color = effective_color
+            else:
+                # It's a color name, look it up
+                ansi_color = colors.get(effective_color, "")
+
+            if ansi_color:
+                format_code = f"{colors['bold']}{ansi_color}" if effective_bold else ansi_color
+                builtins.print(f"{format_code}{message}{colors['reset']}")
+            else:
+                builtins.print(message)
         elif effective_bold:
             builtins.print(f"{colors['bold']}{message}{colors['reset']}")
         else:
             builtins.print(message)
+
+    @staticmethod
+    def print(message: str, options: Optional[LogOptions] = None,
+              color: Optional[str] = None, bold: bool = False,
+              debug: bool = False) -> None:
+        """
+        Print message with optional formatting (alias for printc for backward compatibility).
+
+        Args:
+            message: Message to print
+            options: LogOptions instance (for backward compatibility)
+            color: Color name from Config.colors (e.g., "red", "green", "yellow")
+            bold: Apply bold formatting
+            debug: Only print when DEBUG=1
+        """
+        LogUtils.printc(message, options=options, color=color, bold=bold, debug=debug)
 
     # === Core Status Methods ===
 
     @staticmethod
     def error(message: str) -> None:
         """Print error message (red)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["red"])
+        LogUtils.printc(message, color="red")
 
     @staticmethod
     def success(message: str) -> None:
         """Print success message (green)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["green"])
+        LogUtils.printc(message, color="green")
 
     @staticmethod
     def warn(message: str) -> None:
         """Print warning message (yellow)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["yellow"])
+        LogUtils.printc(message, color="yellow")
 
     @staticmethod
     def info(message: str) -> None:
         """Print info message (blue)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["blue"])
+        LogUtils.printc(message, color="blue")
 
     @staticmethod
     def debug(message: str, color: Optional[str] = None) -> None:
         """Print debug message (only when DEBUG=1, yellow by default)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=color or colors["yellow"], debug=True)
+        LogUtils.printc(message, color=color or "yellow", debug=True)
 
     # === Additional Formatting Methods ===
 
     @staticmethod
     def tip(message: str) -> None:
         """Print tip message (cyan)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["cyan"])
+        LogUtils.printc(message, color="cyan")
 
     @staticmethod
     def hint(message: str) -> None:
         """Print hint message (magenta)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["magenta"])
+        LogUtils.printc(message, color="magenta")
 
     @staticmethod
     def note(message: str) -> None:
         """Print note message (bright blue)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["brightBlue"])
+        LogUtils.printc(message, color="brightBlue")
 
     @staticmethod
     def dim(message: str) -> None:
         """Print dim/subtle message (grey)"""
-        colors = _get_colors()
-        LogUtils.print(message, color=colors["dim"])
+        LogUtils.printc(message, color="dim")
 
     @staticmethod
     def strong(message: str) -> None:
         """Print bold/emphasized message"""
-        LogUtils.print(message, bold=True)
+        LogUtils.printc(message, bold=True)
 
 
 # === Standalone Convenience Functions ===
@@ -221,8 +239,15 @@ def strong(message: str) -> None:
     LogUtils.strong(message)
 
 
+def printc(message: str, options: Optional[LogOptions] = None,
+           color: Optional[str] = None, bold: bool = False,
+           debug: bool = False) -> None:
+    """Print message with optional coloring (standalone function)"""
+    LogUtils.printc(message, options=options, color=color, bold=bold, debug=debug)
+
+
 def print(message: str, options: Optional[LogOptions] = None,
           color: Optional[str] = None, bold: bool = False,
           debug: bool = False) -> None:
-    """Print message with optional formatting"""
-    LogUtils.print(message, options=options, color=color, bold=bold, debug=debug)
+    """Print message with optional formatting (backward compatible alias for printc)"""
+    LogUtils.printc(message, options=options, color=color, bold=bold, debug=debug)

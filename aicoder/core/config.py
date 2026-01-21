@@ -427,37 +427,27 @@ class Config:
     def print_startup_info() -> None:
         """
         Print configuration info at startup
-        
+
         """
-        LogUtils.print(f"{Config.colors['green']}Configuration:{Config.colors['reset']}")
-        LogUtils.print(
-            f"{Config.colors['green']}  API Endpoint: {Config.api_endpoint()}{Config.colors['reset']}"
-        )
-        LogUtils.print(
-            f"{Config.colors['green']}  Model: {Config.model()}{Config.colors['reset']}"
-        )
+        LogUtils.success("Configuration:")
+        LogUtils.success(f"  API Endpoint: {Config.api_endpoint()}")
+        LogUtils.success(f"  Model: {Config.model()}")
 
         if Config.debug():
-            LogUtils.print(f"{Config.colors['yellow']}DEBUG MODE IS ON{Config.colors['reset']}")
+            LogUtils.warn("DEBUG MODE IS ON")
 
         if os.environ.get("TEMPERATURE"):
-            LogUtils.print(
-                f"{Config.colors['green']}  Temperature: {Config.temperature()}{Config.colors['reset']}"
-            )
+            LogUtils.success(f"  Temperature: {Config.temperature()}")
 
         if os.environ.get("MAX_TOKENS"):
-            LogUtils.print(
-                f"{Config.colors['green']}  Max tokens: {Config.max_tokens()}{Config.colors['reset']}"
-            )
+            LogUtils.success(f"  Max tokens: {Config.max_tokens()}")
 
         if Config.system_prompt():
-            LogUtils.print(
-                f"{Config.colors['green']}  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable{Config.colors['reset']}"
-            )
+            LogUtils.success("  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable")
 
         if Config.auto_compact_enabled():
-            LogUtils.print(
-                f"{Config.colors['green']}  Auto-compaction enabled (context: {Config.context_size()} tokens, triggers at {Config.context_compact_percentage()}%){Config.colors['reset']}"
+            LogUtils.success(
+                f"  Auto-compaction enabled (context: {Config.context_size()} tokens, triggers at {Config.context_compact_percentage()}%)"
             )
 
     @staticmethod

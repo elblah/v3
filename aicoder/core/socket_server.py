@@ -301,7 +301,7 @@ class SocketServer:
             error_msg = str(e)
             if Config.debug():
                 LogUtils.debug(f"[Socket] EXCEPTION in _cmd_inject: {error_msg}")
-            LogUtils.print(f"[Socket] Inject error: {error_msg}", LogOptions(color=Config.colors['red']))
+            LogUtils.printc(f"[Socket] Inject error: {error_msg}", color="red")
             return response(
                 None, error_code=ERR_INTERNAL, error_msg=error_msg
             )
@@ -514,7 +514,7 @@ class SocketServer:
 
         except Exception as e:
             error_msg = str(e)
-            LogUtils.print(f"[Socket] Inject error: {error_msg}", LogOptions(color=Config.colors['red']))
+            LogUtils.printc(f"[Socket] Inject error: {error_msg}", color="red")
             return response(
                 None, error_code=ERR_INTERNAL, error_msg=error_msg
             )
@@ -566,7 +566,7 @@ class SocketServer:
             )
         except Exception as e:
             error_msg = str(e)
-            LogUtils.print(f"[Socket] inject-text error: {error_msg}", LogOptions(color=Config.colors['red']))
+            LogUtils.printc(f"[Socket] inject-text error: {error_msg}", color="red")
             return response(
                 None, error_code=ERR_INTERNAL, error_msg=error_msg
             )
@@ -604,7 +604,7 @@ class SocketServer:
 
         except Exception as e:
             error_msg = str(e)
-            LogUtils.print(f"[Socket] command error: {error_msg}", LogOptions(color=Config.colors['red']))
+            LogUtils.printc(f"[Socket] command error: {error_msg}", color="red")
             return response(
                 None, error_code=ERR_INTERNAL, error_msg=error_msg
             )

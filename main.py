@@ -34,7 +34,7 @@ def main():
                 start_time = float(start_time_str)
                 current_time = time.time()
                 startup_time = current_time - start_time
-                LogUtils.print(f"Total startup time: {startup_time:.2f} seconds", LogOptions(color=Config.colors['brightCyan']))
+                LogUtils.printc(f"Total startup time: {startup_time:.2f} seconds", color="brightCyan")
             except ValueError:
                 # If parsing fails, silently ignore
                 pass
