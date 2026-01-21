@@ -70,10 +70,7 @@ class ToolExecutor:
         arguments = self._parse_tool_arguments(tool_call.get("function", {}).get("arguments", "{}"))
 
         # Display tool info
-        LogUtils.print(
-            f"\n[*] Tool: {tool_name}",
-            LogOptions(color=Config.colors["yellow"], bold=True),
-        )
+        LogUtils.printc(f"\n[*] Tool: {tool_name}", color="yellow", bold=True)
 
         # Generate and display preview
         if self._should_show_preview(tool_def, arguments):
@@ -88,7 +85,7 @@ class ToolExecutor:
         elif tool_def and tool_def.get("formatArguments"):
             formatted_args = tool_def["formatArguments"](arguments)
             if formatted_args:
-                LogUtils.print(formatted_args, LogOptions(color=Config.colors["cyan"]))
+                LogUtils.printc(formatted_args, color="cyan")
 
         # Check approval
         if not self._get_tool_approval(tool_name, arguments):
