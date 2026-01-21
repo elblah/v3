@@ -17,7 +17,7 @@ from aicoder.core.config import Config
 def create_plugin(ctx):
     """Web search and URL content plugin"""
 
-    DEFAULT_LINES_PER_PAGE = 500
+    DEFAULT_LINES_PER_PAGE = 150
 
     def validate_url(url: str) -> bool:
         """Basic URL validation"""
