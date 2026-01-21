@@ -429,25 +429,25 @@ class Config:
         Print configuration info at startup
 
         """
-        # Use success (green) for config messages - matches original UX
-        LogUtils.success("Configuration:")
-        LogUtils.success(f"  API Endpoint: {Config.api_endpoint()}")
-        LogUtils.success(f"  Model: {Config.model()}")
+        # Use info (blue) for general configuration messages
+        LogUtils.info("Configuration:")
+        LogUtils.info(f"  API Endpoint: {Config.api_endpoint()}")
+        LogUtils.info(f"  Model: {Config.model()}")
 
         if Config.debug():
             LogUtils.warn("DEBUG MODE IS ON")
 
         if os.environ.get("TEMPERATURE"):
-            LogUtils.success(f"  Temperature: {Config.temperature()}")
+            LogUtils.info(f"  Temperature: {Config.temperature()}")
 
         if os.environ.get("MAX_TOKENS"):
-            LogUtils.success(f"  Max tokens: {Config.max_tokens()}")
+            LogUtils.info(f"  Max tokens: {Config.max_tokens()}")
 
         if Config.system_prompt():
-            LogUtils.success("  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable")
+            LogUtils.info("  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable")
 
         if Config.auto_compact_enabled():
-            LogUtils.success(
+            LogUtils.info(
                 f"  Auto-compaction enabled (context: {Config.context_size()} tokens, triggers at {Config.context_compact_percentage()}%)"
             )
 
