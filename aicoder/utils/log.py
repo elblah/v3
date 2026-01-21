@@ -117,14 +117,14 @@ class LogUtils:
             builtins.print(message)
 
     @staticmethod
-    def print(message: str, options: Optional[LogOptions] = None,
+    def print(message: str = "", options: Optional[LogOptions] = None,
               color: Optional[str] = None, bold: bool = False,
               debug: bool = False) -> None:
         """
         Print message with optional formatting (alias for printc for backward compatibility).
 
         Args:
-            message: Message to print
+            message: Message to print (default: empty string for blank line)
             options: LogOptions instance (for backward compatibility)
             color: Color name from Config.colors (e.g., "red", "green", "yellow")
             bold: Apply bold formatting
@@ -239,14 +239,14 @@ def strong(message: str) -> None:
     LogUtils.strong(message)
 
 
-def printc(message: str, options: Optional[LogOptions] = None,
+def printc(message: str = "", options: Optional[LogOptions] = None,
            color: Optional[str] = None, bold: bool = False,
            debug: bool = False) -> None:
     """Print message with optional coloring (standalone function)"""
     LogUtils.printc(message, options=options, color=color, bold=bold, debug=debug)
 
 
-def print(message: str, options: Optional[LogOptions] = None,
+def print(message: str = "", options: Optional[LogOptions] = None,
           color: Optional[str] = None, bold: bool = False,
           debug: bool = False) -> None:
     """Print message with optional formatting (backward compatible alias for printc)"""

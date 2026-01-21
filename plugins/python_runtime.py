@@ -32,7 +32,7 @@ Safety:
 """
 
 from typing import Dict, Any
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils, LogOptions, warn, error, info, success
 from aicoder.core.config import Config
 
 
@@ -236,17 +236,19 @@ Examples:
 
         if args_str == "on":
             _state["enabled"] = True
-            LogUtils.print("[*] Runtime Python ENABLED", LogOptions(color=Config.colors['yellow']))
-            LogUtils.print("    AI can now use run_inline_python tool (each execution requires approval)")
+            warn("Runtime Python ENABLED")
+            info("AI can now use run_inline_python tool (each execution requires approval)")
             return ""
         elif args_str == "off":
             _state["enabled"] = False
-            LogUtils.print("[*] Runtime Python DISABLED", LogOptions(color=Config.colors['red']))
+            error("Runtime Python DISABLED")
             return ""
         elif args_str == "status":
             status = "ENABLED" if _state["enabled"] else "DISABLED"
-            status_color = Config.colors['green'] if _state["enabled"] else Config.colors['red']
-            LogUtils.print(f"[*] Runtime Python: {status}", LogOptions(color=status_color))
+            if _state["enabled"]:
+                success(f"Runtime Python: {status}")
+            else:
+                info(f"Runtime Python: {status}")
             return ""
         else:
             return f"Unknown subcommand: {args_str}\nUsage: /python_runtime [on|off|status]"
