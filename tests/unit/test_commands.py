@@ -51,10 +51,15 @@ class MockStats:
 @pytest.fixture
 def mock_context():
     """Create a mock CommandContext."""
+    mock_command_handler = MagicMock()
+    mock_plugin_system = MagicMock()
+    mock_command_handler.plugin_system = mock_plugin_system
+    
     return CommandContext(
         message_history=MockMessageHistory(),
         input_handler=MockInputHandler(),
-        stats=MockStats()
+        stats=MockStats(),
+        command_handler=mock_command_handler
     )
 
 
@@ -578,58 +583,34 @@ class TestLoadCommand:
 
     def test_load_execute_file_not_found(self, mock_context):
         """Test load command when file doesn't exist."""
-        with patch('aicoder.core.commands.load.Config') as mock_config:
-            mock_config.colors = {
-                "green": "\033[32m",
-                "yellow": "\033[33m",
-                "cyan": "\033[36m",
-                "dim": "\033[2m",
-                "reset": "\033[0m"
-            }
-            with patch('aicoder.core.commands.load.file_exists', return_value=False):
-                cmd = LoadCommand(mock_context)
-                result = cmd.execute(["nonexistent.json"])
-                assert result.should_quit is False
-                assert result.run_api_call is False
+        with patch('aicoder.core.commands.load.file_exists', return_value=False):
+            cmd = LoadCommand(mock_context)
+            result = cmd.execute(["nonexistent.json"])
+            assert result.should_quit is False
+            assert result.run_api_call is False
 
     def test_load_execute_json_format(self, mock_context):
         """Test load command with JSON format."""
         test_messages = [{"role": "user", "content": "Hello"}]
 
-        with patch('aicoder.core.commands.load.Config') as mock_config:
-            mock_config.colors = {
-                "green": "\033[32m",
-                "yellow": "\033[33m",
-                "cyan": "\033[36m",
-                "dim": "\033[2m",
-                "reset": "\033[0m"
-            }
-            with patch('aicoder.core.commands.load.file_exists', return_value=True):
-                with patch('aicoder.core.commands.load.read_file', return_value=test_messages):
-                    with patch('aicoder.core.commands.load.Path') as mock_path:
-                        mock_path.return_value.suffix.lower.return_value = '.json'
-                        cmd = LoadCommand(mock_context)
-                        result = cmd.execute(["session.json"])
-                        assert result.should_quit is False
-                        assert result.run_api_call is False
+        with patch('aicoder.core.commands.load.file_exists', return_value=True):
+            with patch('aicoder.core.commands.load.read_file', return_value=test_messages):
+                with patch('aicoder.core.commands.load.Path') as mock_path:
+                    mock_path.return_value.suffix.lower.return_value = '.json'
+                    cmd = LoadCommand(mock_context)
+                    result = cmd.execute(["session.json"])
+                    assert result.should_quit is False
+                    assert result.run_api_call is False
 
     def test_load_execute_jsonl_format(self, mock_context):
         """Test load command with JSONL format."""
         test_messages = [{"role": "user", "content": "Hello"}]
 
-        with patch('aicoder.core.commands.load.Config') as mock_config:
-            mock_config.colors = {
-                "green": "\033[32m",
-                "yellow": "\033[33m",
-                "cyan": "\033[36m",
-                "dim": "\033[2m",
-                "reset": "\033[0m"
-            }
-            with patch('aicoder.core.commands.load.file_exists', return_value=True):
-                with patch('aicoder.core.commands.load.read_jsonl', return_value=test_messages):
-                    with patch('aicoder.core.commands.load.Path') as mock_path:
-                        mock_path.return_value.suffix.lower.return_value = '.jsonl'
-                        cmd = LoadCommand(mock_context)
-                        result = cmd.execute(["session.jsonl"])
-                        assert result.should_quit is False
-                        assert result.run_api_call is False
+        with patch('aicoder.core.commands.load.file_exists', return_value=True):
+            with patch('aicoder.core.commands.load.read_jsonl', return_value=test_messages):
+                with patch('aicoder.core.commands.load.Path') as mock_path:
+                    mock_path.return_value.suffix.lower.return_value = '.jsonl'
+                    cmd = LoadCommand(mock_context)
+                    result = cmd.execute(["session.jsonl"])
+                    assert result.should_quit is False
+                    assert result.run_api_call is False

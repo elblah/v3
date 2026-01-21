@@ -598,7 +598,8 @@ class TestSocketServerSave:
 
     def test_save_with_path(self, server):
         """Test save with explicit path."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        # Use /tmp explicitly to avoid HOME dependency
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, dir='/tmp') as f:
             path = f.name
 
         try:
@@ -910,8 +911,12 @@ class TestSocketServerSaveDefault:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Temporarily change working directory
             old_cwd = os.getcwd()
+            # Ensure HOME is set to something writable for the test
+            old_home = os.environ.get('HOME')
             try:
                 os.chdir(tmpdir)
+                # Set HOME to tmpdir for this test to avoid permission issues
+                os.environ['HOME'] = tmpdir
                 result = server._cmd_save("")
                 parsed = json.loads(result)
                 assert parsed["status"] == "success"
@@ -919,6 +924,10 @@ class TestSocketServerSaveDefault:
                 assert ".aicoder/sessions" in parsed["data"]["path"]
             finally:
                 os.chdir(old_cwd)
+                if old_home is not None:
+                    os.environ['HOME'] = old_home
+                else:
+                    os.environ.pop('HOME', None)
 
 
 class TestSocketServerInject:

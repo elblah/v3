@@ -150,12 +150,13 @@ class TestAICoderExtended:
         """Test initialize method sets up plugin system"""
         app = AICoder()
 
-        with patch.object(app.plugin_system, 'set_app'):
-            with patch.object(app.plugin_system, 'load_plugins'):
-                with patch.object(app.message_history, 'set_api_client'):
-                    app.initialize()
+        with patch('aicoder.core.config.Config.validate_config'):
+            with patch.object(app.plugin_system, 'set_app'):
+                with patch.object(app.plugin_system, 'load_plugins'):
+                    with patch.object(app.message_history, 'set_api_client'):
+                        app.initialize()
 
-                    app.plugin_system.set_app.assert_called_once_with(app)
+                        app.plugin_system.set_app.assert_called_once_with(app)
 
     def test_run_non_interactive_with_stdin_input(self):
         """Test run_non_interactive with piped input"""
@@ -317,31 +318,34 @@ class TestAICoderPluginIntegration:
         """Test that set_app is called on plugin system during initialize"""
         app = AICoder()
 
-        with patch.object(app.plugin_system, 'set_app'):
-            with patch.object(app.message_history, 'set_api_client'):
-                with patch.object(app.plugin_system, 'load_plugins'):
-                    app.initialize()
-                    app.plugin_system.set_app.assert_called_once_with(app)
+        with patch('aicoder.core.config.Config.validate_config'):
+            with patch.object(app.plugin_system, 'set_app'):
+                with patch.object(app.message_history, 'set_api_client'):
+                    with patch.object(app.plugin_system, 'load_plugins'):
+                        app.initialize()
+                        app.plugin_system.set_app.assert_called_once_with(app)
 
     def test_tool_manager_set_plugin_system_called(self):
         """Test that set_plugin_system is called on tool manager"""
         app = AICoder()
 
-        with patch.object(app.message_history, 'set_api_client'):
-            with patch.object(app.plugin_system, 'load_plugins'):
-                with patch.object(app.tool_manager, 'set_plugin_system') as mock_set:
-                    app.initialize()
-                    mock_set.assert_called_once()
+        with patch('aicoder.core.config.Config.validate_config'):
+            with patch.object(app.message_history, 'set_api_client'):
+                with patch.object(app.plugin_system, 'load_plugins'):
+                    with patch.object(app.tool_manager, 'set_plugin_system') as mock_set:
+                        app.initialize()
+                        mock_set.assert_called_once()
 
     def test_message_history_set_plugin_system_called(self):
         """Test that set_plugin_system is called on message history"""
         app = AICoder()
 
-        with patch.object(app.message_history, 'set_api_client'):
-            with patch.object(app.plugin_system, 'load_plugins'):
-                with patch.object(app.message_history, 'set_plugin_system') as mock_set:
-                    app.initialize()
-                    mock_set.assert_called_once()
+        with patch('aicoder.core.config.Config.validate_config'):
+            with patch.object(app.message_history, 'set_api_client'):
+                with patch.object(app.plugin_system, 'load_plugins'):
+                    with patch.object(app.message_history, 'set_plugin_system') as mock_set:
+                        app.initialize()
+                        mock_set.assert_called_once()
 
     def test_get_plugin_tools_iterates(self):
         """Test that get_plugin_tools returns tools dict"""

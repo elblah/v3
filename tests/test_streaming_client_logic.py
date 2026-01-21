@@ -31,15 +31,17 @@ class TestStreamingClient:
     def test_backoff_calculation(self):
         client = StreamingClient()
 
-        # Test exponential growth (fast)
-        assert client._calculate_backoff(0) == 1
-        assert client._calculate_backoff(1) == 2
-        assert client._calculate_backoff(2) == 4
-        assert client._calculate_backoff(3) == 8
+        # Patch to use default max backoff (64) regardless of environment
+        with patch.object(Config, 'effective_max_backoff', return_value=64):
+            # Test exponential growth (fast)
+            assert client._calculate_backoff(0) == 1
+            assert client._calculate_backoff(1) == 2
+            assert client._calculate_backoff(2) == 4
+            assert client._calculate_backoff(3) == 8
 
-        # Test cap at default 64
-        assert client._calculate_backoff(6) == 64
-        assert client._calculate_backoff(10) == 64
+            # Test cap at default 64
+            assert client._calculate_backoff(6) == 64
+            assert client._calculate_backoff(10) == 64
 
     def test_backoff_calculation_custom_max(self):
         """Test backoff calculation with custom max backoff"""
@@ -73,14 +75,16 @@ class TestWaitForRetry:
     def test_wait_for_retry_calculates_delay(self):
         """Test that wait_for_retry calculates correct delay"""
         client = StreamingClient()
-        with patch('time.sleep') as mock_sleep:
+        with patch('time.sleep') as mock_sleep, \
+             patch.object(Config, 'effective_max_backoff', return_value=64):
             client._wait_for_retry(0)
             mock_sleep.assert_called_once_with(1)
 
     def test_wait_for_retry_with_backoff(self):
         """Test that wait_for_retry uses exponential backoff"""
         client = StreamingClient()
-        with patch('time.sleep') as mock_sleep:
+        with patch('time.sleep') as mock_sleep, \
+             patch.object(Config, 'effective_max_backoff', return_value=64):
             client._wait_for_retry(3)
             mock_sleep.assert_called_once_with(8)
 

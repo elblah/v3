@@ -25,7 +25,7 @@ class StreamingClient:
         self._recovery_attempted = False
 
     def _calculate_backoff(self, attempt_num: int) -> float:
-        """Calculate exponential backoff: 2s, 4s, 8s, 16s, 32s, max_backoff (capped)"""
+        """Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, max_backoff (capped)"""
         max_backoff = Config.effective_max_backoff()
         return min(2 ** attempt_num, max_backoff)
 
@@ -119,7 +119,7 @@ class StreamingClient:
                 # Wait before next retry (except for last attempt)
                 # In unlimited mode (max_retries=0), always wait and continue
                 if max_retries == 0 or attempt_num < max_retries:
-                    self._wait_for_retry(attempt_num)
+                    self._wait_for_retry(attempt_num - 1)
 
     def _log_retry_attempt(self, config: Dict[str, str], attempt_num: int) -> None:
         """Log retry attempt -"""
