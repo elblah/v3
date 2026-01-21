@@ -122,6 +122,134 @@ class TestSessionManagerValidateToolCalls:
         assert len(result) == 1
         assert result[0]["id"] == "1"
 
+    def test_validate_tool_calls_valid_json_with_complex_args(self):
+        """Test validating tool calls with valid complex JSON arguments."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        tool_calls = {
+            "1": {
+                "id": "1",
+                "function": {
+                    "name": "write_file",
+                    "arguments": '{"path": "/tmp/test.txt", "content": "Hello World", "append": false}'
+                }
+            }
+        }
+
+        result = manager._validate_tool_calls(tool_calls)
+        assert len(result) == 1
+        assert result[0]["id"] == "1"
+
+    def test_validate_tool_calls_malformed_json_rejected(self):
+        """Test tool calls with malformed JSON are rejected."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        tool_calls = {
+            "1": {
+                "id": "1",
+                "function": {
+                    "name": "read_file",
+                    "arguments": '{"path": "/tmp/test.txt"'  # Missing closing brace
+                }
+            }
+        }
+
+        result = manager._validate_tool_calls(tool_calls)
+        assert result == []  # Should be completely rejected
+
+    def test_validate_tool_calls_malformed_json_with_model_tags(self):
+        """Test tool calls with model tags breaking JSON structure are rejected."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        tool_calls = {
+            "1": {
+                "id": "1",
+                "function": {
+                    "name": "save_progress",
+                    "arguments": '{"summary": "</minimax-tool>" test}'  # Malformed JSON - broken by model tag
+                }
+            }
+        }
+
+        result = manager._validate_tool_calls(tool_calls)
+        assert result == []  # Should be completely rejected
+
+    def test_validate_tool_calls_mixed_json_validity(self):
+        """Test mixed tool calls with some valid JSON and some invalid."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        tool_calls = {
+            "1": {
+                "id": "1",
+                "function": {
+                    "name": "read_file",
+                    "arguments": '{"path": "valid.json"}'  # Valid JSON
+                }
+            },
+            "2": {
+                "id": "2",
+                "function": {
+                    "name": "write_file",
+                    "arguments": '{"path": "invalid"'  # Invalid JSON
+                }
+            },
+            "3": {
+                "id": "3",
+                "function": {
+                    "name": "run_shell_command",
+                    "arguments": '{"command": "ls -la"}'  # Valid JSON
+                }
+            }
+        }
+
+        result = manager._validate_tool_calls(tool_calls)
+        assert len(result) == 2  # Only the valid ones
+        assert result[0]["id"] == "1"
+        assert result[1]["id"] == "3"
+
+    def test_validate_tool_calls_empty_json_string(self):
+        """Test tool calls with empty JSON string."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        tool_calls = {
+            "1": {
+                "id": "1",
+                "function": {
+                    "name": "test_tool",
+                    "arguments": ''
+                }
+            }
+        }
+
+        result = manager._validate_tool_calls(tool_calls)
+        assert result == []  # Empty string is not valid JSON
+
+    def test_validate_tool_calls_non_object_json(self):
+        """Test tool calls with JSON that is not an object."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        tool_calls = {
+            "1": {
+                "id": "1",
+                "function": {
+                    "name": "test_tool",
+                    "arguments": '"just a string"'  # Valid JSON but not an object
+                }
+            }
+        }
+
+        # This should be accepted - json.loads() will succeed
+        # We don't require object, just valid JSON
+        result = manager._validate_tool_calls(tool_calls)
+        assert len(result) == 1
+        assert result[0]["id"] == "1"
+
 
 class TestSessionManagerHandleEmptyResponse:
     """Test SessionManager empty response handling."""
