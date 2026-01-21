@@ -7,9 +7,8 @@ import os
 import subprocess
 import secrets
 from aicoder.core.commands.base import BaseCommand, CommandResult, CommandContext
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
-from aicoder.core.config import Config
 from aicoder.core import prompt_history
 
 
@@ -33,12 +32,8 @@ class EditCommand(BaseCommand):
         try:
             # Check if in tmux (using TMUX env var, not TMUX_PANE)
             if not os.environ.get("TMUX"):
-                LogUtils.print(
-                    f"{Config.colors['red']}This command only works inside a tmux environment.{Config.colors['reset']}"
-                )
-                LogUtils.print(
-                    f"{Config.colors['yellow']}Please run this command inside tmux.{Config.colors['reset']}"
-                )
+                LogUtils.error("This command only works inside a tmux environment.")
+                LogUtils.warn("Please run this command inside tmux.")
                 return CommandResult(should_quit=False, run_api_call=False)
 
             # Get editor from environment or default to nano
@@ -52,14 +47,8 @@ class EditCommand(BaseCommand):
             with open(temp_file, "w", encoding="utf-8") as f:
                 f.write("")
 
-            LogUtils.print(
-                f"Opening {editor} in tmux window...",
-                LogOptions(color=Config.colors["cyan"]),
-            )
-            LogUtils.print(
-                "Save and exit when done. The editor is running in a separate tmux window.",
-                LogOptions(color=Config.colors["dim"]),
-            )
+            LogUtils.info(f"Opening {editor} in tmux window...")
+            LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
 
             # Use tmux wait-for
             sync_point = f"edit_done_{random_suffix}"
@@ -93,23 +82,17 @@ class EditCommand(BaseCommand):
             # Clean up temp file
             try:
                 os.remove(temp_file)
-            except:
+            except Exception:
                 pass
 
             if content:
                 # Check if content starts with a command (starts with /)
                 if content.strip().startswith("/"):
                     # It's a command - execute it instead of sending to AI
-                    LogUtils.print(
-                        "Command composed.", LogOptions(color=Config.colors["green"])
-                    )
-                    LogUtils.print(
-                        "--- Command ---", LogOptions(color=Config.colors["cyan"])
-                    )
-                    LogUtils.print(content, LogOptions())
-                    LogUtils.print(
-                        "---------------", LogOptions(color=Config.colors["cyan"])
-                    )
+                    LogUtils.success("Command composed.")
+                    LogUtils.info("--- Command ---")
+                    LogUtils.print(content)
+                    LogUtils.info("---------------")
                     # Return special flag to indicate this is a command to execute
                     return CommandResult(
                         should_quit=False,
@@ -119,25 +102,16 @@ class EditCommand(BaseCommand):
                 else:
                     # It's a regular message - send to AI
                     prompt_history.save_prompt(content)
-                    LogUtils.print(
-                        "Message composed.", LogOptions(color=Config.colors["green"])
-                    )
-                    LogUtils.print(
-                        "--- Message ---", LogOptions(color=Config.colors["cyan"])
-                    )
-                    LogUtils.print(content, LogOptions())
-                    LogUtils.print(
-                        "---------------", LogOptions(color=Config.colors["cyan"])
-                    )
+                    LogUtils.success("Message composed.")
+                    LogUtils.info("--- Message ---")
+                    LogUtils.print(content)
+                    LogUtils.info("---------------")
                     # Return message to trigger AI call
                     return CommandResult(
                         should_quit=False, run_api_call=True, message=content
                     )
             else:
-                LogUtils.print(
-                    "Empty message - cancelled.",
-                    LogOptions(color=Config.colors["yellow"]),
-                )
+                LogUtils.warn("Empty message - cancelled.")
                 return CommandResult(should_quit=False, run_api_call=False)
 
         except Exception as e:
@@ -149,5 +123,5 @@ class EditCommand(BaseCommand):
             try:
                 if "temp_file" in locals() and os.path.exists(temp_file):
                     os.remove(temp_file)
-            except:
+            except Exception:
                 pass

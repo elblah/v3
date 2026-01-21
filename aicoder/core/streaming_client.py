@@ -7,7 +7,7 @@ from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
-from aicoder.utils.log import print as log_print, error as log_error, warn as log_warn, debug as log_debug, LogOptions
+from aicoder.utils.log import error as log_error, warn as log_warn, info as log_info, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
 
 
@@ -172,7 +172,7 @@ class StreamingClient:
                 log_debug(
                     f"Error response body: {json.dumps(error_data, indent=2)}"
                 )
-            except:
+            except Exception:
                 log_debug("Error response body: <could not parse as JSON>")
 
     def _log_attempt_error(self, error: Exception, attempt_num: int) -> None:
@@ -296,7 +296,6 @@ class StreamingClient:
                 raise Exception("No response body for streaming")
 
 
-            buffer = ""
             raw_response = ""
 
             # Read response incrementally
@@ -342,10 +341,6 @@ class StreamingClient:
                         choices = []
                         if chunk_data.get("choices"):
                             for choice_dict in chunk_data["choices"]:
-                                # Use delta dict directly
-                                delta_dict = choice_dict.get("delta", {})
-                                delta = delta_dict
-
                                 choice = choice_dict
                                 choices.append(choice)
 
@@ -426,7 +421,7 @@ class StreamingClient:
                 log_warn(f"[*] Context size: {current_size:,} (threshold: {threshold:,})")
                 self._recovery_attempted = True
                 self.message_history.force_compact_rounds(1)
-                log_print("[*] Retrying request after compaction...", LogOptions(color=Config.colors['blue']))
+                log_info("[*] Retrying request after compaction...")
                 return True  # Retry with compacted context
 
         # Display attempt count (unlimited mode doesn't show max)
