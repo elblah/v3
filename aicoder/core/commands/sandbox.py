@@ -6,7 +6,7 @@ import os
 from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
-from aicoder.utils.log import LogUtils
+from aicoder.utils.log import info, dim, LogUtils
 
 
 class SandboxCommand(BaseCommand):
@@ -34,20 +34,11 @@ class SandboxCommand(BaseCommand):
             args = []
 
         status = "DISABLED" if Config.sandbox_disabled() else "ENABLED"
-        status_color = (
-            Config.colors["red"]
-            if Config.sandbox_disabled()
-            else Config.colors["green"]
-        )
 
         if not args:
             # Show status
-            LogUtils.print(
-                f"sandbox-fs Status: {status}", color=status_color, bold=True
-            )
-            LogUtils.print(
-                f"Current directory: {os.getcwd()}", color=Config.colors["cyan"]
-            )
+            info(f"sandbox-fs Status: {status}")
+            info(f"Current directory: {os.getcwd()}")
 
             if Config.sandbox_disabled():
                 LogUtils.warn("Sandbox-fs is DISABLED")
@@ -58,10 +49,7 @@ class SandboxCommand(BaseCommand):
                     "File operations for internal tools are limited to current directory and subdirectories"
                 )
 
-            LogUtils.print(
-                "Use /sandbox-fs on|off to toggle at runtime",
-                color=Config.colors["dim"],
-            )
+            dim("Use /sandbox-fs on|off to toggle at runtime")
 
             return CommandResult(should_quit=False, run_api_call=False)
 

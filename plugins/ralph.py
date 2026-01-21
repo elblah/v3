@@ -8,7 +8,7 @@ The AI sees its previous work in files and git history, allowing self-correction
 import re
 from typing import Optional
 
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 from aicoder.core.config import Config
 
 
@@ -189,24 +189,24 @@ Examples:
         max_iter_str = str(args["max_iterations"]) if args["max_iterations"] > 0 else "unlimited"
         promise_str = args["completion_promise"] or "DONE"
 
-        LogUtils.print("🔄 Ralph loop activated!", LogOptions(color=Config.colors["green"]))
-        LogUtils.print(f"  Iteration: {RalphService.get_iteration()}", LogOptions(color=Config.colors["white"]))
-        LogUtils.print(f"  Max iterations: {max_iter_str}", LogOptions(color=Config.colors["white"]))
-        LogUtils.print(f"  Completion promise: {promise_str}", LogOptions(color=Config.colors["white"]))
+        LogUtils.success("Ralph loop activated!")
+        LogUtils.info(f"  Iteration: {RalphService.get_iteration()}")
+        LogUtils.info(f"  Max iterations: {max_iter_str}")
+        LogUtils.info(f"  Completion promise: {promise_str}")
         if args["continuous"]:
-            LogUtils.print(f"  Mode: continuous (ignores promise)", LogOptions(color=Config.colors["yellow"]))
+            LogUtils.warn("  Mode: continuous (ignores promise)")
         if args["reset_context"]:
-            LogUtils.print(f"  Mode: reset-context (fresh start each iteration)", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print("", LogOptions(color=Config.colors["white"]))
-        LogUtils.print("The AI will repeatedly work on the same task until completion.", LogOptions(color=Config.colors["cyan"]))
-        LogUtils.print("Each iteration sees previous work in files and git history.", LogOptions(color=Config.colors["cyan"]))
+            LogUtils.info("  Mode: reset-context (fresh start each iteration)")
+        LogUtils.print()
+        LogUtils.info("The AI will repeatedly work on the same task until completion.")
+        LogUtils.info("Each iteration sees previous work in files and git history.")
         if args["reset_context"]:
-            LogUtils.print("  (context cleared each iteration - fresh start)", LogOptions(color=Config.colors["cyan"]))
+            LogUtils.dim("  (context cleared each iteration - fresh start)")
         if args["continuous"]:
-            LogUtils.print("  (ignores <promise> - loops until max iterations)", LogOptions(color=Config.colors["yellow"]))
+            LogUtils.warn("  (ignores <promise> - loops until max iterations)")
         else:
-            LogUtils.print(f"To stop: output <promise>{promise_str}</promise>", LogOptions(color=Config.colors["yellow"]))
-        LogUtils.print("", LogOptions(color=Config.colors["white"]))
+            LogUtils.warn(f"To stop: output <{{promise}}>{promise_str}</{{promise}}>")
+        LogUtils.print()
 
         # Build full prompt with completion instructions for AI
         prompt_with_instructions = self._build_prompt_with_instructions(args["prompt"])
@@ -248,7 +248,7 @@ TASK COMPLETION CRITERIA:
 - All requirements are met
 - Code is production-ready
 
-⚠️ DO NOT output <promise>{promise}</promise> until the task is TRULY COMPLETE.
+WARNING: DO NOT output <promise>{promise}</promise> until the task is TRULY COMPLETE.
 The loop will continue indefinitely until this phrase is detected.
 
 {f'MAX ITERATIONS: {max_iter}' if max_iter > 0 else 'MAX ITERATIONS: unlimited'}
@@ -314,7 +314,7 @@ The loop will continue indefinitely until this phrase is detected.
 
         # Check max iterations
         if not RalphService.should_continue():
-            LogUtils.print("🛑 Ralph loop: Max iterations reached", LogOptions(color=Config.colors["yellow"]))
+            LogUtils.warn("Ralph loop: Max iterations reached")
             RalphService.stop_loop()
             return None
 
@@ -339,7 +339,7 @@ The loop will continue indefinitely until this phrase is detected.
 
         # Check for completion promise (skip in continuous mode)
         if not RalphService.is_continuous() and RalphService.check_completion_promise(last_assistant_msg):
-            LogUtils.print(f"✅ Ralph loop: Completion promise detected: {RalphService._completion_promise}", LogOptions(color=Config.colors["green"]))
+            LogUtils.success(f"Ralph loop: Completion promise detected: {RalphService._completion_promise}")
             RalphService.stop_loop()
             return None
 
@@ -347,11 +347,11 @@ The loop will continue indefinitely until this phrase is detected.
         RalphService.increment_iteration()
         base_prompt = RalphService.get_prompt()
 
-        LogUtils.print(f"🔄 Ralph iteration {RalphService.get_iteration()}", LogOptions(color=Config.colors["cyan"]))
+        LogUtils.info(f"Ralph iteration {RalphService.get_iteration()}")
 
         # If reset-context is enabled, clear and rebuild context fresh
         if RalphService.should_reset_context():
-            LogUtils.print(f"  (resetting context)", LogOptions(color=Config.colors["dim"]))
+            LogUtils.dim("  (resetting context)")
 
             # Reset message history (preserves system prompt, clears chat)
             self.app.message_history.clear()
@@ -366,7 +366,7 @@ The loop will continue indefinitely until this phrase is detected.
             return prompt_with_instructions
 
         # Normal mode: just continue with accumulated context
-        LogUtils.print(f"  Prompt: {base_prompt[:80]}{'...' if len(base_prompt) > 80 else ''}", LogOptions(color=Config.colors["white"]))
+        LogUtils.dim(f"  Prompt: {base_prompt[:80]}{'...' if len(base_prompt) > 80 else ''}")
 
         # Rebuild prompt with instructions for next iteration
         prompt_with_instructions = self._build_prompt_with_instructions(base_prompt)
@@ -387,5 +387,5 @@ def create_plugin(ctx):
     ctx.register_hook("after_ai_processing", cmd.handle_ralph_trigger)
 
     if Config.debug():
-        LogUtils.print("[+] Ralph plugin loaded", LogOptions(color=Config.colors["green"]))
+        LogUtils.print("[+] Ralph plugin loaded")
     return {}
