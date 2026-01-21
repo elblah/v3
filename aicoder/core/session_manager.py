@@ -3,7 +3,8 @@ Session Manager - Handles AI session processing workflow
 Extracted from AICoder class for better separation of concerns
 """
 
-from typing import Dict, Any, List
+import json
+from typing import Dict, Any, List, Union
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
@@ -113,6 +114,10 @@ class SessionManager:
         valid_tool_calls = self._validate_tool_calls(accumulated_tool_calls)
         if not valid_tool_calls:
             LogUtils.error("No valid tool calls to execute")
+            # Add user message to inform AI about the JSON validation failure
+            self.message_history.add_user_message(
+                "ERROR: The tool calls you sent had invalid JSON format and could not be processed. Please try again with properly formatted JSON."
+            )
             return False
 
         # Add assistant message with tool calls
@@ -184,12 +189,30 @@ class SessionManager:
             print("")
 
     def _validate_tool_calls(self, tool_calls: dict) -> list:
-        """Validate tool calls"""
-        return [
-            tool_call
-            for tool_call in tool_calls.values()
-            if tool_call.get("function", {}).get("name") and tool_call.get("id")
-        ]
+        """Validate tool calls - rejects malformed JSON completely"""
+        valid_tool_calls = []
+        
+        for tool_call in tool_calls.values():
+            # Basic structure validation
+            if not (tool_call.get("function", {}).get("name") and tool_call.get("id")):
+                continue
+                
+            function = tool_call.get("function", {})
+            arguments_raw = function.get("arguments", "")
+            
+            # Validate JSON format - reject if malformed
+            if isinstance(arguments_raw, str):
+                try:
+                    # Try to parse the JSON - if it fails, reject this tool call entirely
+                    json.loads(arguments_raw)
+                except json.JSONDecodeError:
+                    if Config.debug():
+                        LogUtils.warn(f"[!] Malformed JSON in tool call '{function.get('name', 'unknown')}': {arguments_raw}")
+                    continue  # Skip this tool call entirely
+            
+            valid_tool_calls.append(tool_call)
+        
+        return valid_tool_calls
 
     def _force_compaction(self) -> None:
         """Force compaction of messages (compacts 1 oldest round)"""
