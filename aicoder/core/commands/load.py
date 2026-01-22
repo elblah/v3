@@ -37,6 +37,16 @@ class LoadCommand(BaseCommand):
             args = []
 
         filename = args[0] if args else "session.json"
+        
+        # Handle special case: /load last
+        if filename == "last":
+            if file_exists("last"):
+                filename = "last"
+            elif file_exists(".aicoder/last-session.json"):
+                filename = ".aicoder/last-session.json"
+            else:
+                LogUtils.error("No 'last' file found in current directory or .aicoder/last-session.json")
+                return CommandResult(should_quit=False, run_api_call=False)
 
         # Call session change hooks before loading new session (allows plugins to cleanup state)
         self.context.command_handler.plugin_system.call_hooks("on_session_change")
