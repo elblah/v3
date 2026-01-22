@@ -2,7 +2,8 @@
 Command registry implementation
 """
 
-from typing import Dict, List, Callable, Any, Optional, Union
+from typing import Dict, List, Callable, Optional, Union
+from bdb import BdbQuit
 from .base import BaseCommand, CommandResult, CommandContext
 from aicoder.utils.log import LogUtils
 
@@ -33,7 +34,11 @@ class SimplePluginCommand:
                 LogUtils.print(result)
             return CommandResult(should_quit=False, run_api_call=False)
         except Exception as e:
-            LogUtils.error(f"Error executing command: {e}")
+            # Handle BdbQuit (quitting debugger with 'q') gracefully
+            if isinstance(e, (BdbQuit, SystemExit)):
+                pass  # Silently ignore debugger quit
+            else:
+                LogUtils.error(f"Error executing command: {e}")
             return CommandResult(should_quit=False, run_api_call=False)
 
 
@@ -143,5 +148,9 @@ class CommandRegistry:
         try:
             return command.execute(args)
         except Exception as e:
-            LogUtils.error(f"Error executing command: {e}")
+            # Handle BdbQuit (quitting debugger with 'q') gracefully
+            if isinstance(e, (BdbQuit, SystemExit)):
+                pass  # Silently ignore debugger quit
+            else:
+                LogUtils.error(f"Error executing command: {e}")
             return CommandResult(should_quit=False, run_api_call=False)
