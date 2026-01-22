@@ -80,12 +80,26 @@ class CompactionService:
             raise e  # Re-throw to let caller handle it
 
     def force_compact_rounds(self, messages: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
-        """Force compact N oldest conversation rounds"""
+        """Force compact conversation rounds.
+
+        Args:
+            messages: List of message dicts
+            n: Number of rounds to compact.
+               Positive: compact N oldest rounds
+               Negative: keep only |N| newest rounds, compact everything else
+        """
         rounds = self._identify_rounds(messages)
         if len(rounds) == 0:
             return messages
 
-        rounds_to_compact = rounds[:min(n, len(rounds))]
+        if n < 0:
+            # Negative: keep only |n| newest rounds, compact the rest
+            keep_count = abs(n)
+            rounds_to_compact = rounds[:max(0, len(rounds) - keep_count)]
+        else:
+            # Positive: compact N oldest rounds
+            rounds_to_compact = rounds[:min(n, len(rounds))]
+
         if len(rounds_to_compact) == 0:
             return messages
 
@@ -118,7 +132,14 @@ class CompactionService:
         return self._replace_messages_with_summary(messages, filtered_messages, summary_message)
 
     def force_compact_messages(self, messages: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
-        """Force compact N oldest individual messages"""
+        """Force compact individual messages.
+
+        Args:
+            messages: List of message dicts
+            n: Number of messages to compact.
+               Positive: compact N oldest messages
+               Negative: keep only |N| newest messages, compact rest
+        """
         eligible_messages = [
             msg for msg in messages
             if msg.get("role") != "system" and not msg.get("content", "").startswith("[SUMMARY]")
@@ -127,7 +148,17 @@ class CompactionService:
         if len(eligible_messages) == 0:
             return messages
 
-        messages_to_compact = eligible_messages[:min(n, len(eligible_messages))]
+        if n < 0:
+            # Negative: keep only |n| newest messages, compact the rest
+            keep_count = abs(n)
+            messages_to_compact = eligible_messages[:max(0, len(eligible_messages) - keep_count)]
+        else:
+            # Positive: compact N oldest messages
+            messages_to_compact = eligible_messages[:min(n, len(eligible_messages))]
+
+        if len(messages_to_compact) == 0:
+            return messages
+
         summary = self._get_ai_summary(
             [
                 MessageGroup(

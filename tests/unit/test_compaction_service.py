@@ -339,3 +339,89 @@ class TestCompactionServiceUnit:
         result = service._replace_messages_with_summary(messages, to_replace, summary)
         assert len(result) == 1
         assert result[0]["content"].startswith("[SUMMARY]")
+
+    def test_force_compact_rounds_negative_keeps_newest(self):
+        """Test force_compact_rounds with negative N keeps newest rounds."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "system", "content": "System"},
+            # Round 0
+            {"role": "user", "content": "Old question 1"},
+            {"role": "assistant", "content": "Old answer 1"},
+            # Round 1
+            {"role": "user", "content": "Old question 2"},
+            {"role": "assistant", "content": "Old answer 2"},
+            # Round 2
+            {"role": "user", "content": "New question"},
+            {"role": "assistant", "content": "New answer"},
+        ]
+        # -1 means keep only 1 newest round, compact everything else
+        result = service.force_compact_rounds(messages, -1)
+        # Should have system + summary + 1 newest round
+        assert len(result) >= 3  # system + summary + newest round
+        # Last messages should be from the newest round
+        assert result[-2]["content"] == "New question"
+        assert result[-1]["content"] == "New answer"
+
+    def test_force_compact_rounds_negative_keeps_multiple(self):
+        """Test force_compact_rounds with -3 keeps 3 newest rounds."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "system", "content": "System"},
+            # Round 0
+            {"role": "user", "content": "Q1"},
+            {"role": "assistant", "content": "A1"},
+            # Round 1
+            {"role": "user", "content": "Q2"},
+            {"role": "assistant", "content": "A2"},
+            # Round 2
+            {"role": "user", "content": "Q3"},
+            {"role": "assistant", "content": "A3"},
+            # Round 3
+            {"role": "user", "content": "Q4"},
+            {"role": "assistant", "content": "A4"},
+        ]
+        # -3 means keep only 3 newest rounds (2, 3), compact rounds 0 and 1
+        result = service.force_compact_rounds(messages, -3)
+        # Should compact rounds 0 and 1 into summary, keep rounds 2 and 3
+        # Check that round 3 messages are present (newest)
+        last_messages = [m for m in result if m.get("role") == "user" and not m.get("content", "").startswith("[SUMMARY]")]
+        assert len(last_messages) <= 3  # At most 3 user messages (3 rounds)
+        # Q4 should be present (the newest)
+        assert any(m["content"] == "Q4" for m in result)
+
+    def test_force_compact_messages_negative_keeps_newest(self):
+        """Test force_compact_messages with negative N keeps newest messages."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Old 1"},
+            {"role": "assistant", "content": "Old 2"},
+            {"role": "user", "content": "Old 3"},
+            {"role": "assistant", "content": "New 4"},
+        ]
+        # -1 means keep only 1 newest message, compact rest
+        result = service.force_compact_messages(messages, -1)
+        # Should have system + summary + 1 newest message
+        assert len(result) >= 3
+        # Last non-system message should be "New 4"
+        non_system = [m for m in result if m.get("role") != "system"]
+        assert non_system[-1]["content"] == "New 4"
+
+    def test_force_compact_messages_negative_keeps_multiple(self):
+        """Test force_compact_messages with -3 keeps 3 newest messages."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Msg1"},
+            {"role": "assistant", "content": "Msg2"},
+            {"role": "user", "content": "Msg3"},
+            {"role": "assistant", "content": "Msg4"},
+            {"role": "user", "content": "Msg5"},
+            {"role": "assistant", "content": "Msg6"},
+        ]
+        # -3 means keep only 3 newest messages (4, 5, 6), compact rest
+        result = service.force_compact_messages(messages, -3)
+        # Count non-system messages (should be 3 kept + summary)
+        non_system = [m for m in result if m.get("role") != "system"]
+        assert len(non_system) == 4  # 3 kept + 1 summary

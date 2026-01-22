@@ -16,6 +16,20 @@ class CompactCommand(BaseCommand):
         self._name = "compact"
         self._description = "Compact conversation history"
         self.usage = "/compact [force <N> | force-messages <N> | prune [all|stats|<N>] | highlander]"
+        self._help_text = """Compact conversation history.
+
+Usage:
+  /compact                 - Auto-compact if needed
+  /compact force <N>       - Compact N oldest rounds (positive) or keep only |N| newest (negative)
+  /compact force -1        - Keep only newest round, compact all others
+  /compact force 3         - Compact 3 oldest rounds
+  /compact force-messages <N> - Compact N oldest messages (positive) or keep only |N| newest (negative)
+  /compact force-messages -15 - Keep only 15 newest messages, compact rest
+  /compact prune all       - Remove all pruned tool results
+  /compact prune stats     - Remove only tool=stats results
+  /compact prune <N>       - Remove last N pruned tool results
+  /compact highlander      - Keep only the most recent [SUMMARY] message
+  /compact stats           - Show conversation statistics"""
 
     def get_name(self) -> str:
         """Command name"""
@@ -213,9 +227,11 @@ class CompactCommand(BaseCommand):
         LogUtils.print("  Commands:")
         LogUtils.print("    /compact                    Try auto-compaction")
         LogUtils.print("    /compact force <N>           Force compact N oldest rounds")
+        LogUtils.print("    /compact force -<N>          Keep only N newest rounds, compact rest")
         LogUtils.print(
-            "    /compact force-messages <N>   Force compact N oldest individual messages"
+            "    /compact force-messages <N>   Force compact N oldest messages"
         )
+        LogUtils.print("    /compact force-messages -<N> Keep only N newest messages, compact rest")
         LogUtils.print("    /compact prune all           Prune all tool call results")
         LogUtils.print("    /compact prune stats         Show tool call statistics")
         LogUtils.print(
@@ -227,7 +243,10 @@ class CompactCommand(BaseCommand):
         LogUtils.print("  ")
         LogUtils.print("  Examples:")
         LogUtils.print("    /compact force 3            Compact 3 oldest rounds")
+        LogUtils.print("    /compact force -1            Keep only newest round, compact rest")
+        LogUtils.print("    /compact force -3            Keep 3 newest rounds, compact rest")
         LogUtils.print("    /compact force-messages 15   Compact 15 oldest messages")
+        LogUtils.print("    /compact force-messages -5   Keep 5 newest messages, compact rest")
         LogUtils.print("    /compact prune all           Clear all tool results")
         LogUtils.print("    /compact prune 5             Clear 5 oldest tool results")
         LogUtils.print("    /compact prune stats         Show tool call stats")
