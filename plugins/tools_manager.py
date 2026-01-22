@@ -23,6 +23,7 @@ Commands:
 from typing import Dict, Any, Set
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def create_plugin(ctx):
@@ -376,4 +377,4 @@ Notes:
     ctx.register_command("/tools", handle_tools_command, description="Manage available tools")
 
     if Config.debug():
-        print("  - /tools command")
+        LogUtils.print("  - /tools command")

@@ -11,6 +11,7 @@ import readline
 from aicoder.core.config import Config
 from aicoder.core import prompt_history
 from aicoder.tools.internal import run_shell_command
+from aicoder.utils.log import LogUtils
 
 
 from aicoder.utils.shell_utils import ShellResult, execute_command_sync
@@ -67,7 +68,7 @@ class InputHandler:
         try:
             # Kill any orphaned subprocess from Ctrl+C before showing prompt
             if run_shell_command._active_proc is not None:
-                print(f"[*] Killing active subprocess (PID: {run_shell_command._active_proc.pid})")
+                LogUtils.print(f"[*] Killing active subprocess (PID: {run_shell_command._active_proc.pid})")
                 run_shell_command.kill_active_process()
 
             # Show context bar before user prompt (if available)
@@ -80,10 +81,10 @@ class InputHandler:
             prompt = f"> "
             return input(prompt).strip()
         except KeyboardInterrupt:
-            print()  # New line after Ctrl+C
+            LogUtils.print()  # New line after Ctrl+C
             raise  # Re-raise, let caller handle it
         except EOFError:
-            print()  # New line after Ctrl+D
+            LogUtils.print()  # New line after Ctrl+D
             raise  # Re-raise, let caller handle it (now continues like Ctrl+C)
 
     def _load_prompt_history(self):
@@ -178,7 +179,7 @@ class InputHandler:
 
         def handle_sigint(signum, frame):
             # Handle Ctrl+C gracefully
-            print("\nUse /quit to exit")
+            LogUtils.print("\nUse /quit to exit")
 
         signal.signal(signal.SIGINT, handle_sigint)
 

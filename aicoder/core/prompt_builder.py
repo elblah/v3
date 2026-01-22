@@ -10,6 +10,8 @@ import platform
 import sys
 from typing import Optional, Dict, Any
 
+from aicoder.utils.log import LogUtils
+
 
 class PromptContext:
     """Context for prompt building"""
@@ -116,7 +118,7 @@ Always follow user instructions carefully and provide helpful responses."""
                     + clean_agents
                     + "\n</project_specific_instructions>"
                 )
-                print("[i] Appended AGENTS.md to PROMPT-OVERRIDE.md")
+                LogUtils.info("Appended AGENTS.md to PROMPT-OVERRIDE.md")
 
         return prompt
 
@@ -125,7 +127,7 @@ Always follow user instructions carefully and provide helpful responses."""
         """Load PROMPT-OVERRIDE.md content if it exists"""
         try:
             if os.path.exists("PROMPT-OVERRIDE.md"):
-                print("[i] Using PROMPT-OVERRIDE.md as system prompt")
+                LogUtils.info("Using PROMPT-OVERRIDE.md as system prompt")
                 with open("PROMPT-OVERRIDE.md", "r", encoding="utf-8") as f:
                     return f.read()
         except Exception:
@@ -172,7 +174,7 @@ search (grep), shell command execution, and more via API request."""
 
         env_prompt = Config.system_prompt()
         if env_prompt:
-            print("[i] Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
+            LogUtils.info("Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
             options.override_prompt = env_prompt
         else:
             options.override_prompt = cls.load_prompt_override()

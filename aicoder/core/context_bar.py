@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 class ContextBar:
@@ -99,9 +100,9 @@ class ContextBar:
     def print_context_bar(self, stats, message_history) -> None:
         """Print context bar (for AI prompt)"""
         context_bar = self.format_context_bar(stats, message_history)
-        print(context_bar)
+        LogUtils.print(context_bar)
 
     def print_context_bar_for_user(self, stats, message_history) -> None:
         """Print context bar for user prompt (with newline before)"""
         context_bar = self.format_context_bar(stats, message_history)
-        print(f"\n{context_bar}")
+        LogUtils.print(f"\n{context_bar}")

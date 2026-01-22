@@ -65,14 +65,14 @@ def check_sandbox(path: str, context: str = "file operation") -> bool:
         or resolved_path.startswith(current_dir_with_slash)
     ):
         try:
-            from aicoder.core.config import Config
-
-            print(
-                f'{Config.colors.get("yellow", "")}[x] Sandbox: {context} trying to access "{resolved_path}" outside current directory "{_current_dir}"{Config.colors.get("reset", "")}'
-            )
+            from aicoder.utils.log import warn
+            warn(f'Sandbox: {context} trying to access "{resolved_path}" outside current directory "{_current_dir}"')
         except ImportError:
+            # Fallback if log utils not available
+            import sys
             print(
-                f'[x] Sandbox: {context} trying to access "{path}" (contains parent traversal)'
+                f'[x] Sandbox: {context} trying to access "{path}" (contains parent traversal)',
+                file=sys.stderr
             )
         return False
 

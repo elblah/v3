@@ -19,6 +19,7 @@ import os
 import subprocess
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def create_plugin(ctx):
@@ -89,7 +90,7 @@ def create_plugin(ctx):
             filepath = state["pending_files"].pop(0)
             issues = run_ruff_check(filepath)
             if issues:
-                print(f"[plugin] {issues}")
+                LogUtils.print(f"[plugin] {issues}")
                 # Add message for AI to fix (this will be AFTER tool result)
                 ctx.app.message_history.add_user_message(f"\n{issues}\n")
 
@@ -136,6 +137,6 @@ Commands:
     ctx.register_command("/ruff", handle_ruff_command, description="Ruff code quality checks")
 
     if Config.debug():
-        print("  - after_file_write hook")
-        print("  - after_tool_results hook")
-        print("  - /ruff command")
+        LogUtils.print("  - after_file_write hook")
+        LogUtils.print("  - after_tool_results hook")
+        LogUtils.print("  - /ruff command")

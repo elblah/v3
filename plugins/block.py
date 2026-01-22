@@ -15,6 +15,7 @@ import sys
 import subprocess
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 import tempfile
 import shutil
 import hashlib
@@ -186,16 +187,16 @@ def compile_block_executable() -> str | None:
         if verify_binary_integrity():
             return _block_executable_path
         else:
-            print("[!] Block binary tampered with or corrupted, recompiling")
+            LogUtils.warn("[!] Block binary tampered with or corrupted, recompiling")
 
     if _compilation_in_progress:
         return None
 
     requirements_ok, missing = check_requirements()
     if not requirements_ok:
-        print(f"[X] Block plugin unavailable - missing requirements:")
+        LogUtils.error(f"[X] Block plugin unavailable - missing requirements:")
         for req in missing:
-            print(f"    - {req}")
+            LogUtils.print(f"    - {req}")
         return None
 
     _compilation_in_progress = True
@@ -213,7 +214,7 @@ def compile_block_executable() -> str | None:
             result = subprocess.run(compile_cmd, capture_output=True, text=True)
             
             if result.returncode != 0:
-                print(f"[X] Failed to compile block binary: {result.stderr.strip()}")
+                LogUtils.error(f"[X] Failed to compile block binary: {result.stderr.strip()}")
                 return None
             
             permanent_path = "/tmp/block-aicoder"
@@ -224,12 +225,12 @@ def compile_block_executable() -> str | None:
             _block_executable_hash = compute_file_hash(permanent_path)
             _block_executable_path = permanent_path
             
-            print(f"[+] Block binary compiled and verified")
-            print(f"[+] SHA256: {_block_executable_hash[:16]}...")
+            LogUtils.success(f"[+] Block binary compiled and verified")
+            LogUtils.print(f"[+] SHA256: {_block_executable_hash[:16]}...")
             return permanent_path
             
     except Exception as e:
-        print(f"[X] Failed to compile block binary: {e}")
+        LogUtils.error(f"[X] Failed to compile block binary: {e}")
         return None
     finally:
         _compilation_in_progress = False
@@ -243,7 +244,7 @@ def create_plugin(ctx):
         if not args or args == [""]:
             net_status = "ON" if _network_blocking_enabled else "OFF"
             disk_status = "ON" if _disk_blocking_enabled else "OFF"
-            print(f"Block status: Network {net_status}, Disk {disk_status}")
+            LogUtils.print(f"Block status: Network {net_status}, Disk {disk_status}")
             return
 
         if args[0] in ("on", "enable", "1"):
@@ -252,19 +253,19 @@ def create_plugin(ctx):
             disk_enabled = "disk" in args
             if net_enabled and not _network_blocking_enabled:
                 _network_blocking_enabled = True
-                print("[+] Network blocking enabled")
+                LogUtils.success("[+] Network blocking enabled")
             if disk_enabled and not _disk_blocking_enabled:
                 _disk_blocking_enabled = True
-                print("[+] Disk blocking enabled")
+                LogUtils.success("[+] Disk blocking enabled")
             if not net_enabled and not disk_enabled:
                 _network_blocking_enabled = True
                 _disk_blocking_enabled = True
-                print("[+] Network and disk blocking enabled")
+                LogUtils.success("[+] Network and disk blocking enabled")
                 
         elif args[0] in ("off", "disable", "0"):
             _network_blocking_enabled = False
             _disk_blocking_enabled = False
-            print("[-] All blocking disabled")
+            LogUtils.print("[-] All blocking disabled")
             
         elif args[0] == "toggle":
             if len(args) == 1:
@@ -273,31 +274,31 @@ def create_plugin(ctx):
                 _disk_blocking_enabled = not _disk_blocking_enabled
                 net_status = "enabled" if _network_blocking_enabled else "disabled"
                 disk_status = "enabled" if _disk_blocking_enabled else "disabled"
-                print(f"[+] Network and disk blocking {net_status}/{disk_status}")
+                LogUtils.print(f"[+] Network and disk blocking {net_status}/{disk_status}")
             else:
                 # Toggle specific
                 if "net" in args:
                     _network_blocking_enabled = not _network_blocking_enabled
                     status = "enabled" if _network_blocking_enabled else "disabled"
-                    print(f"[+] Network blocking {status}")
+                    LogUtils.print(f"[+] Network blocking {status}")
                 if "disk" in args:
                     _disk_blocking_enabled = not _disk_blocking_enabled
                     status = "enabled" if _disk_blocking_enabled else "disabled"
-                    print(f"[+] Disk blocking {status}")
+                    LogUtils.print(f"[+] Disk blocking {status}")
 
         elif args[0] in ("help", "-h", "--help"):
-            print("Block Plugin Commands:")
-            print("  /block              - Show current status")
-            print("  /block on net disk  - Enable network and disk blocking")
-            print("  /block on net       - Enable network blocking only")
-            print("  /block on disk      - Enable disk blocking only")
-            print("  /block off          - Disable all blocking")
-            print("  /block toggle       - Toggle both network and disk")
-            print("  /block toggle net   - Toggle network only")
-            print("  /block toggle disk  - Toggle disk only")
+            LogUtils.print("Block Plugin Commands:")
+            LogUtils.print("  /block              - Show current status")
+            LogUtils.print("  /block on net disk  - Enable network and disk blocking")
+            LogUtils.print("  /block on net       - Enable network blocking only")
+            LogUtils.print("  /block on disk      - Enable disk blocking only")
+            LogUtils.print("  /block off          - Disable all blocking")
+            LogUtils.print("  /block toggle       - Toggle both network and disk")
+            LogUtils.print("  /block toggle net   - Toggle network only")
+            LogUtils.print("  /block toggle disk  - Toggle disk only")
         else:
-            print(f"Unknown argument: {args[0]}")
-            print("Use /block help for usage")
+            LogUtils.error(f"Unknown argument: {args[0]}")
+            LogUtils.print("Use /block help for usage")
 
     def patch_run_shell_command():
         tool_def = ctx.app.tool_manager.tools.get("run_shell_command")
@@ -314,7 +315,7 @@ def create_plugin(ctx):
                 if not _block_executable_path or not os.path.exists(_block_executable_path) or not verify_binary_integrity():
                     executable = compile_block_executable()
                     if not executable:
-                        print("[!] Failed to compile secure block binary - running without protection")
+                        LogUtils.warn("[!] Failed to compile secure block binary - running without protection")
                         return original_execute(args_obj)
                 
                 command = args_obj.get("command", "")
@@ -359,6 +360,6 @@ timeout 60s {_block_executable_path} -- bash -c "$command"'''
     requirements_ok, missing = check_requirements()
     if Config.debug():
         if requirements_ok:
-            print("[+] Block plugin loaded (use /block on net disk)")
+            LogUtils.print("[+] Block plugin loaded (use /block on net disk)")
         else:
-            print("[+] Block plugin loaded (missing: {', '.join(missing)})")
+            LogUtils.print("[+] Block plugin loaded (missing: {', '.join(missing)})")

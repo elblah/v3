@@ -18,9 +18,10 @@ import signal
 import shlex
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils, info, dim, warn, success, print
 
 
 def create_plugin(ctx):
@@ -313,7 +314,7 @@ def create_plugin(ctx):
         args = shlex.split(args_str.strip()) if args_str.strip() else []
 
         if not args or args[0] == "help":
-            print("""
+            info("""
 Background Jobs Commands:
   /bg-jobs list              - List all running jobs
   /bg-jobs status <pid|seq>  - Show job details
@@ -337,27 +338,27 @@ Examples:
 
         if action == "list":
             if not jobs:
-                print(f"{Config.colors['yellow']}No background jobs running{Config.colors['reset']}")
+                warn("No background jobs running")
             else:
-                print(f"{Config.colors['brightGreen']}Background Jobs ({len(jobs)} running):{Config.colors['reset']}")
+                success(f"Background Jobs ({len(jobs)} running):")
                 for idx, (pid, job) in enumerate(jobs.items(), 1):
                     print(f"  [{idx}] {job['name']:<20} (pid: {pid})")
 
         elif action == "status":
             if len(args) < 2:
-                print(f"{Config.colors['yellow']}Error: /bg-jobs status requires pid or sequence number{Config.colors['reset']}")
+                warn("/bg-jobs status requires pid or sequence number")
                 return
 
             identifier = args[1]
             pid = parse_pid_or_seq(identifier)
 
             if pid is None or pid not in jobs:
-                print(f"{Config.colors['yellow']}Error: No running job found: {identifier}{Config.colors['reset']}")
+                warn(f"No running job found: {identifier}")
                 return
 
             job = jobs[pid]
-            print(f"""
-{Config.colors['brightGreen']}Job: {job['name']}{Config.colors['reset']}
+            info(f"""
+Job: {job['name']}
 PID: {pid}
 Status: running
 Command: {job['command']}
@@ -366,42 +367,42 @@ Started: {format_time(job['started_at'])}
 
         elif action == "kill":
             if len(args) < 2:
-                print(f"{Config.colors['yellow']}Error: /bg-jobs kill requires pid or sequence number{Config.colors['reset']}")
+                warn("/bg-jobs kill requires pid or sequence number")
                 return
 
             identifier = args[1]
             pid = parse_pid_or_seq(identifier)
 
             if pid is None or pid not in jobs:
-                print(f"{Config.colors['yellow']}Error: No running job found: {identifier}{Config.colors['reset']}")
+                warn(f"No running job found: {identifier}")
                 return
 
             job_name = jobs[pid]["name"]
             if kill_job(pid):
-                print(f"{Config.colors['brightGreen']}Killed job: {job_name} (pid: {pid}){Config.colors['reset']}")
+                success(f"Killed job: {job_name} (pid: {pid})")
             else:
-                print(f"{Config.colors['yellow']}Error: Failed to kill job: {job_name}{Config.colors['reset']}")
+                warn(f"Failed to kill job: {job_name}")
 
         elif action == "kill-all":
             killed = kill_all_jobs()
-            print(f"{Config.colors['brightGreen']}Killed {killed} background job(s){Config.colors['reset']}")
+            success(f"Killed {killed} background job(s)")
 
         elif action == "run":
             if len(args) < 3:
-                print(f"{Config.colors['yellow']}Error: /bg-jobs run requires name and command{Config.colors['reset']}")
-                print(f"{Config.colors['dim']}Usage: /bg-jobs run <name> <command>{Config.colors['reset']}")
+                warn("/bg-jobs run requires name and command")
+                dim("Usage: /bg-jobs run <name> <command>")
                 return
 
             name = args[1]
             command = " ".join(args[2:])  # Everything after name is the command
 
             pid = start_background_job(name, command)
-            print(f"{Config.colors['brightGreen']}Started job: {name} (pid: {pid}){Config.colors['reset']}")
-            print(f"{Config.colors['dim']}Command: {command}{Config.colors['reset']}")
+            success(f"Started job: {name} (pid: {pid})")
+            dim(f"Command: {command}")
 
         else:
-            print(f"{Config.colors['yellow']}Error: Unknown command: {action}{Config.colors['reset']}")
-            print(f"{Config.colors['dim']}Use /bg-jobs help to see available commands{Config.colors['reset']}")
+            warn(f"Unknown command: {action}")
+            dim("Use /bg-jobs help to see available commands")
 
     # Register the /bg-jobs command
     ctx.register_command(
@@ -416,12 +417,12 @@ Started: {format_time(job['started_at'])}
         """Kill all background jobs on shutdown"""
         if jobs:
             killed = kill_all_jobs()
-            print(f"[background_jobs] Killed {killed} background job(s) on shutdown")
+            LogUtils.print(f"[background_jobs] Killed {killed} background job(s) on shutdown")
 
     if Config.debug():
-        print("[+] Background jobs plugin loaded")
-        print("    - bg_jobs tool")
-        print("    - /bg-jobs command")
+        LogUtils.print("[+] Background jobs plugin loaded")
+        LogUtils.print("    - bg_jobs tool")
+        LogUtils.print("    - /bg-jobs command")
 
     # Return cleanup handler
     return {"cleanup": cleanup_all_jobs}
