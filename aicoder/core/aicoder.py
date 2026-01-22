@@ -73,10 +73,7 @@ class AICoder:
 
         # Auto-save functionality
         self._auto_save_enabled = os.environ.get("AICODER_AUTO_SAVE", "1").lower() in ("1", "true", "yes")
-
-        # Auto-save functionality
-        self._session_file_path = os.path.join(".aicoder", "last-session.json")
-        self._auto_save_enabled = os.environ.get("AICODER_AUTO_SAVE", "1").lower() in ("1", "true", "yes")
+        self._session_file_path = os.environ.get("AICODER_AUTO_SAVE_FILE", os.path.join(".aicoder", "last-session.json"))
 
     def set_next_prompt(self, prompt: str) -> None:
         """Set next prompt to execute (for auto-council)"""
@@ -410,7 +407,7 @@ class AICoder:
     def _auto_save_on_exit(self) -> None:
         """Auto-save callback for atexit"""
         try:
-            self.command_handler.handle_command("/save .aicoder/last-session.json")
+            self.command_handler.handle_command(f"/save {self._session_file_path}")
         except Exception:
             # Don't let exceptions propagate during shutdown
             pass
