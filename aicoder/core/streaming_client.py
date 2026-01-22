@@ -127,7 +127,7 @@ class StreamingClient:
 
             log_debug(
                 f"*** Retrying: {config['base_url']} with model {config['model']}",
-                Config.colors["yellow"],
+                "yellow",
             )
 
     def _log_request_details(
