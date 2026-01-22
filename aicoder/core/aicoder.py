@@ -5,6 +5,9 @@ Clean version with clear structure
 
 import sys
 import time
+import os
+import json
+import atexit
 from typing import Dict, Any
 
 from aicoder.core.config import Config
@@ -67,6 +70,13 @@ class AICoder:
 
         # Hooks
         self.notify_hooks = None
+
+        # Auto-save functionality
+        self._auto_save_enabled = os.environ.get("AICODER_AUTO_SAVE", "1").lower() in ("1", "true", "yes")
+
+        # Auto-save functionality
+        self._session_file_path = os.path.join(".aicoder", "last-session.json")
+        self._auto_save_enabled = os.environ.get("AICODER_AUTO_SAVE", "1").lower() in ("1", "true", "yes")
 
     def set_next_prompt(self, prompt: str) -> None:
         """Set next prompt to execute (for auto-council)"""
@@ -132,9 +142,11 @@ class AICoder:
         # Start socket server for external control
         self.socket_server.start()
 
+        # Register auto-save if enabled
+        self.register_auto_save()
+
     def _calculate_tool_tokens(self) -> None:
         """Calculate tool definition tokens once at startup"""
-        import json
         from aicoder.core.token_estimator import set_tool_tokens, _estimate_weighted_tokens
 
         tools = self.tool_manager.get_tool_definitions()
@@ -389,3 +401,16 @@ class AICoder:
         """Clean shutdown"""
         self.socket_server.stop()
         self.input_handler.close()
+
+    def register_auto_save(self) -> None:
+        """Register auto-save with Python's atexit mechanism"""
+        if self._auto_save_enabled:
+            atexit.register(self._auto_save_on_exit)
+
+    def _auto_save_on_exit(self) -> None:
+        """Auto-save callback for atexit"""
+        try:
+            self.command_handler.handle_command("/save .aicoder/last-session.json")
+        except Exception:
+            # Don't let exceptions propagate during shutdown
+            pass
