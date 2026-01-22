@@ -50,12 +50,12 @@ class SessionManager:
             if not streaming_result["should_continue"]:
                 return
 
-            has_tool_calls = self._validate_and_process_tool_calls(
+            has_tool_calls, status = self._validate_and_process_tool_calls(
                 streaming_result["full_response"],
                 streaming_result["accumulated_tool_calls"],
             )
 
-            self._handle_post_processing(has_tool_calls)
+            self._handle_post_processing(has_tool_calls, status)
 
         except Exception as e:
             self._handle_processing_error(e)
@@ -105,11 +105,18 @@ class SessionManager:
 
     def _validate_and_process_tool_calls(
         self, full_response: str, accumulated_tool_calls: dict
-    ) -> bool:
-        """Validate and process accumulated tool calls"""
+    ) -> tuple[bool, str]:
+        """Validate and process accumulated tool calls
+        
+        Returns:
+            tuple: (has_tool_calls, status) where status is one of:
+                - "success": Tool calls executed successfully
+                - "empty_response": No tool calls (normal conversation)
+                - "validation_error": Tool calls had invalid JSON (error condition)
+        """
         if not accumulated_tool_calls:
             self._handle_empty_response(full_response)
-            return False
+            return False, "empty_response"
 
         valid_tool_calls = self._validate_tool_calls(accumulated_tool_calls)
         if not valid_tool_calls:
@@ -118,7 +125,7 @@ class SessionManager:
             self.message_history.add_user_message(
                 "ERROR: The tool calls you sent had invalid JSON format and could not be processed. Please try again with properly formatted JSON."
             )
-            return False
+            return False, "validation_error"
 
         # Add assistant message with tool calls
         tool_calls_for_message = []
@@ -143,9 +150,9 @@ class SessionManager:
         )
 
         self.tool_executor.execute_tool_calls(valid_tool_calls)
-        return True
+        return True, "success"
 
-    def _handle_post_processing(self, has_tool_calls: bool) -> None:
+    def _handle_post_processing(self, has_tool_calls: bool, status: str) -> None:
         """Handle post-processing after AI response"""
         # Check if user requested guidance mode (stop after current tool)
         if self.tool_executor.is_guidance_mode():
@@ -164,9 +171,15 @@ class SessionManager:
         if has_tool_calls and self.is_processing and self.message_history.should_auto_compact():
             self._perform_auto_compaction()
 
-        if has_tool_calls and self.is_processing:
-            # Continue processing for recursive tool calls
-            self.process_with_ai()
+        # Continue processing only when appropriate
+        if self.is_processing:
+            if has_tool_calls:
+                # Continue processing for recursive tool calls
+                self.process_with_ai()
+            elif status == "validation_error":
+                # Continue processing to allow AI to respond to validation error
+                self.process_with_ai()
+            # status == "empty_response": Normal conversation, don't continue
 
     def _handle_processing_error(self, error: Exception) -> None:
         """Handle processing errors"""
