@@ -251,7 +251,7 @@ class TestConstants:
 
     def test_default_read_limit(self):
         """Test default read limit value"""
-        assert DEFAULT_READ_LIMIT == 300
+        assert DEFAULT_READ_LIMIT == 150
 
     def test_max_line_length(self):
         """Test max line length value"""
