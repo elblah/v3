@@ -539,7 +539,7 @@ GUIDELINES:
             self.app.set_next_prompt(org_prompt)
 
             colors = Config.colors
-            print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start")
+            LogUtils.print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start")
             return {"success": True, "message": "Organization request queued"}
 
         except Exception as e:
@@ -598,7 +598,7 @@ GUIDELINES:
                 self.app.message_history.add_user_message(self.last_user_msg_before_org["content"])
             else:
                 # Fallback: try to find last user message (shouldn't happen but defensive)
-                print("[!] Warning: No saved last user message before organization")
+                LogUtils.print("[!] Warning: No saved last user message before organization")
 
             # Load next_session_summary.md if it exists and add it as a user message
             next_session_file = os.path.join(self.blah_files_dir, "next_session_summary.md")
@@ -616,7 +616,7 @@ GUIDELINES:
             self._ensure_blah_files_message()
 
             colors = Config.colors
-            print(f"{colors['green']}[✓]{colors['reset']} Blah plugin finish")
+            LogUtils.print(f"{colors['green']}[✓]{colors['reset']} Blah plugin finish")
             
             # Continue processing with a resume prompt to help AI understand the new state
             resume_prompt = """[SYSTEM NOTICE: CONTEXT ORGANIZATION COMPLETE]
@@ -872,7 +872,7 @@ Directory: {self.current_session_dir}
             result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
             if result.get("success"):
                 colors = Config.colors
-                print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
+                LogUtils.print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
                 return False  # Skip traditional compaction
         
         return True  # Allow traditional compaction
@@ -884,7 +884,7 @@ Directory: {self.current_session_dir}
             result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
             if result.get("success"):
                 colors = Config.colors
-                print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
+                LogUtils.print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
         
         if not self.is_organizing:
             return None
@@ -907,7 +907,7 @@ Directory: {self.current_session_dir}
             # BLAHDONE phrase not found - continue processing with a prompt
             # This prevents getting stuck if AI didn't use the phrase
             colors = Config.colors
-            print(f"{colors['yellow']}[!]{colors['reset']} BLAHDONE phrase not found, continuing organization...")
+            LogUtils.print(f"{colors['yellow']}[!]{colors['reset']} BLAHDONE phrase not found, continuing organization...")
             self.app.set_next_prompt("CONTINUE: Complete your organization work and finish with <promise>BLAHDONE</promise> when done.")
         
         return None
@@ -919,7 +919,7 @@ Directory: {self.current_session_dir}
             result = self._start_organization(f"Auto-organize triggered at {self._get_current_tokens()} tokens")
             if result.get("success"):
                 colors = Config.colors
-                print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
+                LogUtils.print(f"{colors['cyan']}[*]{colors['reset']} Blah plugin start (auto)")
         
         # Ensure [BLAH FILES] message exists
         self._ensure_blah_files_message()
@@ -991,7 +991,7 @@ Directory: {self.current_session_dir}
             
             if org_wiped:
                 colors = Config.colors
-                print(f"{colors['yellow']}[!]{colors['reset']} Blah organization cancelled by compaction")
+                LogUtils.print(f"{colors['yellow']}[!]{colors['reset']} Blah organization cancelled by compaction")
                 self.is_organizing = False
                 self.organization_reason = ""
     
@@ -1075,13 +1075,13 @@ def create_plugin(ctx):
     ctx.register_hook('after_messages_set', plugin._after_messages_set)
     
     if Config.debug():
-        print(f"[+] Blah Context plugin loaded")
-        print(f"  - Session: {plugin.session_id}")
-        print(f"  - Directory: {plugin.current_session_dir}")
-        print(f"  - blah_files/: {plugin.blah_files_dir}")
-        print(f"  - archives/: {plugin.archives_dir}")
-        print(f"  - Token threshold: {plugin.token_threshold}")
-        print(f"  - /blah commands available (organize, cancel, status, set-threshold, reload, list, stats, help)")
-        print(f"  - blah tool registered for AI")
+        LogUtils.print(f"[+] Blah Context plugin loaded")
+        LogUtils.print(f"  - Session: {plugin.session_id}")
+        LogUtils.print(f"  - Directory: {plugin.current_session_dir}")
+        LogUtils.print(f"  - blah_files/: {plugin.blah_files_dir}")
+        LogUtils.print(f"  - archives/: {plugin.archives_dir}")
+        LogUtils.print(f"  - Token threshold: {plugin.token_threshold}")
+        LogUtils.print(f"  - /blah commands available (organize, cancel, status, set-threshold, reload, list, stats, help)")
+        LogUtils.print(f"  - blah tool registered for AI")
     
     return {"cleanup": plugin.cleanup}

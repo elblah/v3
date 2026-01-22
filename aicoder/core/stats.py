@@ -5,6 +5,7 @@ Stateful: class needed for maintaining counters
 """
 
 from typing import List, Dict, Any
+from aicoder.utils.log import LogUtils
 
 
 class Stats:
@@ -127,22 +128,22 @@ class Stats:
         Print statistics on exit
         
         """
-        print("\n=== Session Statistics ===")
-        print(
+        LogUtils.print("\n=== Session Statistics ===")
+        LogUtils.print(
             f"API Requests: {self.api_requests} (Success: {self.api_success}, Errors: {self.api_errors})"
         )
-        print(f"API Time Spent: {self.api_time_spent:.2f}s")
-        print(f"Messages Sent: {self.messages_sent}")
-        print(f"Tokens Processed: {self.tokens_processed:,}")
-        print(f"Prompt Tokens: {self.prompt_tokens:,}")
-        print(f"Completion Tokens: {self.completion_tokens:,}")
-        print(f"Compactions: {self.compactions}")
+        LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s")
+        LogUtils.print(f"Messages Sent: {self.messages_sent}")
+        LogUtils.print(f"Tokens Processed: {self.tokens_processed:,}")
+        LogUtils.print(f"Prompt Tokens: {self.prompt_tokens:,}")
+        LogUtils.print(f"Completion Tokens: {self.completion_tokens:,}")
+        LogUtils.print(f"Compactions: {self.compactions}")
 
         if self.current_prompt_size > 0:
             estimated = " (estimated)" if self.current_prompt_size_estimated else ""
-            print(f"Final Context Size: {self.current_prompt_size:,}{estimated}")
+            LogUtils.print(f"Final Context Size: {self.current_prompt_size:,}{estimated}")
 
-        print("========================")
+        LogUtils.print("========================")
 
     def reset(self) -> None:
         """

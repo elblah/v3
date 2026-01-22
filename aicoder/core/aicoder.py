@@ -143,7 +143,7 @@ class AICoder:
             tokens = _estimate_weighted_tokens(tools_json)
             set_tool_tokens(tokens)
             if Config.debug():
-                print(f"[*] Tool tokens estimated: {tokens}")
+                LogUtils.debug(f"Tool tokens estimated: {tokens}")
 
     def initialize_system_prompt(self) -> None:
         """Initialize with system prompt focused on internal tools"""

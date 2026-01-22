@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 
 def _parse_yaml_frontmatter(text: str) -> dict:
@@ -285,14 +286,14 @@ Skills are loaded from either .aicoder/skills (local) or ~/.config/aicoder-v3/sk
                 # Show shortened path for global
                 source_display = "~/.config/aicoder-v3/skills"
 
-            print(f"[+] Skills plugin loaded ({count} skills found)")
-            print(f"  - Loading from: {source_display}")
+            LogUtils.print(f"[+] Skills plugin loaded ({count} skills found)")
+            LogUtils.print(f"  - Loading from: {source_display}")
         else:
-            print("[+] Skills plugin loaded (0 skills found)")
-            print("  - No skills directory found")
+            LogUtils.print("[+] Skills plugin loaded (0 skills found)")
+            LogUtils.print("  - No skills directory found")
 
-        print("  - [SKILLS] message auto-maintained")
-        print("  - /skills reload command")
+        LogUtils.print("  - [SKILLS] message auto-maintained")
+        LogUtils.print("  - /skills reload command")
 
     # Cleanup function
     def cleanup():

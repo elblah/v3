@@ -5,7 +5,7 @@ Debug command implementation
 from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 
 
 class DebugCommand(BaseCommand):
@@ -60,40 +60,20 @@ class DebugCommand(BaseCommand):
     def _show_status(self) -> CommandResult:
         """Show current debug status"""
         status = "ENABLED" if Config.debug() else "DISABLED"
-        status_color = (
-            Config.colors["green"] if Config.debug() else Config.colors["yellow"]
-        )
+        status_color = "green" if Config.debug() else "yellow"
 
-        LogUtils.print(
-            f"Debug Mode Status: {status}",
-            LogOptions(color=status_color, bold=True),
-        )
+        LogUtils.print(f"Debug Mode Status: {status}", color=status_color, bold=True)
 
         if Config.debug():
             LogUtils.success("Debug logging is active")
-            LogUtils.print(
-                "  - Detailed output will be shown for API calls",
-                LogOptions(color=Config.colors["cyan"]),
-            )
+            LogUtils.info("Detailed output will be shown for API calls")
         else:
             LogUtils.warn("Debug logging is disabled")
-            LogUtils.print(
-                "  - Use /debug on to enable",
-                LogOptions(color=Config.colors["cyan"]),
-            )
+            LogUtils.info("Use /debug on to enable")
 
-        LogUtils.print(
-            "\nQuick actions:",
-            LogOptions(color=Config.colors["dim"]),
-        )
-        LogUtils.print(
-            "  /debug on|off|toggle - Manage debug mode",
-            LogOptions(color=Config.colors["dim"]),
-        )
-        LogUtils.print(
-            "  /debug breakpoint|bp|break - Trigger Python breakpoint() for debugging",
-            LogOptions(color=Config.colors["dim"]),
-        )
+        LogUtils.dim("\nQuick actions:")
+        LogUtils.dim("  /debug on|off|toggle - Manage debug mode")
+        LogUtils.dim("  /debug breakpoint|bp|break - Trigger Python breakpoint() for debugging")
 
         return CommandResult(should_quit=False, run_api_call=False)
 
@@ -104,10 +84,7 @@ class DebugCommand(BaseCommand):
         else:
             Config.set_debug(True)
             LogUtils.success("[*] Debug mode ENABLED")
-            LogUtils.print(
-                "Detailed output will now be shown for API calls",
-                LogOptions(color=Config.colors["cyan"]),
-            )
+            LogUtils.info("Detailed output will now be shown for API calls")
         return CommandResult(should_quit=False, run_api_call=False)
 
     def _disable_debug(self) -> CommandResult:
@@ -115,34 +92,19 @@ class DebugCommand(BaseCommand):
         if Config.debug():
             Config.set_debug(False)
             LogUtils.warn("[*] Debug mode DISABLED")
-            LogUtils.print(
-                "Only essential output will be shown",
-                LogOptions(color=Config.colors["cyan"]),
-            )
+            LogUtils.info("Only essential output will be shown")
         else:
             LogUtils.warn("[*] Debug mode is already disabled")
         return CommandResult(should_quit=False, run_api_call=False)
 
     def _trigger_breakpoint(self) -> CommandResult:
         """Trigger a Python breakpoint for debugging"""
-        LogUtils.print(
-            "\n[*] Triggering Python breakpoint()...",
-            LogOptions(color=Config.colors["yellow"], bold=True),
-        )
-        LogUtils.print(
-            "    Use 'c' to continue, 'q' to quit, or explore variables",
-            LogOptions(color=Config.colors["cyan"]),
-        )
-        LogUtils.print(
-            "    Type 'help' for debugger commands\n",
-            LogOptions(color=Config.colors["dim"]),
-        )
+        LogUtils.warn("\n[*] Triggering Python breakpoint()...")
+        LogUtils.info("    Use 'c' to continue, 'q' to quit, or explore variables")
+        LogUtils.dim("    Type 'help' for debugger commands\n")
 
         # Trigger the actual breakpoint
         breakpoint()
 
-        LogUtils.print(
-            "\n[*] Breakpoint session ended",
-            LogOptions(color=Config.colors["green"]),
-        )
+        LogUtils.success("\n[*] Breakpoint session ended")
         return CommandResult(should_quit=False, run_api_call=False)

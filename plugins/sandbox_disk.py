@@ -12,6 +12,7 @@ import shutil
 from typing import Dict, Any
 
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 _disk_blocking_enabled = False
 _blockdisk_executable_path = None
@@ -115,9 +116,9 @@ def compile_blockdisk_executable() -> str | None:
 
     requirements_ok, missing = check_requirements()
     if not requirements_ok:
-        print(f"[X] Disk blocking unavailable - missing requirements:")
+        LogUtils.error(f"Disk blocking unavailable - missing requirements:")
         for req in missing:
-            print(f"    - {req}")
+            LogUtils.print(f"    - {req}")
         return None
 
     _compilation_in_progress = True
@@ -135,7 +136,7 @@ def compile_blockdisk_executable() -> str | None:
             result = subprocess.run(compile_cmd, capture_output=True, text=True)
             
             if result.returncode != 0:
-                print(f"[X] Failed to compile disk blocker: {result.stderr.strip()}")
+                LogUtils.error(f"Failed to compile disk blocker: {result.stderr.strip()}")
                 return None
             
             permanent_path = "/tmp/block-disk-aicoder"
@@ -143,11 +144,11 @@ def compile_blockdisk_executable() -> str | None:
             os.chmod(permanent_path, 0o755)
             
             _blockdisk_executable_path = permanent_path
-            print(f"[+] Disk blocker compiled successfully")
+            LogUtils.success("Disk blocker compiled successfully")
             return permanent_path
             
     except Exception as e:
-        print(f"[X] Failed to compile disk blocker: {e}")
+        LogUtils.error(f"Failed to compile disk blocker: {e}")
         return None
     finally:
         _compilation_in_progress = False
@@ -159,21 +160,21 @@ def create_plugin(ctx):
 
         if not args or args == "":
             status = "enabled" if _disk_blocking_enabled else "disabled"
-            print(f"Disk sandbox: {status}")
+            LogUtils.print(f"Disk sandbox: {status}")
             return
 
         if args in ("on", "enable", "1"):
             _disk_blocking_enabled = True
-            print("[+] Disk sandbox enabled")
+            LogUtils.success("Disk sandbox enabled")
         elif args in ("off", "disable", "0"):
             _disk_blocking_enabled = False
-            print("[-] Disk sandbox disabled")
+            LogUtils.print("Disk sandbox disabled")
         elif args == "toggle":
             _disk_blocking_enabled = not _disk_blocking_enabled
             status = "enabled" if _disk_blocking_enabled else "disabled"
-            print(f"[+] Disk sandbox {status}")
+            LogUtils.success(f"Disk sandbox {status}")
         else:
-            print("Use: /sdisk on/off/toggle")
+            LogUtils.print("Use: /sdisk on/off/toggle")
 
     def patch_run_shell_command():
         tool_def = ctx.app.tool_manager.tools.get("run_shell_command")
@@ -207,6 +208,6 @@ def create_plugin(ctx):
     requirements_ok, missing = check_requirements()
     if Config.debug():
         if requirements_ok:
-            print("[+] Disk sandbox plugin loaded (use /sdisk on)")
+            LogUtils.print("[+] Disk sandbox plugin loaded (use /sdisk on)")
         else:
-            print("[+] Disk sandbox plugin loaded (missing: {', '.join(missing)})")
+            LogUtils.print(f"[+] Disk sandbox plugin loaded (missing: {', '.join(missing)})")
