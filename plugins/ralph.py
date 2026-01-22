@@ -124,7 +124,7 @@ class RalphCommand:
 Ralph Plugin - Self-referential AI loops
 
 Usage:
-  /ralph "prompt" [--max-iterations N] [--forever] [--continuous] [--completion-promise "TEXT"] [--reset-context]
+  /ralph "prompt" [--max-iterations N] [--forever] [--continuous] [--completion-promise "TEXT"] [--reset-context|--forget|--fresh]
 
 Commands:
   /ralph <prompt>           Start Ralph loop with prompt
@@ -137,6 +137,8 @@ Options:
   --continuous              Loop until max iterations, ignore completion promise
   --completion-promise TEXT Phrase that signals completion (default: DONE)
   --reset-context           Reset context each iteration (fresh start each time)
+  --forget                  Alias for --reset-context (easier to remember)
+  --fresh                   Alias for --reset-context (clean memory each iteration)
 
 How it works:
   1. Run /ralph "Your task description"
@@ -162,6 +164,8 @@ Examples:
   /ralph "Refactor code" --forever
   /ralph "Improve test coverage" --continuous --max-iterations 20
   /ralph "Analyze this codebase" --reset-context
+  /ralph "Start fresh each iteration" --forget
+  /ralph "Clean slate development" --fresh
 """
 
     def handle_ralph(self, args_str: str) -> str:
@@ -292,7 +296,7 @@ The loop will continue indefinitely until this phrase is detected.
             elif part == "--completion-promise" and i + 1 < len(parts):
                 result["completion_promise"] = parts[i + 1]
                 i += 2
-            elif part == "--reset-context":
+            elif part in ["--reset-context", "--forget", "--fresh"]:
                 result["reset_context"] = True
                 i += 1
             else:
@@ -351,7 +355,7 @@ The loop will continue indefinitely until this phrase is detected.
 
         # If reset-context is enabled, clear and rebuild context fresh
         if RalphService.should_reset_context():
-            LogUtils.dim("  (resetting context)")
+            LogUtils.dim("  (forgetting previous context - fresh start)")
 
             # Reset message history (preserves system prompt, clears chat)
             self.app.message_history.clear()
