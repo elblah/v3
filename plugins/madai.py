@@ -256,7 +256,7 @@ def create_plugin(ctx):
             "  - If user made a statement: 'Respond to user's point about X'\n"
             "  - Only say 'Wait for user' if conversation is genuinely finished\n\n"
             "*IMPORTANT:* Don't repeat yourself. Previous [CONTEXT] messages are preserved. If you've already introduced yourself, answered a question, or established something, don't do it again. Continue naturally from where you left off. Only new information needs to be written.\n\n"
-            "A UTC timestamp is automatically appended to each [CONTEXT] for temporal context.\n\n"
+            #"A UTC timestamp is automatically appended to each [CONTEXT] for temporal context.\n\n"
             "Optionally set keep_only_last_context_after=true to remove old [CONTEXT] messages after this save, keeping only the new one."
         ),
         parameters={
