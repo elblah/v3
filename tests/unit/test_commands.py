@@ -459,43 +459,29 @@ class TestEditCommand:
 
     def test_edit_execute_no_tmux(self, mock_context):
         """Test edit command fails gracefully outside tmux."""
+        from aicoder.core.config import Config
+        
         with patch.dict(os.environ, {}, clear=False):
-            with patch('aicoder.core.commands.edit.Config') as mock_config:
-                mock_config.colors = {
-                    "green": "\033[32m",
-                    "yellow": "\033[33m",
-                    "cyan": "\033[36m",
-                    "dim": "\033[2m",
-                    "reset": "\033[0m"
-                }
-                # Remove TMUX env var
-                if 'TMUX' in os.environ:
-                    del os.environ['TMUX']
+            # Remove TMUX env var
+            if 'TMUX' in os.environ:
+                del os.environ['TMUX']
 
-                cmd = EditCommand(mock_context)
-                result = cmd.execute([])
-                assert result.should_quit is False
-                assert result.run_api_call is False
+            cmd = EditCommand(mock_context)
+            result = cmd.execute([])
+            assert result.should_quit is False
+            assert result.run_api_call is False
 
     def test_edit_execute_empty_content(self, mock_context):
         """Test edit command with empty content returns no API call."""
         with patch.dict(os.environ, {"TMUX": "1", "EDITOR": "nano"}, clear=False):
-            with patch('aicoder.core.commands.edit.Config') as mock_config:
-                mock_config.colors = {
-                    "green": "\033[32m",
-                    "yellow": "\033[33m",
-                    "cyan": "\033[36m",
-                    "dim": "\033[2m",
-                    "reset": "\033[0m"
-                }
-                with patch('aicoder.core.commands.edit.create_temp_file', return_value='/tmp/test.md'):
-                    with patch('builtins.open', mock_open(read_data='')):
-                        with patch('subprocess.run'):
-                            with patch('aicoder.core.commands.edit.os.remove'):
-                                cmd = EditCommand(mock_context)
-                                result = cmd.execute([])
-                                assert result.should_quit is False
-                                assert result.run_api_call is False
+            with patch('aicoder.core.commands.edit.create_temp_file', return_value='/tmp/test.md'):
+                with patch('builtins.open', mock_open(read_data='')):
+                    with patch('subprocess.run'):
+                        with patch('aicoder.core.commands.edit.os.remove'):
+                            cmd = EditCommand(mock_context)
+                            result = cmd.execute([])
+                            assert result.should_quit is False
+                            assert result.run_api_call is False
 
 
 class TestSaveCommand:
