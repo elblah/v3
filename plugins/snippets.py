@@ -12,7 +12,7 @@ import os
 import re
 from typing import Optional
 from pathlib import Path
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils, LogOptions, success, warn, error, info, dim, print
 from aicoder.core.config import Config
 
 
@@ -154,23 +154,14 @@ def create_plugin(ctx):
                     # Replace @@snippet with content
                     prompt = prompt.replace(f'@@{snippet_name}', content)
                     # Log the replacement
-                    LogUtils.print(
-                        f"[+] Loaded snippet: @@{snippet_name}",
-                        LogOptions(color=Config.colors['green'])
-                    )
+                    success(f"Loaded snippet: @@{snippet_name}")
                 else:
                     # Warn user about missing snippet
-                    LogUtils.print(
-                        f"[!] Snippet '@@{snippet_name}' not found",
-                        LogOptions(color=Config.colors['yellow'])
-                    )
+                    warn(f"Snippet '@@{snippet_name}' not found")
 
             return prompt
         except Exception as e:
-            LogUtils.print(
-                f"[!] Snippet hook error: {e}",
-                LogOptions(color=Config.colors['red'])
-            )
+            error(f"Snippet hook error: {e}")
             return prompt
 
     # Register hook
@@ -182,42 +173,24 @@ def create_plugin(ctx):
         """Handle /snippets command - list available snippets"""
         snippets_dir = _get_snippets_dir()
         if not snippets_dir:
-            LogUtils.print(
-                "No snippets directory found.",
-                LogOptions(color=Config.colors['yellow'])
-            )
-            LogUtils.print(
-                "  Create .aicoder/snippets/ (project) or ~/.config/aicoder-v3/snippets/ (global)",
-                LogOptions(color=Config.colors['dim'])
-            )
+            warn("No snippets directory found.")
+            dim("  Create .aicoder/snippets/ (project) or ~/.config/aicoder-v3/snippets/ (global)")
             return
 
         snippets = _get_snippets()
         if not snippets:
-            LogUtils.print(
-                "No snippets found in directory.",
-                LogOptions(color=Config.colors['yellow'])
-            )
+            warn("No snippets found in directory.")
             return
 
         # Display snippets
         source_name = "project" if snippets_dir == project_snippets_dir else "global"
-        LogUtils.print(
-            f"Available snippets ({source_name}):",
-            LogOptions(color=Config.colors['cyan'])
-        )
+        info(f"Available snippets ({source_name}):")
         for snippet in snippets:
-            LogUtils.print(f"  - {snippet}", LogOptions())
+            print(f"  - {snippet}")
 
         # Show usage
-        LogUtils.print(
-            "\nUsage: Include @@snippet_name in your prompt.",
-            LogOptions(color=Config.colors['dim'])
-        )
-        LogUtils.print(
-            "Example: Use @@ultrathink to analyze the code",
-            LogOptions(color=Config.colors['dim'])
-        )
+        dim("\nUsage: Include @@snippet_name in your prompt.")
+        dim("Example: Use @@ultrathink to analyze the code")
 
     # Register command
     ctx.register_command("snippets", handle_snippets_command, "List available snippets")

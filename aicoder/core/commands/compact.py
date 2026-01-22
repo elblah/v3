@@ -5,7 +5,7 @@ Compact command implementation
 from typing import List, Dict, Any
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
-from aicoder.utils.log import LogUtils
+from aicoder.utils.log import info, LogUtils
 
 
 class CompactCommand(BaseCommand):
@@ -115,7 +115,7 @@ class CompactCommand(BaseCommand):
             pruned = message_history.prune_old_summaries()
             if pruned > 0:
                 LogUtils.success(f"[✓] Highlander: removed {pruned} old [SUMMARY] message(s)")
-                LogUtils.print(f"    Only the last [SUMMARY] remains")
+                LogUtils.print("    Only the last [SUMMARY] remains")
             else:
                 LogUtils.warn("[i] Highlander: 0 or 1 [SUMMARY] messages found - nothing to prune")
             return
@@ -155,7 +155,7 @@ class CompactCommand(BaseCommand):
         rounds = message_history.get_round_count()
         percentage = (current_tokens / threshold * 100) if threshold > 0 else 0
 
-        LogUtils.print("Conversation Statistics:", color=Config.colors["cyan"])
+        info("Conversation Statistics:")
         LogUtils.print(f"  Rounds (user+assistant): {rounds}")
         LogUtils.print(f"  Messages (total): {message_history.get_message_count()}")
         LogUtils.print(
@@ -174,7 +174,7 @@ class CompactCommand(BaseCommand):
         stats = message_history.get_tool_call_stats()
 
         if args.get("prune") == "stats":
-            LogUtils.print("Tool Call Statistics:", color=Config.colors["cyan"])
+            info("Tool Call Statistics:")
             LogUtils.print(f"  Tool results: {stats.count}")
             LogUtils.print(f"  Estimated tokens: {stats.tokens:,}")
             LogUtils.print(f"  Total bytes: {stats.bytes:,}")
@@ -207,7 +207,7 @@ class CompactCommand(BaseCommand):
 
     def _show_help(self) -> Dict[str, Any]:
         """Show help for compact command"""
-        LogUtils.print("Compact Command Help:", color=Config.colors["cyan"])
+        info("Compact Command Help:")
         LogUtils.print(f"  {self.usage}")
         LogUtils.print("  ")
         LogUtils.print("  Commands:")

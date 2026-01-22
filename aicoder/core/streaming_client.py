@@ -7,7 +7,7 @@ from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import error as log_error, warn as log_warn, info as log_info, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
 
 
@@ -32,7 +32,7 @@ class StreamingClient:
     def _wait_for_retry(self, attempt_num: int) -> None:
         """Wait before retry with backoff and show message"""
         delay = self._calculate_backoff(attempt_num)
-        LogUtils.warn(f"Retrying in {delay}s...")
+        log_warn(f"Retrying in {delay}s...")
         time.sleep(delay)
 
     def stream_request(
@@ -44,7 +44,7 @@ class StreamingClient:
     ) -> Generator[Dict[str, Any], None, None]:
         """Stream API request - streamRequest"""
         if Config.debug():
-            LogUtils.debug(
+            log_debug(
                 f"*** stream_request called with {len(messages)} messages, send_tools={send_tools}"
             )
 
@@ -94,7 +94,7 @@ class StreamingClient:
                         break
 
                 if Config.debug():
-                    LogUtils.debug(
+                    log_debug(
                         f"Response: {content_type}, streaming={content_type.startswith('text/event-stream')}"
                     )
 
@@ -102,7 +102,7 @@ class StreamingClient:
                     yield from self._handle_streaming_response(response)
                 else:
                     if Config.debug():
-                        LogUtils.debug(
+                        log_debug(
                             f"API returned non-streaming response, Content-Type: {content_type}"
                         )
                     yield from self._handle_non_streaming_response(response)
@@ -124,11 +124,10 @@ class StreamingClient:
     def _log_retry_attempt(self, config: Dict[str, str], attempt_num: int) -> None:
         """Log retry attempt -"""
         if Config.debug() and attempt_num > 1:
-            from aicoder.utils.log import LogUtils
 
-            LogUtils.debug(
+            log_debug(
                 f"*** Retrying: {config['base_url']} with model {config['model']}",
-                Config.colors["yellow"],
+                "yellow",
             )
 
     def _log_request_details(
@@ -140,21 +139,19 @@ class StreamingClient:
     ) -> None:
         """Log request details -"""
         if Config.debug():
-            from aicoder.utils.log import LogUtils
 
             tools_count = len(request_data.get("tools", []))
             tool_choice = request_data.get("tool_choice", "none")
-            LogUtils.debug(
+            log_debug(
                 f"API Request: {tools_count} tools, tool_choice={tool_choice}"
             )
 
     def _log_api_config_debug(self, config: Dict[str, str]) -> None:
         """Log API config for debugging -"""
         if Config.debug():
-            from aicoder.utils.log import LogUtils
 
-            LogUtils.debug(f"Base URL: {config['base_url']}")
-            LogUtils.debug(f"Model: {config['model']}")
+            log_debug(f"Base URL: {config['base_url']}")
+            log_debug(f"Model: {config['model']}")
 
     def _make_api_request(
         self, endpoint: str, headers: Dict[str, str], request_data: str
@@ -166,27 +163,25 @@ class StreamingClient:
     def _log_error_response(self, response: Response) -> None:
         """Log error response -"""
         if Config.debug():
-            from aicoder.utils.log import LogUtils
 
-            LogUtils.debug(f"Error response status: {response.status}")
-            LogUtils.debug(f"Error response headers: {response.headers}")
+            log_debug(f"Error response status: {response.status}")
+            log_debug(f"Error response headers: {response.headers}")
 
             try:
                 error_data = response.json()
-                LogUtils.debug(
+                log_debug(
                     f"Error response body: {json.dumps(error_data, indent=2)}"
                 )
-            except:
-                LogUtils.debug("Error response body: <could not parse as JSON>")
+            except Exception:
+                log_debug("Error response body: <could not parse as JSON>")
 
     def _log_attempt_error(self, error: Exception, attempt_num: int) -> None:
         """Log attempt error -"""
         if Config.debug():
-            from aicoder.utils.log import LogUtils
 
-            LogUtils.error(f"Attempt {attempt_num} failed: {error}")
-            LogUtils.error(f"Error type: {type(error)}")
-            LogUtils.error(
+            log_error(f"Attempt {attempt_num} failed: {error}")
+            log_error(f"Error type: {type(error)}")
+            log_error(
                 f"Error stack: {getattr(error, '__traceback__', 'No stack')}"
             )
 
@@ -199,9 +194,8 @@ class StreamingClient:
             self.stats.add_api_time((time.time() - start_time))
 
         error_message = f"All API attempts failed. Last error: {str(error)}"
-        from aicoder.utils.log import LogUtils
 
-        LogUtils.error(error_message)
+        log_error(error_message)
 
         if throw_on_error:
             raise Exception(error_message)
@@ -255,8 +249,8 @@ class StreamingClient:
             data["tool_choice"] = "auto"
 
             if Config.debug():
-                LogUtils.debug(f"*** Tool definitions count: {len(tool_definitions)}")
-                LogUtils.debug(f"*** Message count: {len(data.get('messages', []))}")
+                log_debug(f"*** Tool definitions count: {len(tool_definitions)}")
+                log_debug(f"*** Message count: {len(data.get('messages', []))}")
 
     def _format_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Format messages for API -"""
@@ -301,9 +295,7 @@ class StreamingClient:
             if not response:
                 raise Exception("No response body for streaming")
 
-            from aicoder.utils.log import LogUtils
 
-            buffer = ""
             raw_response = ""
 
             # Read response incrementally
@@ -319,14 +311,14 @@ class StreamingClient:
 
                 # Debug: print first few lines
                 if Config.debug() and len(raw_response) < 200:
-                    LogUtils.debug(f"SSE line: {repr(line)}")
+                    log_debug(f"SSE line: {repr(line)}")
 
                 # Skip empty lines
                 if line.strip() == "":
                     continue
 
                 if Config.debug() and "tool_calls" in line:
-                    LogUtils.debug(f"Tool call detected in stream: {line[:100]}")
+                    log_debug(f"Tool call detected in stream: {line[:100]}")
 
                 if line.startswith("data:"):
                     data_str = line[
@@ -337,22 +329,18 @@ class StreamingClient:
                         data_str = data_str[1:]
                     if data_str == "[DONE]":
                         if Config.debug():
-                            LogUtils.debug("Received [DONE] signal")
+                            log_debug("Received [DONE] signal")
                         return
 
                     try:
                         if Config.debug() and "tool_calls" in data_str:
-                            LogUtils.debug(f"Tool call JSON: {data_str[:100]}...")
+                            log_debug(f"Tool call JSON: {data_str[:100]}...")
                         chunk_data = json.loads(data_str)
 
                         # Use choice dicts directly
                         choices = []
                         if chunk_data.get("choices"):
                             for choice_dict in chunk_data["choices"]:
-                                # Use delta dict directly
-                                delta_dict = choice_dict.get("delta", {})
-                                delta = delta_dict
-
                                 choice = choice_dict
                                 choices.append(choice)
 
@@ -369,11 +357,11 @@ class StreamingClient:
                         if Config.debug():
                             tool_calls = chunk.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
                             if tool_calls:
-                                LogUtils.debug(f"Tool call chunk: {len(tool_calls)} calls")
+                                log_debug(f"Tool call chunk: {len(tool_calls)} calls")
                         yield chunk
                     except Exception as error:
-                        LogUtils.error(f"SSE Parse Error: {error}")
-                        LogUtils.error(f"Raw data: {data_str[:200]}")
+                        log_error(f"SSE Parse Error: {error}")
+                        log_error(f"Raw data: {data_str[:200]}")
                         continue
 
         finally:
@@ -429,19 +417,19 @@ class StreamingClient:
             current_size = self.stats.current_prompt_size or 0
             threshold = Config.auto_compact_threshold()
             if current_size > threshold and not self._recovery_attempted:
-                LogUtils.warn("[*] API failed with large context - attempting auto-recovery")
-                LogUtils.warn(f"[*] Context size: {current_size:,} (threshold: {threshold:,})")
+                log_warn("[*] API failed with large context - attempting auto-recovery")
+                log_warn(f"[*] Context size: {current_size:,} (threshold: {threshold:,})")
                 self._recovery_attempted = True
                 self.message_history.force_compact_rounds(1)
-                LogUtils.print("[*] Retrying request after compaction...", LogOptions(color=Config.colors['blue']))
+                log_info("[*] Retrying request after compaction...")
                 return True  # Retry with compacted context
 
         # Display attempt count (unlimited mode doesn't show max)
         if max_retries == 0:
-            LogUtils.warn(f"Attempt {attempt_num} failed: {error_msg}")
+            log_warn(f"Attempt {attempt_num} failed: {error_msg}")
             return True  # Always retry in unlimited mode
         else:
-            LogUtils.warn(f"Attempt {attempt_num}/{max_retries} failed: {error_msg}")
+            log_warn(f"Attempt {attempt_num}/{max_retries} failed: {error_msg}")
 
             if attempt_num < max_retries:
                 return True
@@ -451,8 +439,8 @@ class StreamingClient:
                     self.stats.increment_api_errors()
                     self.stats.add_api_time((time.time() - start_time))
 
-                LogUtils.error(f"All {max_retries} attempts failed. Last error: {error_msg}")
-                LogUtils.warn("Use /retry to try again or /retry limit <n> to increase retries.")
+                log_error(f"All {max_retries} attempts failed. Last error: {error_msg}")
+                log_warn("Use /retry to try again or /retry limit <n> to increase retries.")
 
                 if throw_on_error:
                     raise Exception(f"All attempts failed: {error_msg}")

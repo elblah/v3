@@ -19,6 +19,7 @@ Tag Pattern:
 import re
 from datetime import datetime, timezone
 from aicoder.core.config import Config
+from aicoder.utils.log import LogUtils
 
 # Module-level state (shared across plugin invocations)
 _pending_summary = None  # noqa: F841 - set during tool call, used in hook
@@ -298,8 +299,8 @@ def create_plugin(ctx):
     ctx.register_hook("after_messages_set", _after_messages_set)
 
     if Config.debug():
-        print("[+] madai plugin loaded")
-        print("  - save_progress tool (with keep_only_last_context_after option)")
-        print("  - /madai status | /madai list | /madai prune commands")
-        print("  - on_session_change hook for session cleanup")
-        print("  - after_tool_results_added hook for deferred replacement")
+        LogUtils.print("[+] madai plugin loaded")
+        LogUtils.print("  - save_progress tool (with keep_only_last_context_after option)")
+        LogUtils.print("  - /madai status | /madai list | /madai prune commands")
+        LogUtils.print("  - on_session_change hook for session cleanup")
+        LogUtils.print("  - after_tool_results_added hook for deferred replacement")

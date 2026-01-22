@@ -14,6 +14,8 @@ V3 behavior:
 import os
 from pathlib import Path
 
+from aicoder.utils.log import LogUtils
+
 def create_plugin(ctx):
     """Create session autosaver plugin"""
     
@@ -25,12 +27,12 @@ def create_plugin(ctx):
     is_jsonl = session_path.suffix.lower() == ".jsonl"
     
     if not is_jsonl and session_path.suffix.lower() != ".json":
-        print(f"[!] Unsupported session file format: {session_path.suffix}, expected .json or .jsonl")
+        LogUtils.error(f"[!] Unsupported session file format: {session_path.suffix}, expected .json or .jsonl")
         return None
     
     from aicoder.core.config import Config
     if Config.debug():
-        print(f"[*] Session autosaver enabled: {session_file} ({'JSONL' if is_jsonl else 'JSON'} format)")
+        LogUtils.print(f"[*] Session autosaver enabled: {session_file} ({'JSONL' if is_jsonl else 'JSON'} format)")
     
     def load_existing_session(messages):
         """Load existing session from file"""
@@ -53,13 +55,13 @@ def create_plugin(ctx):
                 
                 from aicoder.core.config import Config
                 if Config.debug():
-                    print(f"[*] Loaded {len(existing_messages)} messages from {session_file}")
+                    LogUtils.print(f"[*] Loaded {len(existing_messages)} messages from {session_file}")
                 
                 # Re-estimate context after loading
                 ctx.app.message_history.estimate_context()
                 
         except Exception as e:
-            print(f"[!] Failed to load session from {session_file}: {e}")
+            LogUtils.error(f"[!] Failed to load session from {session_file}: {e}")
     
     def save_current_state():
         """Save current complete state to session file (for initialization)"""
@@ -75,7 +77,7 @@ def create_plugin(ctx):
                 all_messages = ctx.app.message_history.get_messages()
                 write_json(session_file, all_messages)
         except Exception as e:
-            print(f"[!] Failed to save current state to {session_file}: {e}")
+            LogUtils.error(f"[!] Failed to save current state to {session_file}: {e}")
     
     def save_message_to_session(message):
         """Save a single message to session file (append mode for JSONL)"""
@@ -103,7 +105,7 @@ def create_plugin(ctx):
                 write_json(session_file, all_messages)
                 
         except Exception as e:
-            print(f"[!] Failed to save message to {session_file}: {e}")
+            LogUtils.error(f"[!] Failed to save message to {session_file}: {e}")
     
     def on_session_initialized(messages):
         """Handle session initialization - load existing session"""
@@ -139,7 +141,7 @@ def create_plugin(ctx):
                 
                 from aicoder.core.config import Config
                 if Config.debug():
-                    print(f"[*] JSONL file recreated with current state after serious operation ({len(all_messages)} messages)")
+                    LogUtils.debug(f"[*] JSONL file recreated with current state after serious operation ({len(all_messages)} messages)")
             else:
                 # For JSON: Use normal save logic (will rewrite everything anyway)
                 from aicoder.utils.json_utils import write_file as write_json
@@ -148,7 +150,7 @@ def create_plugin(ctx):
                 write_json(session_file, all_messages)
                 
         except Exception as e:
-            print(f"[!] Failed to recreate session file after serious operation: {e}")
+            LogUtils.error(f"[!] Failed to recreate session file after serious operation: {e}")
     
     # Register hooks
     ctx.register_hook("after_session_initialized", on_session_initialized)
@@ -164,12 +166,12 @@ def create_plugin(ctx):
         if session_path.exists():
             from aicoder.core.config import Config
             if Config.debug():
-                print(f"[*] Loading existing session from {session_file}")
+                LogUtils.debug(f"[*] Loading existing session from {session_file}")
             load_existing_session(messages)
         else:
             from aicoder.core.config import Config
             if Config.debug():
-                print(f"[*] No existing session file at {session_file}, starting fresh")
+                LogUtils.debug(f"[*] No existing session file at {session_file}, starting fresh")
             # New session: Save current state (includes system prompt) to new JSONL file
             save_current_state()
     elif not session_path.exists():
@@ -178,6 +180,6 @@ def create_plugin(ctx):
     
     from aicoder.core.config import Config
     if Config.debug():
-        print("[+] Session autosaver plugin loaded successfully")
+        LogUtils.debug("[+] Session autosaver plugin loaded successfully")
     
-    return {"cleanup": lambda: print("[-] Session autosaver plugin unloaded")}
+    return {"cleanup": lambda: LogUtils.print("[-] Session autosaver plugin unloaded")}
