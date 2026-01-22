@@ -225,10 +225,11 @@ class PluginSystem:
 
     def _load_single_plugin(self, plugin_path: str) -> None:
         """Load a single plugin file"""
+        plugin_name = Path(plugin_path).stem
         try:
             # Fast import using importlib
             spec = importlib.util.spec_from_file_location(
-                f"plugin_{Path(plugin_path).stem}", plugin_path
+                f"plugin_{plugin_name}", plugin_path
             )
             module = importlib.util.module_from_spec(spec)
 
@@ -239,12 +240,15 @@ class PluginSystem:
             if hasattr(module, "create_plugin"):
                 result = module.create_plugin(self.context)
 
+                # Track the plugin
+                self.plugins.append(plugin_name)
+
                 # Handle cleanup if returned
                 if result and isinstance(result, dict) and "cleanup" in result:
                     self.cleanup_handlers.append(result["cleanup"])
 
                 if Config.debug():
-                    print(f"[+] Loaded plugin: {Path(plugin_path).name}")
+                    print(f"[+] Loaded plugin: {plugin_name}")
 
         except Exception as e:
             print(f"[!] Failed to load plugin {plugin_path}: {e}")
