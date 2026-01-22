@@ -172,6 +172,29 @@ class TestCompactCommandForce:
             assert result.should_quit is False
             mock_context.message_history.force_compact_rounds.assert_called_with(3)
 
+    def test_force_compact_rounds_negative(self, compact_command, mock_context):
+        """Test force compact rounds with negative count (-3 means keep 3 newest)."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+
+        with patch('aicoder.core.commands.compact.Config') as mock_config:
+            mock_config.auto_compact_enabled.return_value = True
+            mock_config.auto_compact_threshold.return_value = 10000
+            mock_config.colors = {
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "cyan": "\033[36m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_context.message_history.force_compact_rounds = MagicMock()
+
+            result = compact_command.execute(["force", "-3"])
+            assert result.should_quit is False
+            mock_context.message_history.force_compact_rounds.assert_called_with(-3)
+
     def test_force_compact_messages(self, compact_command, mock_context):
         """Test force compact messages."""
         mock_context.message_history._messages = [
@@ -194,6 +217,29 @@ class TestCompactCommandForce:
             result = compact_command.execute(["force-messages", "5"])
             assert result.should_quit is False
             mock_context.message_history.force_compact_messages.assert_called_with(5)
+
+    def test_force_compact_messages_negative(self, compact_command, mock_context):
+        """Test force compact messages with negative count (-15 means keep 15 newest)."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+
+        with patch('aicoder.core.commands.compact.Config') as mock_config:
+            mock_config.auto_compact_enabled.return_value = True
+            mock_config.auto_compact_threshold.return_value = 10000
+            mock_config.colors = {
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "cyan": "\033[36m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_context.message_history.force_compact_messages = MagicMock()
+
+            result = compact_command.execute(["force-messages", "-15"])
+            assert result.should_quit is False
+            mock_context.message_history.force_compact_messages.assert_called_with(-15)
 
 
 class TestCompactCommandPrune:
@@ -437,6 +483,18 @@ class TestCompactCommandParseArgs:
         result = compact_command._parse_args(["force", "5"])
         assert result.get("force") is True
         assert result.get("count") == 5
+
+    def test_parse_force_negative_count(self, compact_command):
+        """Test parsing force with negative count (-3 means keep 3 newest)."""
+        result = compact_command._parse_args(["force", "-3"])
+        assert result.get("force") is True
+        assert result.get("count") == -3
+
+    def test_parse_force_messages_negative_count(self, compact_command):
+        """Test parsing force-messages with negative count (-15 means keep 15 newest)."""
+        result = compact_command._parse_args(["force-messages", "-15"])
+        assert result.get("force_messages") is True
+        assert result.get("count") == -15
 
     def test_parse_force_without_count(self, compact_command):
         """Test parsing force without count - returns empty dict."""
