@@ -21,10 +21,10 @@ class PromptContext:
         self.agents_content = None
 
     def _get_current_datetime(self) -> str:
-        """Get current datetime string"""
-        from datetime import datetime
+        """Get current datetime string in UTC"""
+        from datetime import datetime, timezone
 
-        return datetime.now().isoformat()
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     def _get_system_info(self) -> str:
         """Get system information"""
