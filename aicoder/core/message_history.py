@@ -460,6 +460,9 @@ class MessageHistory:
                         PRUNE_PROTECTION_THRESHOLD,
                     ):
                         self.messages[message_index]["content"] = PRUNED_TOOL_MESSAGE
+                        # Update the token cache for this modified message
+                        from .token_estimator import cache_message
+                        cache_message(self.messages[message_index])
                         pruned_count += 1
 
         self.estimate_context()
