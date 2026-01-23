@@ -2,6 +2,11 @@
 
 plugins=$(find plugins -name "*.py" | grep -v test_)
 
+if [[ "$@" =~ --help ]]; then
+    echo "--update  - update installed plugins"
+    exit
+fi
+
 if [[ "$@" =~ --update ]]; then
     tmp_sels=""
     while read -r plugin; do
