@@ -689,6 +689,9 @@ class SocketServer:
     def _cmd_quit(self, args: str) -> str:
         """Quit AI Coder gracefully"""
         LogUtils.print("Quitting AI Coder...")
-        # Graceful shutdown with SIGTERM
-        os.kill(os.getpid(), signal.SIGTERM)
+        # Schedule quit but return response first
+        import threading
+        def delayed_quit():
+            self.aicoder.is_running = False
+        threading.Thread(target=delayed_quit, daemon=True).start()
         return response({"quit": True, "message": "Shutting down"})
