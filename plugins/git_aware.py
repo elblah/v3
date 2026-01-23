@@ -64,8 +64,6 @@ def create_plugin(ctx):
 
 Git Repository:
 - Branch: {_cached_git_branch}
-
-Note: Tasks are complete ONLY when changes are committed to git.
 """
         system_msg["content"] = original_content + git_context
 

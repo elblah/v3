@@ -53,9 +53,14 @@ Usage:
 
         parsed = self._parse_args(args)
 
-        # If _parse_args returned a CommandResult (from prune), return it directly
-        if isinstance(parsed, CommandResult):
-            return parsed
+        # Check if help was requested or there was an error (these cases don't require compaction)
+        if parsed.get("help") or parsed.get("error"):
+            # Help was shown or error occurred, no further action needed
+            return CommandResult(should_quit=False, run_api_call=False)
+
+        # Check if this is a prune operation
+        if parsed.get("is_prune_operation"):
+            return self._handle_prune(parsed)
 
         self._handle_compact(parsed)
 
@@ -90,12 +95,13 @@ Usage:
                     if parsed["count"] < 1:
                         LogUtils.error(f"[X] Invalid prune count: {parsed['prune']}")
                         LogUtils.error(f"[i] Usage: {self.usage}")
-                        return {}
+                        return {"error": True}
                 except ValueError:
                     LogUtils.error(f"[X] Invalid prune count: {parsed['prune']}")
                     LogUtils.error(f"[i] Usage: {self.usage}")
-                    return {}
-            return self._handle_prune(parsed)
+                    return {"error": True}
+            # Mark this as a prune operation that should be handled separately
+            parsed["is_prune_operation"] = True
         elif command == "stats":
             # Stats is handled in execute() method to avoid type issues
             parsed["stats"] = True
@@ -103,14 +109,21 @@ Usage:
             parsed["highlander"] = True
         elif command == "help":
             self._show_help()
+            return {"help": True}  # Return special flag to indicate help was shown
         else:
             LogUtils.error(f"[X] Unknown compact command: {command}")
             LogUtils.error(f"[i] Usage: {self.usage}")
+            return {"error": True}  # Return error flag
 
         return parsed
 
     def _handle_compact(self, args: Dict[str, Any]) -> None:
         """Handle compaction operations"""
+        # Check for special flags first
+        if args.get("help") or args.get("error"):
+            # Help was already displayed or there was an error, so don't proceed with compaction
+            return
+
         message_history = self.context.message_history
         message_history.estimate_context()  # Update token estimate
         current_tokens = self.context.stats.current_prompt_size or 0
@@ -158,8 +171,6 @@ Usage:
         except Exception as e:
             LogUtils.error(f"[X] Compaction failed: {e}")
 
-        return CommandResult(should_quit=False, run_api_call=False)
-
     def _show_stats(self) -> CommandResult:
         """Show conversation statistics"""
         message_history = self.context.message_history
@@ -189,23 +200,23 @@ Usage:
 
         if args.get("prune") == "stats":
             info("Tool Call Statistics:")
-            LogUtils.print(f"  Tool results: {stats.count}")
-            LogUtils.print(f"  Estimated tokens: {stats.tokens:,}")
-            LogUtils.print(f"  Total bytes: {stats.bytes:,}")
+            LogUtils.print(f"  Tool results: {stats['count']}")
+            LogUtils.print(f"  Estimated tokens: {stats['tokens']:,}")
+            LogUtils.print(f"  Total bytes: {stats['bytes']:,}")
 
-            if stats.count > 0:
-                avg_bytes = round(stats.bytes / stats.count)
-                avg_tokens = round(stats.tokens / stats.count)
+            if stats['count'] > 0:
+                avg_bytes = round(stats['bytes'] / stats['count'])
+                avg_tokens = round(stats['tokens'] / stats['count'])
                 LogUtils.print(
                     f"  Average per result: {avg_bytes} bytes, {avg_tokens} tokens"
                 )
 
-            return {}
+            return CommandResult(should_quit=False, run_api_call=False)
 
         prune_all = args.get("prune") == "all"
         prune_count = 0 if prune_all else args.get("count", 1)
 
-        if stats.count == 0:
+        if stats['count'] == 0:
             LogUtils.warn("[i] No tool results to prune")
             return CommandResult(should_quit=False, run_api_call=False)
 
@@ -213,7 +224,7 @@ Usage:
             pruned_count = message_history.prune_all_tool_results()
             LogUtils.success(f"[✓] Pruned {pruned_count} tool result(s)")
         else:
-            to_prune = min(prune_count, stats.count)
+            to_prune = min(prune_count, stats['count'])
             pruned_count = message_history.prune_oldest_tool_results(to_prune)
             LogUtils.success(f"[✓] Pruned {pruned_count} oldest tool result(s)")
 
