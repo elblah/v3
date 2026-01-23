@@ -402,6 +402,27 @@ class AICoder:
                 if Config.debug():
                     LogUtils.warn(f"[!] Hook {hook_name} failed: {e}")
 
+    def save_session(self, force: bool = False) -> bool:
+        """
+        Centralized method to save the current session.
+        
+        Args:
+            force: If True, saves even in pipe mode with default path
+            
+        Returns:
+            bool: True if save was attempted/successful, False if skipped due to pipe mode rules
+        """
+        # In pipe mode, only save if forced or if a custom file path was explicitly set
+        if self._is_pipe_mode and self._using_default_save_path and not force:
+            return False
+        
+        try:
+            self.command_handler.handle_command(f"/save {self._session_file_path}")
+            return True
+        except Exception:
+            # Don't let exceptions propagate during shutdown
+            return False
+
     def shutdown(self) -> None:
         """Clean shutdown"""
         self.socket_server.stop()
@@ -414,19 +435,7 @@ class AICoder:
 
     def _auto_save_on_exit(self) -> None:
         """Auto-save callback with pipe mode protection"""
-        # In pipe mode, only save if a custom file path was explicitly set
-        if self._is_pipe_mode and self._using_default_save_path:
-            return
-        
-        self._perform_save()
-
-    def _perform_save(self) -> None:
-        """Perform the actual save operation"""
-        try:
-            self.command_handler.handle_command(f"/save {self._session_file_path}")
-        except Exception:
-            # Don't let exceptions propagate during shutdown
-            pass
+        self.save_session()
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown (SIGTERM only, SIGINT preserved for Ctrl+C)"""
@@ -436,10 +445,7 @@ class AICoder:
             LogUtils.print(f"\nReceived signal {signum}, shutting down gracefully...")
             # Force save on signal-induced shutdown (user explicitly wants to exit)
             if self._auto_save_enabled:
-                try:
-                    self.command_handler.handle_command(f"/save {self._session_file_path}")
-                except Exception:
-                    pass
+                self.save_session(force=True)
             self.shutdown()
             sys.exit(0)
         
