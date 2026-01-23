@@ -438,17 +438,7 @@ class AICoder:
         self.save_session()
 
     def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers for graceful shutdown (SIGTERM only, SIGINT preserved for Ctrl+C)"""
-        import signal
-        
-        def handle_signal(signum, frame):
-            LogUtils.print(f"\nReceived signal {signum}, shutting down gracefully...")
-            # Force save on signal-induced shutdown (user explicitly wants to exit)
-            if self._auto_save_enabled:
-                self.save_session(force=True)
-            self.shutdown()
-            sys.exit(0)
-        
-        # Only handle SIGTERM, leave SIGINT (Ctrl+C) to be handled by the main loop's KeyboardInterrupt
-        signal.signal(signal.SIGTERM, handle_signal)
-        # SIGINT is left to default behavior, will raise KeyboardInterrupt in main loop
+        """Setup signal handlers - only preserve original KeyboardInterrupt behavior"""
+        # Only need to ensure default SIGINT (Ctrl+C) behavior is preserved
+        # All other shutdown methods (commands, socket, etc.) handle their own cleanup
+        pass  # No signal handlers - let system defaults handle signals
