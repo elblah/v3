@@ -689,9 +689,11 @@ class SocketServer:
     def _cmd_quit(self, args: str) -> str:
         """Quit AI Coder gracefully"""
         LogUtils.print("Quitting AI Coder...")
-        # Schedule quit but return response first
-        import threading
-        def delayed_quit():
-            self.aicoder.is_running = False
-        threading.Thread(target=delayed_quit, daemon=True).start()
+        # Save session and terminate process immediately
+        if hasattr(self.aicoder, 'save_session'):
+            self.aicoder.save_session()
+        # Perform proper shutdown sequence and exit
+        self.aicoder.shutdown()
+        sys.exit(0)
+        # Note: This return is never reached due to sys.exit, but included for completeness
         return response({"quit": True, "message": "Shutting down"})
