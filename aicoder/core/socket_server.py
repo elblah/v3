@@ -689,11 +689,11 @@ class SocketServer:
     def _cmd_quit(self, args: str) -> str:
         """Quit AI Coder gracefully"""
         LogUtils.print("Quitting AI Coder...")
-        # Save session and terminate process immediately
+        # Save session before quitting
         if hasattr(self.aicoder, 'save_session'):
             self.aicoder.save_session()
-        # Perform proper shutdown sequence and exit
-        self.aicoder.shutdown()
-        sys.exit(0)
-        # Note: This return is never reached due to sys.exit, but included for completeness
+        # Send SIGTERM to main process to trigger proper shutdown
+        import os
+        import signal
+        os.kill(os.getpid(), signal.SIGTERM)
         return response({"quit": True, "message": "Shutting down"})
