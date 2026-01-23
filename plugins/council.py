@@ -931,4 +931,4 @@ def create_plugin(app):
         log_print("  - /council-cancel command")
         log_print("  - Auto-council support")
 
-    return {"cleanup": council_service.cleanup}
+    return {"cleanup": council_plugin.cleanup}
