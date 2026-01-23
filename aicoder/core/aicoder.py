@@ -429,7 +429,7 @@ class AICoder:
             pass
 
     def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers for graceful shutdown"""
+        """Setup signal handlers for graceful shutdown (SIGTERM only, SIGINT preserved for Ctrl+C)"""
         import signal
         
         def handle_signal(signum, frame):
@@ -443,5 +443,6 @@ class AICoder:
             self.shutdown()
             sys.exit(0)
         
+        # Only handle SIGTERM, leave SIGINT (Ctrl+C) to be handled by the main loop's KeyboardInterrupt
         signal.signal(signal.SIGTERM, handle_signal)
-        signal.signal(signal.SIGINT, handle_signal)  # Override input handler
+        # SIGINT is left to default behavior, will raise KeyboardInterrupt in main loop
