@@ -71,9 +71,14 @@ class AICoder:
         # Hooks
         self.notify_hooks = None
 
+        # Detect pipe mode
+        self._is_pipe_mode = not sys.stdin.isatty()
+        
         # Auto-save functionality
         self._auto_save_enabled = os.environ.get("AICODER_AUTO_SAVE", "1").lower() in ("1", "true", "yes")
-        self._session_file_path = os.environ.get("AICODER_AUTO_SAVE_FILE", os.path.join(".aicoder", "last-session.json"))
+        default_path = os.path.join(".aicoder", "last-session.json")
+        self._session_file_path = os.environ.get("AICODER_AUTO_SAVE_FILE", default_path)
+        self._using_default_save_path = self._session_file_path == default_path
 
     def set_next_prompt(self, prompt: str) -> None:
         """Set next prompt to execute (for auto-council)"""
@@ -141,6 +146,9 @@ class AICoder:
 
         # Register auto-save if enabled
         self.register_auto_save()
+        
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
 
     def _calculate_tool_tokens(self) -> None:
         """Calculate tool definition tokens once at startup"""
@@ -405,9 +413,35 @@ class AICoder:
             atexit.register(self._auto_save_on_exit)
 
     def _auto_save_on_exit(self) -> None:
-        """Auto-save callback for atexit"""
+        """Auto-save callback with pipe mode protection"""
+        # In pipe mode, only save if a custom file path was explicitly set
+        if self._is_pipe_mode and self._using_default_save_path:
+            return
+        
+        self._perform_save()
+
+    def _perform_save(self) -> None:
+        """Perform the actual save operation"""
         try:
             self.command_handler.handle_command(f"/save {self._session_file_path}")
         except Exception:
             # Don't let exceptions propagate during shutdown
             pass
+
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown"""
+        import signal
+        
+        def handle_signal(signum, frame):
+            LogUtils.print(f"\nReceived signal {signum}, shutting down gracefully...")
+            # Force save on signal-induced shutdown (user explicitly wants to exit)
+            if self._auto_save_enabled:
+                try:
+                    self.command_handler.handle_command(f"/save {self._session_file_path}")
+                except Exception:
+                    pass
+            self.shutdown()
+            sys.exit(0)
+        
+        signal.signal(signal.SIGTERM, handle_signal)
+        signal.signal(signal.SIGINT, handle_signal)  # Override input handler

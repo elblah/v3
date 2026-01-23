@@ -28,6 +28,7 @@ class QuitCommand(BaseCommand):
         return ["q"]
 
     def execute(self, args: List[str] = None) -> CommandResult:
-        """Exit the application"""
+        """Exit the application with session save"""
         LogUtils.success("Goodbye!")
+        # Trigger immediate shutdown (will call shutdown method via main loop)
         return CommandResult(should_quit=True, run_api_call=False)
