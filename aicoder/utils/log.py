@@ -251,3 +251,8 @@ def print(message: str = "", options: Optional[LogOptions] = None,
           debug: bool = False) -> None:
     """Print message with optional formatting (backward compatible alias for printc)"""
     LogUtils.printc(message, options=options, color=color, bold=bold, debug=debug)
+
+
+def cyan(message: str) -> None:
+    """Print cyan-colored message"""
+    LogUtils.printc(message, color="cyan")
