@@ -163,6 +163,12 @@ def create_plugin(ctx):
 ```bash
 DEBUG=1 aicoder
 ```
+### Streaming and Error Handling
+- Uses Server-Sent Events (SSE) format
+- Implements exponential backoff retry: 2s, 4s, 8s, 16s, 32s, max_backoff (configurable, default 64s)
+- Shows retry progress: "Attempt 1/3 failed: <error>. Retrying in 2s..."
+- Timeout handling per retry attempt
+- Configurable max backoff via `MAX_BACKOFF_SECONDS` env var or `/retry max_backoff` command
 
 ### Sandbox Behavior (when enabled)
 - Blocks `../` path traversal by default
@@ -171,9 +177,10 @@ DEBUG=1 aicoder
 - Both read_file and write_file respect sandbox
 - This mini sandbox is programmed in the tools but the aicoder is also running on another bwrap sandbox layer
 
-### Streaming and Error Handling
-- Uses Server-Sent Events (SSE) format
-- Implements exponential backoff retry: 2s, 4s, 8s, 16s, 32s, max_backoff (configurable, default 64s)
-- Shows retry progress: "Attempt 1/3 failed: <error>. Retrying in 2s..."
-- Timeout handling per retry attempt
-- Configurable max backoff via `MAX_BACKOFF_SECONDS` env var or `/retry max_backoff` command
+### Sandbox bwrap
+- Prevent AI from deleting / modifying
+- ALLOW write-access to files ONLY in working directory and /tmp
+- DO NOT TRY install global plugins, snippets, write to ~/.config dir at all
+- ONLY change code of plugin, skills, snippets in its proper dir in the project dir
+- Do not read/write to .aicoder on the project dir unless the user has authorized it or if any skill, tool, or system prompt asks for it. This prevents writing plugins that will be lost because git ignores files in these dirs. So the AI always operates in the project dirs where files are controlled by git and history is preserved.
+
