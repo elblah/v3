@@ -65,15 +65,14 @@ def cache_message(msg: Dict[str, Any]) -> None:
     """
     msg_id = id(msg)
     
-    # Only compute once per message object
-    if msg_id not in _message_cache:
-        # Serialize ENTIRE message (TSV approach)
-        json_str = json.dumps(msg, sort_keys=True, separators=(',', ':'))
-        
-        # Weighted estimation (TSV approach)
-        tokens = _estimate_weighted_tokens(json_str)
-        
-        _message_cache[msg_id] = tokens
+    # Serialize ENTIRE message (TSV approach)
+    json_str = json.dumps(msg, sort_keys=True, separators=(',', ':'))
+    
+    # Weighted estimation (TSV approach)
+    tokens = _estimate_weighted_tokens(json_str)
+    
+    # Always update the cache, even if message was already cached
+    _message_cache[msg_id] = tokens
 
 
 def estimate_messages(messages: List[Dict[str, Any]]) -> int:
