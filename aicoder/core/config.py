@@ -224,6 +224,17 @@ class Config:
         return headers
 
     @staticmethod
+    def streaming_enabled() -> bool:
+        """
+        Check if streaming is enabled via AICODER_STREAM environment variable.
+        Default is enabled (streaming=True). Set AICODER_STREAM=0 to disable.
+        
+        Returns:
+            bool: True if streaming is enabled, False if disabled
+        """
+        return os.environ.get("AICODER_STREAM", "1") != "0"
+
+    @staticmethod
     def temperature() -> float:
         """
         Get temperature setting

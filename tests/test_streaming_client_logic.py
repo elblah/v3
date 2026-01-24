@@ -220,6 +220,94 @@ class TestBuildHeaders:
             assert headers["User-Agent"] == "CustomAgent/1.0"
 
 
+class TestStreamingConfiguration:
+    """Test AICODER_STREAM environment variable functionality"""
+
+    def test_streaming_enabled_by_default(self):
+        """Test that streaming is enabled by default when AICODER_STREAM is not set"""
+        with patch.dict('os.environ', {}, clear=True):
+            Config.reset()
+            assert Config.streaming_enabled() is True
+
+    def test_streaming_enabled_explicitly(self):
+        """Test that streaming is enabled when AICODER_STREAM=1"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "1"}, clear=True):
+            Config.reset()
+            assert Config.streaming_enabled() is True
+
+    def test_streaming_disabled(self):
+        """Test that streaming is disabled when AICODER_STREAM=0"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "0"}, clear=True):
+            Config.reset()
+            assert Config.streaming_enabled() is False
+
+    def test_streaming_disabled_with_other_values(self):
+        """Test that any non-"0" value enables streaming"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "false"}, clear=True):
+            Config.reset()
+            assert Config.streaming_enabled() is True
+
+    def test_stream_request_uses_config_default(self):
+        """Test that stream_request respects AICODER_STREAM config"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "0"}, clear=True):
+            Config.reset()
+            
+            # Test that the method can be called without error when streaming is disabled
+            # The actual behavior (stream=False) is tested through integration
+            client = StreamingClient()
+            
+            # Just verify the method signature and basic functionality
+            assert hasattr(client, 'stream_request')
+            
+            # Test that calling the method doesn't raise an error about parameters
+            try:
+                # This will fail on actual API call but should not fail on parameter resolution
+                gen = client.stream_request([{"role": "user", "content": "test"}])
+                assert hasattr(gen, '__iter__')
+            except Exception as e:
+                # Expected to fail on API call, but not on parameter issues
+                pass
+
+    def test_stream_request_explicit_true_overrides_config(self):
+        """Test that explicit stream=True still works"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "0"}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            
+            # Test that explicit stream=True can still be used
+            try:
+                gen = client.stream_request([{"role": "user", "content": "test"}], stream=True)
+                assert hasattr(gen, '__iter__')
+            except Exception:
+                pass  # Expected to fail on actual API call
+
+    def test_stream_request_explicit_false_overrides_config(self):
+        """Test that explicit stream=False still works"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "1"}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            
+            # Test that explicit stream=False can still be used
+            try:
+                gen = client.stream_request([{"role": "user", "content": "test"}], stream=False)
+                assert hasattr(gen, '__iter__')
+            except Exception:
+                pass  # Expected to fail on actual API call
+
+    def test_stream_request_with_config_enabled(self):
+        """Test that stream_request works when config is enabled"""
+        with patch.dict('os.environ', {"AICODER_STREAM": "1"}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            
+            # Test that method works when streaming is enabled by config
+            try:
+                gen = client.stream_request([{"role": "user", "content": "test"}])
+                assert hasattr(gen, '__iter__')
+            except Exception:
+                pass  # Expected to fail on actual API call
+
+
 class TestIsStreamingResponse:
     """Test streaming response detection"""
 

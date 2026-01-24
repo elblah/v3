@@ -38,14 +38,18 @@ class StreamingClient:
     def stream_request(
         self,
         messages: List[Dict[str, Any]],
-        stream: bool = True,
+        stream: Optional[bool] = None,
         throw_on_error: bool = False,
         send_tools: bool = True,
     ) -> Generator[Dict[str, Any], None, None]:
         """Stream API request - streamRequest"""
+        # Use config default if stream parameter is not explicitly set
+        if stream is None:
+            stream = Config.streaming_enabled()
+
         if Config.debug():
             log_debug(
-                f"*** stream_request called with {len(messages)} messages, send_tools={send_tools}"
+                f"*** stream_request called with {len(messages)} messages, stream={stream}, send_tools={send_tools}"
             )
 
         start_time = time.time()
