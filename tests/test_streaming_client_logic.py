@@ -158,6 +158,67 @@ class TestBuildHeaders:
             headers = client._build_headers()
             assert headers["Authorization"] == "Bearer test-key"
 
+    def test_headers_with_custom_headers(self):
+        """Test that custom headers from AICODER_HTTP_HEADERS are included"""
+        env_headers = "X-Custom-Header: custom-value\nAnother-Header: another-value"
+        with patch.dict('os.environ', {"AICODER_HTTP_HEADERS": env_headers}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            headers = client._build_headers()
+            assert headers["X-Custom-Header"] == "custom-value"
+            assert headers["Another-Header"] == "another-value"
+
+    def test_headers_with_api_key_and_custom_headers(self):
+        """Test that both API key and custom headers are included"""
+        env_headers = "X-Custom-Header: custom-value"
+        with patch.dict('os.environ', {"API_KEY": "test-key", "AICODER_HTTP_HEADERS": env_headers}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            headers = client._build_headers()
+            assert headers["Authorization"] == "Bearer test-key"
+            assert headers["X-Custom-Header"] == "custom-value"
+
+    def test_headers_ignores_malformed_custom_headers(self):
+        """Test that malformed header lines are ignored"""
+        env_headers = "Valid-Header: valid-value\nInvalid-Header\nAnother-Valid: another-value\nMalformed:"
+        with patch.dict('os.environ', {"AICODER_HTTP_HEADERS": env_headers}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            headers = client._build_headers()
+            assert headers["Valid-Header"] == "valid-value"
+            assert headers["Another-Valid"] == "another-value"
+            assert "Invalid-Header" not in headers
+            assert "Malformed" not in headers
+
+    def test_headers_with_empty_custom_headers(self):
+        """Test that empty custom headers variable doesn't break anything"""
+        with patch.dict('os.environ', {"AICODER_HTTP_HEADERS": ""}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            headers = client._build_headers()
+            assert headers["Content-Type"] == "application/json"
+            assert "Authorization" not in headers
+
+    def test_headers_with_whitespace_custom_headers(self):
+        """Test that whitespace in custom headers is properly handled"""
+        env_headers = "  X-Spaced-Header  :  spaced-value  \n\nAnother: value\n"
+        with patch.dict('os.environ', {"AICODER_HTTP_HEADERS": env_headers}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            headers = client._build_headers()
+            assert headers["X-Spaced-Header"] == "spaced-value"
+            assert headers["Another"] == "value"
+
+    def test_custom_headers_override_builtin(self):
+        """Test that custom headers can override built-in headers"""
+        env_headers = "Content-Type: text/plain\nUser-Agent: CustomAgent/1.0"
+        with patch.dict('os.environ', {"AICODER_HTTP_HEADERS": env_headers}, clear=True):
+            Config.reset()
+            client = StreamingClient()
+            headers = client._build_headers()
+            assert headers["Content-Type"] == "text/plain"
+            assert headers["User-Agent"] == "CustomAgent/1.0"
+
 
 class TestIsStreamingResponse:
     """Test streaming response detection"""
