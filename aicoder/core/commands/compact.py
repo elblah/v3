@@ -27,7 +27,8 @@ Usage:
   /compact force-messages -15 - Keep only 15 newest messages, compact rest
   /compact prune all       - Remove all pruned tool results
   /compact prune stats     - Remove only tool=stats results
-  /compact prune <N>       - Remove last N pruned tool results
+  /compact prune <N>       - Remove N oldest (positive) or keep only |N| newest (negative) tool results
+  /compact prune -10       - Keep only 10 newest tool results, prune all others
   /compact highlander      - Keep only the most recent [SUMMARY] message
   /compact stats           - Show conversation statistics"""
 
@@ -92,7 +93,7 @@ Usage:
             if parsed["prune"] not in ["all", "stats"]:
                 try:
                     parsed["count"] = int(parsed["prune"])
-                    if parsed["count"] < 1:
+                    if parsed["count"] == 0:
                         LogUtils.error(f"[X] Invalid prune count: {parsed['prune']}")
                         LogUtils.error(f"[i] Usage: {self.usage}")
                         return {"error": True}
@@ -224,9 +225,19 @@ Usage:
             pruned_count = message_history.prune_all_tool_results()
             LogUtils.success(f"[✓] Pruned {pruned_count} tool result(s)")
         else:
-            to_prune = min(prune_count, stats['count'])
-            pruned_count = message_history.prune_oldest_tool_results(to_prune)
-            LogUtils.success(f"[✓] Pruned {pruned_count} oldest tool result(s)")
+            if prune_count < 0:
+                # Negative count: keep only |prune_count| newest results
+                keep_count = abs(prune_count)
+                pruned_count = message_history.prune_keep_newest_tool_results(keep_count)
+                if pruned_count > 0:
+                    LogUtils.success(f"[✓] Kept {keep_count} newest tool result(s), pruned {pruned_count} older result(s)")
+                else:
+                    LogUtils.warn(f"[i] Keeping all {stats['count']} tool result(s) (already ≤ {keep_count})")
+            else:
+                # Positive count: prune prune_count oldest results
+                to_prune = min(prune_count, stats['count'])
+                pruned_count = message_history.prune_oldest_tool_results(to_prune)
+                LogUtils.success(f"[✓] Pruned {pruned_count} oldest tool result(s)")
 
         return CommandResult(should_quit=False, run_api_call=False)
 
@@ -246,7 +257,10 @@ Usage:
         LogUtils.print("    /compact prune all           Prune all tool call results")
         LogUtils.print("    /compact prune stats         Show tool call statistics")
         LogUtils.print(
-            "    /compact prune <N>           Prune N oldest tool call results"
+            "    /compact prune <N>           Prune N oldest (positive) or keep only |N| newest (negative)"
+        )
+        LogUtils.print(
+            "    /compact prune -<N>          Keep only N newest tool results, prune all others"
         )
         LogUtils.print("    /compact stats               Show conversation statistics")
         LogUtils.print("    /compact highlander          Keep only last [SUMMARY] (there can be only one)")
@@ -260,6 +274,7 @@ Usage:
         LogUtils.print("    /compact force-messages -5   Keep 5 newest messages, compact rest")
         LogUtils.print("    /compact prune all           Clear all tool results")
         LogUtils.print("    /compact prune 5             Clear 5 oldest tool results")
+        LogUtils.print("    /compact prune -10           Keep only 10 newest tool results")
         LogUtils.print("    /compact prune stats         Show tool call stats")
         LogUtils.print("    /compact highlander          Keep only last [SUMMARY]")
         LogUtils.print("  ")

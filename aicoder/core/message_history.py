@@ -480,6 +480,18 @@ class MessageHistory:
         indices = list(range(min(n, len(tool_messages))))
         return self.prune_tool_results(indices)
 
+    def prune_keep_newest_tool_results(self, keep_count: int) -> int:
+        """Keep only the newest N tool results, prune all others"""
+        tool_messages = self.get_tool_result_messages()
+        
+        if keep_count >= len(tool_messages):
+            return 0  # Nothing to prune
+        
+        # Prune all except the last keep_count messages
+        prune_count = len(tool_messages) - keep_count
+        indices = list(range(prune_count))
+        return self.prune_tool_results(indices)
+
     def prune_tool_results_by_percentage(self, target_percentage: int = 50) -> dict:
         """Prune tool results by percentage"""
         tool_messages = self.get_tool_result_messages()
