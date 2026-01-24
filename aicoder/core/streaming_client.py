@@ -281,6 +281,10 @@ class StreamingClient:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        # Add custom headers from environment
+        custom_headers = Config.http_headers()
+        headers.update(custom_headers)
+
         return headers
 
     def _is_streaming_response(self, content_type: str) -> bool:

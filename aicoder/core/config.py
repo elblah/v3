@@ -5,6 +5,7 @@ Configuration module for AI Coder
 
 import os
 import sys
+from typing import Dict
 from aicoder.utils.log import LogUtils
 
 
@@ -192,6 +193,35 @@ class Config:
 
         """
         return os.environ.get("AICODER_SYSTEM_PROMPT") or ""
+
+    @staticmethod
+    def http_headers() -> Dict[str, str]:
+        """
+        Get custom HTTP headers from AICODER_HTTP_HEADERS environment variable.
+        Format: "Header1: Value1\nHeader2: Value2\n"
+        
+        Returns:
+            Dict of header name to header value
+        """
+        headers_str = os.environ.get("AICODER_HTTP_HEADERS", "")
+        if not headers_str:
+            return {}
+        
+        headers = {}
+        for line in headers_str.split('\n'):
+            line = line.strip()
+            if not line or ':' not in line:
+                continue
+            
+            # Split on first colon only
+            parts = line.split(':', 1)
+            if len(parts) == 2:
+                header_name = parts[0].strip()
+                header_value = parts[1].strip()
+                if header_name and header_value:
+                    headers[header_name] = header_value
+        
+        return headers
 
     @staticmethod
     def temperature() -> float:
