@@ -1,10 +1,14 @@
 #!/bin/bash
-# Example: Using custom HTTP headers with AI Coder
+# Example: Using custom HTTP headers and streaming control with AI Coder
 
 # Set custom headers - each line should be in "Header-Name: Header-Value" format
 export AICODER_HTTP_HEADERS="X-API-Version: v1
 X-Custom-Header: my-custom-value
 X-Client-ID: my-app-identifier"
+
+# Control streaming behavior (optional)
+# Uncomment to disable streaming for APIs that don't support it
+# export AICODER_STREAM=0
 
 # Your existing AI Coder configuration
 export API_BASE_URL="https://your-api-provider.com/v1"
