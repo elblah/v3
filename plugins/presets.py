@@ -135,6 +135,21 @@ def create_plugin(ctx):
 
         return None
 
+    def clear_all_model_parameters() -> None:
+        """Clear all known model parameters from environment"""
+        # All possible model parameters that might be set
+        all_params = [
+            "TEMPERATURE",
+            "TOP_P",
+            "FREQUENCY_PENALTY",
+            "PRESENCE_PENALTY",
+            "TOP_K",
+            "REPETITION_PENALTY",
+            "MAX_TOKENS"
+        ]
+        for param in all_params:
+            os.environ.pop(param, None)
+
     def apply_parameters_to_env(parameters: Dict[str, Any]) -> None:
         """Apply parameters to environment variables (which Config reads)"""
         for key, value in parameters.items():
@@ -156,7 +171,8 @@ def create_plugin(ctx):
         current_preset_original = preset["name"]
         active_parameters = preset.get("parameters", {}).copy()
 
-        # Apply to environment
+        # Clear all previous model parameters, then apply new preset
+        clear_all_model_parameters()
         apply_parameters_to_env(active_parameters)
 
         return True
@@ -194,6 +210,52 @@ def create_plugin(ctx):
 
     def get_current_preset_info() -> Dict[str, Any]:
         """Get information about the current preset"""
+        nonlocal current_preset_name, current_preset_original
+
+        # Read actual current values from Config
+        current_parameters = {}
+        if Config.temperature() is not None:
+            current_parameters["temperature"] = Config.temperature()
+        if Config.top_p() is not None:
+            current_parameters["top_p"] = Config.top_p()
+        if Config.frequency_penalty() is not None:
+            current_parameters["frequency_penalty"] = Config.frequency_penalty()
+        if Config.presence_penalty() is not None:
+            current_parameters["presence_penalty"] = Config.presence_penalty()
+        if Config.top_k() is not None:
+            current_parameters["top_k"] = Config.top_k()
+        if Config.repetition_penalty() is not None:
+            current_parameters["repetition_penalty"] = Config.repetition_penalty()
+        if Config.max_tokens() is not None:
+            current_parameters["max_tokens"] = Config.max_tokens()
+
+        # If we're not already in Custom mode, check if current parameters match the preset
+        if current_preset_name != "Custom":
+            preset = get_preset_by_identifier(current_preset_name)
+            if preset:
+                expected_params = preset.get("parameters", {})
+                # Check if any parameter has a value not in the preset
+                has_custom_params = False
+                for key, value in current_parameters.items():
+                    if key not in expected_params:
+                        # Parameter not defined in preset
+                        has_custom_params = True
+                        break
+                    # Check if value matches (with float tolerance)
+                    expected_value = expected_params[key]
+                    if isinstance(value, float) or isinstance(expected_value, float):
+                        if abs(float(value) - float(expected_value)) > 0.01:
+                            has_custom_params = True
+                            break
+                    elif value != expected_value:
+                        has_custom_params = True
+                        break
+
+                if has_custom_params:
+                    # Switch to Custom mode
+                    current_preset_original = current_preset_name
+                    current_preset_name = "Custom"
+
         if current_preset_name == "Custom" and current_preset_original:
             original_preset = get_preset_by_identifier(current_preset_original)
             original_description = original_preset.get("description", "") if original_preset else ""
@@ -205,7 +267,7 @@ def create_plugin(ctx):
             "name": current_preset_name,
             "original_name": current_preset_original,
             "description": original_preset.get("description", "") if original_preset else "",
-            "parameters": active_parameters.copy(),
+            "parameters": current_parameters,
             "is_custom": current_preset_name == "Custom"
         }
 
@@ -269,6 +331,22 @@ def create_plugin(ctx):
 
     def initialize_preset() -> None:
         """Initialize preset from AICODER_PRESET env var"""
+        # Check if any model parameters are already set
+        has_existing_params = (
+            os.environ.get("TEMPERATURE") or
+            os.environ.get("TOP_P") or
+            os.environ.get("FREQUENCY_PENALTY") or
+            os.environ.get("PRESENCE_PENALTY") or
+            os.environ.get("TOP_K") or
+            os.environ.get("REPETITION_PENALTY") or
+            os.environ.get("MAX_TOKENS")
+        )
+
+        if has_existing_params:
+            # Parameters already set - leave them as-is and mark as Custom
+            current_preset_name = "Custom"
+            return
+
         initial_preset = os.environ.get("AICODER_PRESET", "").strip()
         if initial_preset:
             if apply_preset(initial_preset):
