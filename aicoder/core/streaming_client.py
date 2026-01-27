@@ -226,20 +226,29 @@ class StreamingClient:
             "stream": stream,
         }
 
-        # Only include temperature if explicitly set by user
-        temperature = Config.temperature()
-        if temperature is not None:
-            data["temperature"] = temperature
-
-        # Add max tokens if configured
-        if Config.max_tokens():
-            data["max_tokens"] = Config.max_tokens()
+        self._add_optional_parameters(data)
 
         # Add tool definitions only if send_tools is True
         if send_tools:
             self._add_tool_definitions(data)
 
         return data
+
+    def _add_optional_parameters(self, data: Dict[str, Any]) -> None:
+        """Add optional model parameters if configured"""
+        optional_params = [
+            ("temperature", Config.temperature()),
+            ("top_p", Config.top_p()),
+            ("frequency_penalty", Config.frequency_penalty()),
+            ("presence_penalty", Config.presence_penalty()),
+            ("top_k", Config.top_k()),
+            ("repetition_penalty", Config.repetition_penalty()),
+            ("max_tokens", Config.max_tokens()),
+        ]
+
+        for param_name, value in optional_params:
+            if value is not None:
+                data[param_name] = value
 
     def _add_tool_definitions(self, data: Dict[str, Any]) -> None:
         """Add tool definitions to request data -"""

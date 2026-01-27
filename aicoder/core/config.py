@@ -247,10 +247,55 @@ class Config:
     def max_tokens():
         """
         Get max tokens setting
-        
+
         """
         max_tokens = os.environ.get("MAX_TOKENS")
         return int(max_tokens) if max_tokens else None
+
+    @staticmethod
+    def top_p() -> float:
+        """
+        Get top_p setting
+
+        """
+        top_p = os.environ.get("TOP_P")
+        return float(top_p) if top_p else None
+
+    @staticmethod
+    def frequency_penalty() -> float:
+        """
+        Get frequency_penalty setting
+
+        """
+        freq_penalty = os.environ.get("FREQUENCY_PENALTY")
+        return float(freq_penalty) if freq_penalty else None
+
+    @staticmethod
+    def presence_penalty() -> float:
+        """
+        Get presence_penalty setting
+
+        """
+        pres_penalty = os.environ.get("PRESENCE_PENALTY")
+        return float(pres_penalty) if pres_penalty else None
+
+    @staticmethod
+    def top_k() -> int:
+        """
+        Get top_k setting
+
+        """
+        top_k = os.environ.get("TOP_K")
+        return int(top_k) if top_k else None
+
+    @staticmethod
+    def repetition_penalty() -> float:
+        """
+        Get repetition_penalty setting
+
+        """
+        rep_penalty = os.environ.get("REPETITION_PENALTY")
+        return float(rep_penalty) if rep_penalty else None
 
     # Streaming Configuration
     @staticmethod
