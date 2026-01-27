@@ -71,6 +71,62 @@ def create_plugin(ctx):
             "parameters": {
                 "temperature": 0.2
             }
+        },
+        {
+            "name": "Analysis",
+            "aliases": ["analysis", "analyze", "debug"],
+            "description": "Deep analysis, debugging, and code inspection - minimal creativity",
+            "parameters": {
+                "temperature": 0.1,
+                "top_p": 0.8
+            }
+        },
+        {
+            "name": "Review",
+            "aliases": ["review", "critique", "audit"],
+            "description": "Code review and documentation critique with balanced rigor",
+            "parameters": {
+                "temperature": 0.2,
+                "top_p": 0.85
+            }
+        },
+        {
+            "name": "Writing",
+            "aliases": ["writing", "writer", "doc", "docs", "document"],
+            "description": "Documentation, explanations, and tutorial writing",
+            "parameters": {
+                "temperature": 0.6,
+                "top_p": 0.88,
+                "presence_penalty": 0.1
+            }
+        },
+        {
+            "name": "Explorer",
+            "aliases": ["explorer", "explore", "brainstorm", "idea"],
+            "description": "Brainstorming, exploring alternatives, and creative problem-solving",
+            "parameters": {
+                "temperature": 0.95,
+                "top_p": 0.98,
+                "frequency_penalty": 0.2
+            }
+        },
+        {
+            "name": "Focused",
+            "aliases": ["focused", "focus", "solve", "problem"],
+            "description": "Concentrated problem-solving with minimal distractions",
+            "parameters": {
+                "temperature": 0.3,
+                "top_p": 0.85
+            }
+        },
+        {
+            "name": "Precise",
+            "aliases": ["precise", "exact", "spec", "specs"],
+            "description": "Exact requirements, specifications, and factual accuracy",
+            "parameters": {
+                "temperature": 0.0,
+                "top_p": 0.7
+            }
         }
     ]
 
