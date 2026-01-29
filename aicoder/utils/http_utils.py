@@ -93,7 +93,7 @@ class Response:
 
 def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     """
-    Simple fetch-like function - just 
+    Simple fetch-like function - just
     """
     if options is None:
         options = {}
