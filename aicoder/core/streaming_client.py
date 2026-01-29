@@ -232,6 +232,13 @@ class StreamingClient:
         if send_tools:
             self._add_tool_definitions(data)
 
+        # Add extra_body for thinking mode if configured
+        extra_body = Config.thinking_extra_body()
+        if extra_body:
+            data.update(extra_body)
+            if Config.debug():
+                log_debug(f"*** Adding extra_body: {extra_body}")
+
         return data
 
     def _add_optional_parameters(self, data: Dict[str, Any]) -> None:
