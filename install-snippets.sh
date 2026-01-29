@@ -2,7 +2,11 @@
 
 snippets=$(find examples/snippets -type f)
 
-sels=$(echo "$snippets" | fzf -m -e)
+if [[ "$@" =~ --all ]]; then
+    sels="$snippets"
+else
+    sels=$(echo "$snippets" | fzf -m -e)
+fi
 
 [ -z "$sels" ] && exit 1
 

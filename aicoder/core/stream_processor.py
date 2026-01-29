@@ -109,8 +109,13 @@ class StreamProcessor:
         if index in accumulated_tool_calls:
             # Existing tool call - accumulate arguments
             existing = accumulated_tool_calls[index]
-            if tool_call.get("function", {}).get("arguments"):
-                existing["function"]["arguments"] += tool_call["function"]["arguments"]
+            new_args = tool_call.get("function", {}).get("arguments")
+            if new_args:
+                # Ensure existing arguments is a string, not None
+                if existing["function"]["arguments"] is None:
+                    existing["function"]["arguments"] = new_args
+                else:
+                    existing["function"]["arguments"] += new_args
             return
 
         # New tool call
@@ -123,6 +128,6 @@ class StreamProcessor:
             "type": tool_call.get("type", "function"),
             "function": {
                 "name": tool_call["function"]["name"],
-                "arguments": tool_call.get("function", {}).get("arguments", ""),
+                "arguments": tool_call.get("function", {}).get("arguments") or "",
             },
         }
