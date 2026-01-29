@@ -26,6 +26,7 @@ class StreamProcessor:
         """Process streaming response from API"""
         full_response = ""
         accumulated_tool_calls = {}
+        reasoning_detected = False
 
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
@@ -52,7 +53,13 @@ class StreamProcessor:
 
                 # Content (ignore reasoning_content unless model is reasoning-only)
                 if "delta" in choice:
-                    content = choice["delta"].get("content")
+                    delta = choice["delta"]
+
+                    # Check for reasoning tokens
+                    if delta.get("reasoning_content"):
+                        reasoning_detected = True
+
+                    content = delta.get("content")
                     if content:
                         full_response += content
                         colored_content = self.streaming_client.process_with_colorization(content)
@@ -66,6 +73,10 @@ class StreamProcessor:
                 # Finish reason
                 if choice.get("finish_reason") == "tool_calls":
                     pass
+
+            # Print reasoning detection status when DEBUG is on
+            if Config.debug():
+                LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}")
 
         except Exception as e:
             LogUtils.error(f"\n[Streaming error: {e}]")
@@ -83,8 +94,8 @@ class StreamProcessor:
         }
 
     def accumulate_tool_call(
-        self, 
-        tool_call: Dict[str, Any], 
+        self,
+        tool_call: Dict[str, Any],
         accumulated_tool_calls: Dict[int, Dict[str, Any]]
     ) -> None:
         """Accumulate tool call from stream"""
