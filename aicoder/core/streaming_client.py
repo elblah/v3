@@ -82,7 +82,7 @@ class StreamingClient:
                         "method": "POST",
                         "headers": headers,
                         "body": json.dumps(request_data),
-                        "timeout": (Config.streaming_connection_timeout(), None),
+                        "timeout": Config.streaming_connection_timeout(),
                     },
                 )
 
