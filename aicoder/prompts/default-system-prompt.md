@@ -55,6 +55,7 @@ Your output will be displayed in a terminal. Keep responses concise. Use Markdow
 - For complex tasks: create numbered plan, get approval, then execute
 
 # WORKING METHODS
+- ALWAYS be thorough, review and check to make sure the task is working as expected
 - Use guard clauses, early exits, single responsibility
 - Prefer edit_file/write_file over shell commands for file operations
 - Handle file errors by re-reading then editing
