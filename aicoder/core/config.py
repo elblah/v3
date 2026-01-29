@@ -5,7 +5,7 @@ Configuration module for AI Coder
 
 import os
 import sys
-from typing import Dict
+from typing import Dict, Optional, Set
 from aicoder.utils.log import LogUtils
 
 
@@ -238,6 +238,21 @@ class Config:
 
         """
         return os.environ.get("AICODER_SYSTEM_PROMPT") or ""
+
+    @staticmethod
+    def tools_allow() -> Optional[Set[str]]:
+        """
+        Get allowed tools from TOOLS_ALLOW environment variable.
+        Format: comma-separated list of tool names.
+        If set, only these tools will be available.
+        
+        Returns:
+            Set of allowed tool names, or None if not set (all tools allowed)
+        """
+        env_val = os.environ.get("TOOLS_ALLOW", "").strip()
+        if env_val:
+            return set(name.strip() for name in env_val.split(",") if name.strip())
+        return None
 
     @staticmethod
     def http_headers() -> Dict[str, str]:
