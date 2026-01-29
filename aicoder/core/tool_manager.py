@@ -43,13 +43,25 @@ class ToolManager:
         edit_file_set_plugin_system(plugin_system)
 
     def _register_internal_tools(self):
-        """Register all internal tools"""
-        self.tools["read_file"] = READ_FILE_DEF
-        self.tools["write_file"] = WRITE_FILE_DEF
-        self.tools["edit_file"] = EDIT_FILE_DEF
-        self.tools["run_shell_command"] = RUN_SHELL_COMMAND_DEF
-        self.tools["grep"] = GREP_DEF
-        self.tools["list_directory"] = LIST_DIRECTORY_DEF
+        """Register all internal tools (filtered by TOOLS_ALLOW if set)"""
+        all_tools = {
+            "read_file": READ_FILE_DEF,
+            "write_file": WRITE_FILE_DEF,
+            "edit_file": EDIT_FILE_DEF,
+            "run_shell_command": RUN_SHELL_COMMAND_DEF,
+            "grep": GREP_DEF,
+            "list_directory": LIST_DIRECTORY_DEF,
+        }
+
+        allowed = Config.tools_allow()
+        if allowed is not None:
+            # Only register allowed tools
+            for name, tool_def in all_tools.items():
+                if name in allowed:
+                    self.tools[name] = tool_def
+        else:
+            # Register all tools
+            self.tools.update(all_tools)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         """Get all tool definitions for API request"""
@@ -185,12 +197,14 @@ class ToolManager:
     def execute_tool_with_args(self, execution_args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute tool with ToolExecutionArgs (compatibility method)"""
         # Create ToolCall dict from execution args
+        name = execution_args["name"]
+        args = execution_args["arguments"]
         tool_call = {
-            "id": f"tool_{execution_args["name"]}_{hash(str(execution_args["arguments"]))}",
+            "id": f"tool_{name}_{hash(str(args))}",
             "type": "function",
             "function": {
-                "name": execution_args["name"],
-                "arguments": json.dumps(execution_args["arguments"]),
+                "name": name,
+                "arguments": json.dumps(args),
             },
         }
 
