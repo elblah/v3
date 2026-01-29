@@ -74,6 +74,19 @@ class Config:
     _sandbox_disabled = os.environ.get("MINI_SANDBOX") == "0"
     _detail_mode = os.environ.get("DETAIL") == "1"
 
+    # Thinking mode - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    # Supported values: "default", "on" (1/yes/true), "off" (0/no/false)
+    def _init_thinking_from_env() -> str:
+        env_val = os.environ.get("THINKING", "").lower()
+        if env_val in ("on", "1", "yes", "true"):
+            return "on"
+        elif env_val in ("off", "0", "no", "false"):
+            return "off"
+        return "default"
+
+    _thinking = _init_thinking_from_env()
+
     @staticmethod
     def detail_mode() -> bool:
         """
@@ -94,6 +107,38 @@ class Config:
         Set detail mode state
         """
         cls._detail_mode = enabled
+
+    # Thinking mode state - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    # Values: "default", "on", "off"
+    @staticmethod
+    def thinking() -> str:
+        """
+        Get thinking mode state ("default", "on", or "off")
+        """
+        return Config._thinking
+
+    @classmethod
+    def set_thinking(cls, mode: str) -> None:
+        """
+        Set thinking mode state ("default", "on", or "off")
+        """
+        cls._thinking = mode
+
+    @staticmethod
+    def thinking_extra_body() -> dict:
+        """
+        Get extra_body for thinking mode if configured
+        Returns None for "default", otherwise returns thinking config
+        """
+        mode = Config.thinking()
+        if mode == "default":
+            return None
+        elif mode == "on":
+            return {"thinking": {"type": "enabled"}}
+        elif mode == "off":
+            return {"thinking": {"type": "disabled"}}
+        return None
 
     # Retry Configuration
     _runtime_max_retries = None

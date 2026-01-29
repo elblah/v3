@@ -67,6 +67,7 @@ class CommandRegistry:
         from .detail import DetailCommand
         from .new import NewCommand
         from .debug import DebugCommand
+        from .thinking import ThinkingCommand
 
         commands = [
             HelpCommand(self.context),
@@ -83,6 +84,7 @@ class CommandRegistry:
             DetailCommand(self.context),
             NewCommand(self.context),
             DebugCommand(self.context),
+            ThinkingCommand(self.context),
         ]
 
         for command in commands:
