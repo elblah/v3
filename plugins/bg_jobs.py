@@ -36,11 +36,12 @@ def create_plugin(ctx):
     def start_background_job(name: str, command: str) -> int:
         """Start a background job with proper process group handling"""
         # Start with new session/process group (like run_shell_command does)
+        # Redirect stdout/stderr to DEVNULL to prevent output appearing on screen
         process = subprocess.Popen(
             ["bash", "-c", command],
             preexec_fn=os.setsid,  # Create new process group
-            stdout=None,
-            stderr=None,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
 
         # Store job info
