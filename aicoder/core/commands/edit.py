@@ -22,7 +22,7 @@ class EditCommand(BaseCommand):
         return "edit"
 
     def get_description(self) -> str:
-        return "Create new message in $EDITOR"
+        return "Create new message in $EDITOR (use 'last' to edit previous message)"
 
     def get_aliases(self):
         return ["e"]
@@ -43,9 +43,26 @@ class EditCommand(BaseCommand):
             random_suffix = secrets.token_hex(4)
             temp_file = create_temp_file(f"aicoder-edit-{random_suffix}", ".md")
 
-            # Write empty file
+            # Determine initial content
+            initial_content = ""
+            if args and args[0] == "last":
+                # Find last user message
+                messages = self.context.message_history.get_messages()
+                for msg in reversed(messages):
+                    if msg.get("role") == "user":
+                        content = msg.get("content", "")
+                        # Handle both string and dict content (multimodal)
+                        if isinstance(content, str):
+                            initial_content = content
+                        elif isinstance(content, dict) and "text" in content:
+                            initial_content = content["text"]
+                        break
+                if initial_content:
+                    LogUtils.info("Pre-populating with last user message...")
+
+            # Write initial content to file
             with open(temp_file, "w", encoding="utf-8") as f:
-                f.write("")
+                f.write(initial_content)
 
             LogUtils.info(f"Opening {editor} in tmux window...")
             LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
