@@ -149,7 +149,11 @@ class PluginSystem:
         format_arguments: Optional[Callable] = None,
         generate_preview: Optional[Callable] = None,
     ) -> None:
-        """Internal: register a tool"""
+        """Internal: register a tool (filtered by TOOLS_ALLOW if set)"""
+        allowed = Config.tools_allow()
+        if allowed is not None and name not in allowed:
+            return  # Skip this tool - not in allowed list
+
         self.tools[name] = {
             "fn": fn,
             "description": description,
