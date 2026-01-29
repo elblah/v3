@@ -17,6 +17,7 @@ import subprocess
 import signal
 import shlex
 import time
+import atexit
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -54,7 +55,7 @@ def create_plugin(ctx):
 
         return process.pid
 
-    def kill_job(pid: int) -> bool:
+    def kill_job(pid: int, timeout: float = 2.0) -> bool:
         """Kill a background job and its entire process group"""
         if pid not in jobs:
             return False
@@ -64,26 +65,31 @@ def create_plugin(ctx):
         try:
             # Kill entire process group (like run_shell_command does)
             os.killpg(os.getpgid(pid), signal.SIGTERM)
-            time.sleep(0.5)  # Give it a moment to cleanup gracefully
+            time.sleep(0.1)  # Brief moment for graceful cleanup
             os.killpg(os.getpgid(pid), signal.SIGKILL)
         except ProcessLookupError:
             pass  # Process already dead
         except OSError:
             pass  # Other error, just continue
 
-        # Wait for the process to finish
-        job["process"].wait()
+        # Wait for the process to finish (with timeout to guarantee return)
+        try:
+            job["process"].wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Force kill didn't work, process may be in uninterruptible sleep
+            # We can't do more - just mark it as done
+            pass
 
         # Remove from jobs dict
         del jobs[pid]
         return True
 
-    def kill_all_jobs() -> int:
+    def kill_all_jobs(timeout: float = 2.0) -> int:
         """Kill all background jobs"""
         pids = list(jobs.keys())
         killed = 0
         for pid in pids:
-            if kill_job(pid):
+            if kill_job(pid, timeout=timeout):
                 killed += 1
         return killed
 
@@ -415,15 +421,19 @@ Started: {format_time(job['started_at'])}
     # ==================== Cleanup ====================
 
     def cleanup_all_jobs() -> None:
-        """Kill all background jobs on shutdown"""
+        """Kill all background jobs on shutdown - guaranteed to complete"""
         if jobs:
-            killed = kill_all_jobs()
+            # Use short timeout during cleanup to ensure we don't hang on exit
+            killed = kill_all_jobs(timeout=0.5)
             LogUtils.print(f"[background_jobs] Killed {killed} background job(s) on shutdown")
+
+    # Register atexit handler to ensure cleanup on any exit
+    atexit.register(cleanup_all_jobs)
 
     if Config.debug():
         LogUtils.print("[+] Background jobs plugin loaded")
         LogUtils.print("    - bg_jobs tool")
         LogUtils.print("    - /bg-jobs command")
 
-    # Return cleanup handler
+    # Return cleanup handler (for plugin system integration)
     return {"cleanup": cleanup_all_jobs}
