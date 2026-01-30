@@ -163,6 +163,20 @@ def create_plugin(ctx):
 ```bash
 DEBUG=1 aicoder
 ```
+
+### Color Usage Guidelines
+Always use `Config.colors` - never hardcode ANSI codes. Plugins may override colors, so hardcoded values will look inconsistent.
+
+```python
+from aicoder.core.config import Config
+
+# Correct
+print(f"{Config.colors['green']}[+] Done{Config.colors['reset']}")
+
+# Wrong - hardcoded escape sequences
+print("\x1b[32m[+] Done\x1b[0m")
+```
+
 ### Streaming and Error Handling
 - Uses Server-Sent Events (SSE) format
 - Implements exponential backoff retry: 2s, 4s, 8s, 16s, 32s, max_backoff (configurable, default 64s)
