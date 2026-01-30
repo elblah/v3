@@ -359,28 +359,12 @@ class Config:
 
     # Streaming Configuration
     @staticmethod
-    def streaming_connection_timeout() -> int:
-        """
-        Get streaming connection timeout (TCP + TLS handshake)
-        
-        """
-        return int(os.environ.get("STREAMING_CONNECTION_TIMEOUT", "30"))
-
-    @staticmethod
     def streaming_timeout() -> int:
         """
         Get streaming timeout
-        
+
         """
         return int(os.environ.get("STREAMING_TIMEOUT", "300"))
-
-    @staticmethod
-    def streaming_read_timeout() -> int:
-        """
-        Get streaming read timeout
-        
-        """
-        return int(os.environ.get("STREAMING_READ_TIMEOUT", "30"))
 
     @staticmethod
     def total_timeout() -> int:
