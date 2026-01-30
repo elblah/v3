@@ -165,7 +165,7 @@ DEBUG=1 aicoder
 ```
 
 ### Color Usage Guidelines
-Always use `Config.colors` - never hardcode ANSI codes. Plugins may override colors, so hardcoded values will look inconsistent.
+Always use `Config.colors` - never hardcode ANSI codes. This applies to **all** code including tests. Plugins may override colors, so hardcoded values will look inconsistent.
 
 ```python
 from aicoder.core.config import Config
