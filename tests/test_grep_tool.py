@@ -164,7 +164,7 @@ class TestExecute:
 
     def test_timeout(self):
         with patch.object(Config, 'sandbox_disabled', return_value=True), \
-             patch('subprocess.run', side_effect=subprocess.TimeoutExpired("rg", 30)):
+             patch('aicoder.tools.internal.grep.subprocess.run', side_effect=subprocess.TimeoutExpired("rg", 30)):
             
             result = execute({"text": "timeout_test"})
             
@@ -173,7 +173,7 @@ class TestExecute:
 
     def test_ripgrep_not_found(self):
         with patch.object(Config, 'sandbox_disabled', return_value=True), \
-             patch('subprocess.run', side_effect=FileNotFoundError("rg not found")):
+             patch('aicoder.tools.internal.grep.subprocess.run', side_effect=FileNotFoundError("rg not found")):
             
             result = execute({"text": "test"})
             
