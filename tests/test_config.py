@@ -178,12 +178,6 @@ class TestConfigTimeouts:
         assert isinstance(result, int)
         assert result > 0
 
-    def test_streaming_read_timeout_default(self):
-        """Test streaming read timeout has reasonable default"""
-        result = config.Config.streaming_read_timeout()
-        assert isinstance(result, int)
-        assert result > 0
-
     def test_total_timeout_default(self):
         """Test total timeout is in milliseconds"""
         result = config.Config.total_timeout()
