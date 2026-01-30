@@ -255,7 +255,7 @@ def create_plugin(ctx) -> Dict[str, Any]:
             import subprocess
             try:
                 result = subprocess.run(
-                    ["chafa", "--symbols=block", "--fit-width", "--colors=none", "--size", "120x", file_path],
+                    ["chafa", "--symbols=block", "--fit-width", "--colors=none", "--size", "100x", file_path],
                     capture_output=True,
                     text=True,
                     timeout=30
