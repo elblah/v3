@@ -183,4 +183,138 @@ def create_plugin(ctx) -> Dict[str, Any]:
 
     ctx.register_hook("after_user_prompt", after_user_prompt_hook)
 
+    def format_read_image_args(args):
+        """Format read_image arguments for display"""
+        path = args.get("path", "")
+        full_vision = os.environ.get("AICODER_FULL_VISION", "0") == "1"
+        force_ascii = args.get("force_ascii", False)
+        if force_ascii:
+            mode = "ASCII (forced)"
+        else:
+            mode = "full vision" if full_vision else "ASCII (chafa)"
+        return f"Path: {path}\nMode: {mode}"
+
+    def read_image_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Read and analyze an image file.
+
+        If AICODER_FULL_VISION=1, sends text confirmation and adds a user message with the image.
+        Otherwise, converts the image to ASCII art using chafa.
+        """
+        file_path = args.get("path", "")
+
+        if not file_path:
+            return {
+                "tool": "read_image",
+                "friendly": "Error: No path provided",
+                "detailed": "Please provide a file path to the image."
+            }
+
+        if not os.path.exists(file_path):
+            return {
+                "tool": "read_image",
+                "friendly": f"Error: File not found: {file_path}",
+                "detailed": f"The file '{file_path}' does not exist."
+            }
+
+        if not is_supported_image(file_path):
+            return {
+                "tool": "read_image",
+                "friendly": f"Error: Unsupported image format: {file_path}",
+                "detailed": f"Supported formats: {', '.join(SUPPORTED_FORMATS.keys())}"
+            }
+
+        full_vision = os.environ.get("AICODER_FULL_VISION", "0") == "1"
+        force_ascii = args.get("force_ascii", False)
+
+        if full_vision and not force_ascii:
+            try:
+                # Add the image as a user message (same as @filename does)
+                image_part = create_image_content_part(file_path)
+                user_message = {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"This is the image you requested: path={file_path}"},
+                        image_part
+                    ]
+                }
+                ctx.app.add_plugin_message(user_message)
+
+                return {
+                    "tool": "read_image",
+                    "friendly": f"Image loaded: {file_path} (full vision)",
+                    "detailed": f"Image loaded: {file_path}. A user message with the image has been added to the conversation."
+                }
+            except Exception as e:
+                return {
+                    "tool": "read_image",
+                    "friendly": f"Error loading image: {e}",
+                    "detailed": str(e)
+                }
+        else:
+            import subprocess
+            try:
+                result = subprocess.run(
+                    ["chafa", "--symbols=block", "--fit-width", "--colors=none", "--size", "120x", file_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode != 0:
+                    return {
+                        "tool": "read_image",
+                        "friendly": f"Error: chafa failed for {file_path}",
+                        "detailed": f"chafa error: {result.stderr}"
+                    }
+
+                ascii_art = result.stdout
+                if len(ascii_art) > 15000:
+                    ascii_art = ascii_art[:15000] + "\n[... truncated ...]"
+
+                return {
+                    "tool": "read_image",
+                    "friendly": f"ASCII representation of {file_path}",
+                    "detailed": f"ASCII art of {file_path}:\n```\n{ascii_art}\n```"
+                }
+            except FileNotFoundError:
+                return {
+                    "tool": "read_image",
+                    "friendly": "Error: chafa not found",
+                    "detailed": "chafa is required for ASCII image conversion. Install it or set AICODER_FULL_VISION=1 for full image support."
+                }
+            except subprocess.TimeoutExpired:
+                return {
+                    "tool": "read_image",
+                    "friendly": "Error: chafa timed out",
+                    "detailed": "Image conversion took too long."
+                }
+            except Exception as e:
+                return {
+                    "tool": "read_image",
+                    "friendly": f"Error converting image: {e}",
+                    "detailed": str(e)
+                }
+
+    ctx.register_tool(
+        "read_image",
+        read_image_tool,
+        "Read and analyze an image. Uses full vision if AICODER_FULL_VISION=1, otherwise converts to ASCII via chafa.",
+        {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the image file"
+                },
+                "force_ascii": {
+                    "type": "boolean",
+                    "description": "Force ASCII output even if full vision is available",
+                    "default": False
+                }
+            },
+            "required": ["path"]
+        },
+        format_arguments=format_read_image_args
+    )
+
     return {}
