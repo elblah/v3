@@ -14,11 +14,13 @@
 #### Missing Environment Variables
 ```bash
 # Check if required variables are set
-env | grep -E "(YOLO_MODE|MINI_SANDBOX|API_|OPENAI_)"
+env | grep -E "(YOLO_MODE|MINI_SANDBOX|TOOLS_ALLOW|API_|OPENAI_)"
 
 # Fix: Set required variables
 export YOLO_MODE=1
 export MINI_SANDBOX=0
+# Optional: Restrict tool access for subagents
+# export TOOLS_ALLOW="read_file,grep,list_directory"  # Read-only access
 export API_BASE_URL="https://your-api.com/v1"
 export API_KEY="your-key"
 ```
@@ -64,8 +66,6 @@ timeout 60s bash -c 'echo "task" | python main.py > output.txt' &
 
 #### Configure Global Timeouts
 ```bash
-export STREAMING_TIMEOUT=60   # 60 seconds for streaming
-export STREAMING_READ_TIMEOUT=10  # 10 seconds for reads
 export TOTAL_TIMEOUT=120      # 120 seconds total
 ```
 
@@ -306,7 +306,6 @@ done
 
 ```bash
 # Increase timeouts for faster completion
-export STREAMING_READ_TIMEOUT=5
 export TOTAL_TIMEOUT=60
 
 # Use faster model if available
@@ -481,6 +480,60 @@ MONITOR_PID=$!
 # ...
 
 kill $MONITOR_PID  # Stop monitoring
+```
+
+### Restricting Subagent Tool Access
+
+When launching subagents, you may want to limit their access to certain tools for security or safety reasons. Use the `TOOLS_ALLOW` environment variable:
+
+```bash
+# Launch a read-only analysis subagent
+echo "Analyze the codebase" | \
+TOOLS_ALLOW="read_file,grep,list_directory" \
+$AICODER_CMD > analysis.txt &
+
+# Launch a subagent that can only read and search
+echo "Review code patterns" | \
+TOOLS_ALLOW="read_file,grep" \
+$AICODER_CMD > review.txt &
+
+# Launch a subagent with full tool access (default)
+echo "Make changes to code" | \
+$AICODER_CMD > changes.txt &
+```
+
+**Use cases for restricted tool access:**
+
+1. **Security Analysis**: Read-only access prevents accidental code modifications while reviewing for vulnerabilities
+2. **Code Review**: Reviewers should only read code, not make changes
+3. **Documentation Generation**: Only need read tools to inspect code for docs
+4. **Research Tasks**: Inspect files without risk of modifications
+
+**Available tools:**
+
+| Tool | Description | Use Case |
+|------|-------------|----------|
+| `read_file` | Read file contents | Safe for all analysis |
+| `grep` | Search text in files | Pattern finding |
+| `list_directory` | List files and directories | Codebase exploration |
+| `write_file` | Write/create files | Code generation tasks |
+| `edit_file` | Edit files | Making targeted changes |
+| `run_shell_command` | Execute shell commands | Build/test automation |
+
+**Example: Read-only code review system:**
+```bash
+# Multiple reviewers, all read-only
+echo "Check for security issues" | \
+TOOLS_ALLOW="read_file,grep" \
+AICODER_SYSTEM_PROMPT="You are a security reviewer. Identify vulnerabilities." \
+$AICODER_CMD > security_review.txt &
+
+echo "Check for performance issues" | \
+TOOLS_ALLOW="read_file,grep" \
+AICODER_SYSTEM_PROMPT="You are a performance reviewer. Identify bottlenecks." \
+$AICODER_CMD > performance_review.txt &
+
+wait
 ```
 
 This troubleshooting guide provides comprehensive solutions for common issues encountered when working with the subagent system.
