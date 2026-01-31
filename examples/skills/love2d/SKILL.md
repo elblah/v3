@@ -26,7 +26,15 @@ The `read_image` tool works for both model types.
 
 Love2d needs a display. Use one of these approaches:
 
-## Option 1: With Xvfb (Headless, Screenshots Supported)
+## Option 1: With Xvfb (Headless, Screenshot supported, simple run script):
+
+```bash
+xvfb-run bash -c 'love . & x=$!; sleep 5; xdotool key --repeat 25 a; scrot -u; kill $x'
+```
+
+## Option 2: With Xvfb (Headless, Screenshots Supported)
+
+Use this method only if xvfb-run is not ok
 
 ```bash
 # Find a free display number
@@ -43,7 +51,9 @@ DISPLAY=:$DISPLAY_NUM timeout -k 2s 10s love .
 kill -9 $xpid
 ```
 
-## Option 2: Without X11 (No Screenshots)
+## Option 3: just run love .
+
+Important depending on the environment the user might need to run `xhost +`. This usually happens when the aicoder is running inside a sandbox like bwrap.
 
 ```bash
 love .
