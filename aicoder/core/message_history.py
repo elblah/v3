@@ -44,6 +44,32 @@ class MessageHistory:
         """Set API client for compaction"""
         self.api_client = api_client
 
+    @staticmethod
+    def _get_content_as_string(content: Any) -> Optional[str]:
+        """Safely get message content as string (handles both string and list types).
+        Returns None if content contains images."""
+        if isinstance(content, list):
+            # For multi-modal messages, check for images
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    return None
+            # Extract text content
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    return item.get("text", "")
+            return ""
+        return str(content) if content else ""
+
+    @staticmethod
+    def _has_image_content(msg: Dict[str, Any]) -> bool:
+        """Check if message contains image content"""
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    return True
+        return False
+
     def add_system_message(self, content: str) -> None:
         """Add a system message"""
         message = {"role": "system", "content": content}
@@ -545,10 +571,11 @@ class MessageHistory:
         This is the 'highlander' mode - there can be only one [SUMMARY].
         Useful when context is cluttered with many compaction summaries.
         """
-        summary_indices = [
-            i for i, msg in enumerate(self.messages)
-            if msg.get("content", "").startswith("[SUMMARY]")
-        ]
+        summary_indices = []
+        for i, msg in enumerate(self.messages):
+            content = self._get_content_as_string(msg.get("content", ""))
+            if content and content.startswith("[SUMMARY]"):
+                summary_indices.append(i)
 
         if len(summary_indices) <= 1:
             return 0  # Nothing to prune

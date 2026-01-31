@@ -29,6 +29,32 @@ class CompactionService:
         if api_client:
             self.streaming_client = api_client
 
+    @staticmethod
+    def _get_content_as_string(content: Any) -> Optional[str]:
+        """Safely get message content as string (handles both string and list types).
+        Returns None if content contains images (should be filtered out)."""
+        if isinstance(content, list):
+            # For multi-modal messages, check for images
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    return None  # Discard messages with images
+            # Extract text content
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    return item.get("text", "")
+            return ""
+        return str(content) if content else ""
+
+    @staticmethod
+    def _has_image_content(msg: Dict[str, Any]) -> bool:
+        """Check if message contains image content"""
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    return True
+        return False
+
     def compact(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Compact messages using sliding window + AI summarization"""
         if len(messages) <= 3:
@@ -40,8 +66,11 @@ class CompactionService:
         messages_to_compact = []
 
         for i, msg in enumerate(messages):
-            content = msg.get("content", "")
-            if content.startswith("[SUMMARY]"):
+            # Skip messages with images
+            if self._has_image_content(msg):
+                continue
+            content = self._get_content_as_string(msg.get("content", ""))
+            if content and content.startswith("[SUMMARY]"):
                 other_summaries.append(msg)
             elif i == 0 and msg.get("role") == "system":
                 # Skip system message for now, add it back later
@@ -106,11 +135,14 @@ class CompactionService:
         messages_to_compact = []
         for round in rounds_to_compact:
             messages_to_compact.extend(round.messages)
-        # Filter out any summary messages from compaction
-        filtered_messages = [
-            msg for msg in messages_to_compact
-            if not msg.get("content", "").startswith("[SUMMARY]")
-        ]
+        # Filter out any summary messages and image messages from compaction
+        filtered_messages = []
+        for msg in messages_to_compact:
+            if self._has_image_content(msg):
+                continue
+            content = self._get_content_as_string(msg.get("content", ""))
+            if content and not content.startswith("[SUMMARY]"):
+                filtered_messages.append(msg)
 
         if len(filtered_messages) == 0:
             return messages
@@ -140,10 +172,15 @@ class CompactionService:
                Positive: compact N oldest messages
                Negative: keep only |N| newest messages, compact rest
         """
-        eligible_messages = [
-            msg for msg in messages
-            if msg.get("role") != "system" and not msg.get("content", "").startswith("[SUMMARY]")
-        ]
+        eligible_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                continue
+            if self._has_image_content(msg):
+                continue
+            content = self._get_content_as_string(msg.get("content", ""))
+            if content and not content.startswith("[SUMMARY]"):
+                eligible_messages.append(msg)
 
         if len(eligible_messages) == 0:
             return messages
@@ -181,24 +218,30 @@ class CompactionService:
         current: List[Dict[str, Any]] = []
 
         for msg in messages:
+            # Skip messages with images
+            if self._has_image_content(msg):
+                continue
+
             current.append(msg)
 
             # Complete group at tool result OR new user message (not first)
             if msg.get("role") == "tool" or (msg.get("role") == "user" and len(current) > 1):
+                content = self._get_content_as_string(current[0].get("content", "")) if current[0] else ""
                 groups.append(
                     MessageGroup(
                         messages=list(current),
-                        is_summary=current[0].get("content", "").startswith("[SUMMARY]"),
+                        is_summary=bool(content and content.startswith("[SUMMARY]")),
                         is_user_turn=current[0].get("role") == "user",
                     )
                 )
                 current = [msg] if msg.get("role") == "user" else []
 
         if len(current) > 0:
+            content = self._get_content_as_string(current[0].get("content", "")) if current[0] else ""
             groups.append(
                 MessageGroup(
                     messages=current,
-                    is_summary=current[0].get("content", "").startswith("[SUMMARY]"),
+                    is_summary=bool(content and content.startswith("[SUMMARY]")),
                     is_user_turn=current[0].get("role") == "user",
                 )
             )
@@ -211,28 +254,35 @@ class CompactionService:
         current_round: List[Dict[str, Any]] = []
 
         for msg in messages:
-            if msg.get("role") == "system" or msg.get("content", "").startswith("[SUMMARY]"):
+            # Skip messages with images
+            if self._has_image_content(msg):
+                continue
+
+            content = self._get_content_as_string(msg.get("content", ""))
+            if msg.get("role") == "system" or (content and content.startswith("[SUMMARY]")):
                 continue  # Skip system and summary messages
 
             current_round.append(msg)
 
             # Round ends at next user message
             if msg.get("role") == "user" and len(current_round) > 1:
+                content_first = self._get_content_as_string(current_round[0].get("content", "")) if current_round[0] else ""
                 if len(current_round) > 1:
                     rounds.append(
                         MessageGroup(
                             messages=list(current_round[:-1]),
-                            is_summary=current_round[0].get("content", "").startswith("[SUMMARY]"),
+                            is_summary=bool(content_first and content_first.startswith("[SUMMARY]")),
                             is_user_turn=current_round[0].get("role") == "user",
                         )
                     )
                 current_round = [msg]  # Start new round
 
         if len(current_round) > 0:
+            content_first = self._get_content_as_string(current_round[0].get("content", "")) if current_round[0] else ""
             rounds.append(
                 MessageGroup(
                     messages=current_round,
-                    is_summary=current_round[0].get("content", "").startswith("[SUMMARY]"),
+                    is_summary=bool(content_first and content_first.startswith("[SUMMARY]")),
                     is_user_turn=current_round[0].get("role") == "user",
                 )
             )
@@ -244,9 +294,13 @@ class CompactionService:
         messages = []
         for g in groups:
             messages.extend(g.messages)
-        messages_to_summarize = [
-            msg for msg in messages if not msg.get("content", "").startswith("[SUMMARY]")
-        ]
+        messages_to_summarize = []
+        for msg in messages:
+            if self._has_image_content(msg):
+                continue
+            content = self._get_content_as_string(msg.get("content", ""))
+            if content and not content.startswith("[SUMMARY]"):
+                messages_to_summarize.append(msg)
 
         if len(messages_to_summarize) == 0:
             return "No previous content"
@@ -310,7 +364,11 @@ Your summary should be comprehensive enough to provide context but concise enoug
 
         for i, msg in enumerate(messages):
             role = msg.get("role")
-            content = msg.get("content", "")
+            content = self._get_content_as_string(msg.get("content", ""))
+
+            # Skip messages with no text content
+            if not content:
+                continue
 
             # Calculate temporal position (Python's exact strategy)
             current_index = i + 1
