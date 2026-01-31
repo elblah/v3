@@ -172,19 +172,13 @@ class TestConfigApiSettings:
 class TestConfigTimeouts:
     """Tests for timeout configuration"""
 
-    def test_streaming_timeout_default(self):
-        """Test streaming timeout has reasonable default"""
-        result = config.Config.streaming_timeout()
-        assert isinstance(result, int)
-        assert result > 0
-
     def test_total_timeout_default(self):
-        """Test total timeout is in milliseconds"""
+        """Test total timeout is in seconds"""
         result = config.Config.total_timeout()
         assert isinstance(result, int)
         assert result > 0
-        # Should be in milliseconds (300 * 1000 = 300000)
-        assert result >= 1000
+        # Should be in seconds (default 300)
+        assert result >= 1
 
 
 class TestConfigContextSettings:

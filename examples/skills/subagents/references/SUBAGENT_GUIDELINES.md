@@ -52,6 +52,9 @@ export YOLO_MODE=1
 export MINI_SANDBOX=0
 export MAX_RETRIES=10
 
+# Optional: Restrict tool access (comma-separated list)
+# export TOOLS_ALLOW="read_file,grep,list_directory"  # Read-only access
+
 # SAFE TEMP DIRECTORY CREATION
 TEMP_DIR="/tmp/subagent_task_$(date +%s)"
 mkdir -p "$TEMP_DIR"
@@ -230,8 +233,7 @@ export MAX_RETRIES=10       # Handle API issues
 ### Optional Performance Settings
 ```bash
 export CONTEXT_SIZE=32000          # Smaller context = faster
-export STREAMING_TIMEOUT=120       # Longer timeouts
-export STREAMING_READ_TIMEOUT=30  # Per-read timeout
+export TOTAL_TIMEOUT=120           # Total timeout in seconds
 ```
 
 These guidelines ensure safe, reliable, and clean subagent execution that doesn't interfere with the project or system stability.

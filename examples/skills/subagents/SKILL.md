@@ -24,6 +24,7 @@ Use this skill when user requests:
 ### Agent Specialization
 Each subagent can have:
 - Custom system prompt via `AICODER_SYSTEM_PROMPT` environment variable
+- **Limited tool access** via `TOOLS_ALLOW` environment variable (e.g., `TOOLS_ALLOW=read_file,grep` for read-only analysis)
 - Specific task instructions
 - Isolated output file for results
 - Individual timeout and retry settings
@@ -191,24 +192,60 @@ wait  # Wait for all reviews to complete
 
 ```
 
-### Pattern 2: Parallel Documentation Generation
+### Pattern 2: Read-Only Analysis Subagents
+Restrict subagents to read-only tools for safe analysis:
+
+```bash
+# Analysis subagent with read-only access
+echo "Analyze the codebase for patterns" | \
+TOOLS_ALLOW="read_file,grep,list_directory" \
+$AICODER_CMD > pattern_analysis.txt &
+
+# Review subagent with read-only access
+echo "Review code quality and structure" | \
+TOOLS_ALLOW="read_file,grep" \
+$AICODER_CMD > quality_review.txt &
+
+wait
+```
+
+**Use cases for restricted tool access:**
+- **Security analysis**: Read-only access prevents accidental code modifications
+- **Code review**: Reviewers should not be making changes
+- **Documentation generation**: Read tools are sufficient for reading code
+- **Research tasks**: Only need to inspect files, not modify them
+
+**Available tools to allow:**
+- `read_file` - Read file contents
+- `write_file` - Write/create files
+- `edit_file` - Edit files with exact text replacement
+- `run_shell_command` - Execute shell commands
+- `grep` - Search text in files
+- `list_directory` - List files and directories
+
+### Pattern 3: Parallel Documentation Generation
 Generate different documentation types simultaneously:
 
 ```bash
-# API Documentation
-echo "Extract and document all APIs" | $AICODER_CMD > api_docs.txt &
+# API Documentation (read-only)
+echo "Extract and document all APIs" | \
+TOOLS_ALLOW="read_file,grep,list_directory" \
+$AICODER_CMD > api_docs.txt &
 
-# Architecture Documentation
-echo "Document architecture patterns and design" | $AICODER_CMD > arch_docs.txt &
+# Architecture Documentation (read-only)
+echo "Document architecture patterns and design" | \
+TOOLS_ALLOW="read_file,grep" \
+$AICODER_CMD > arch_docs.txt &
 
-# Setup Documentation
-echo "Document installation and configuration" | $AICODER_CMD > setup_docs.txt &
+# Setup Documentation (read-only)
+echo "Document installation and configuration" | \
+TOOLS_ALLOW="read_file,grep" \
+$AICODER_CMD > setup_docs.txt &
 
 wait  # Wait for all documentation to complete
-
 ```
 
-### Pattern 3: Research and Synthesis
+### Pattern 4: Research and Synthesis
 Multiple research angles with final synthesis:
 
 ```bash
@@ -270,8 +307,7 @@ $AICODER_CMD ...
 ### Optional Performance Tuning
 ```bash
 export CONTEXT_SIZE=32000          # Smaller context for faster processing
-export STREAMING_TIMEOUT=120       # Longer timeout for complex tasks
-export STREAMING_READ_TIMEOUT=30  # Per-read timeout
+export TOTAL_TIMEOUT=120           # Longer timeout for complex tasks
 
 ```
 
