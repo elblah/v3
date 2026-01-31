@@ -70,6 +70,7 @@ API_MODEL or OPENAI_MODEL            # Model name
 DEBUG=1                              # Debug mode
 YOLO_MODE=1                          # Auto-approve all tool actions
 MINI_SANDBOX=0                       # Disable file sandbox
+TOOLS_ALLOW=read_file,grep            # Restrict available tools (comma-separated)
 
 # Performance
 CONTEXT_SIZE=128000                  # Context window size
@@ -78,9 +79,7 @@ MAX_TOOL_RESULT_SIZE=20000           # Max tool output size
 MAX_RETRIES=10                       # API retry attempts
 
 # Timeouts (seconds)
-STREAMING_TIMEOUT=300                # Streaming timeout
-STREAMING_READ_TIMEOUT=30            # Read timeout
-TOTAL_TIMEOUT=300                    # Total timeout
+TOTAL_TIMEOUT=300                    # Total timeout for HTTP requests
 ```
 
 ### Key Constraints

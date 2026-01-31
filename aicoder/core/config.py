@@ -245,7 +245,17 @@ class Config:
         Get allowed tools from TOOLS_ALLOW environment variable.
         Format: comma-separated list of tool names.
         If set, only these tools will be available.
-        
+
+        Available internal tools:
+        - read_file: Read file contents
+        - write_file: Write/create files
+        - edit_file: Edit files with exact text replacement
+        - run_shell_command: Execute shell commands
+        - grep: Search text in files
+        - list_directory: List files and directories
+
+        Example: TOOLS_ALLOW="read_file,grep,list_directory" (read-only access)
+
         Returns:
             Set of allowed tool names, or None if not set (all tools allowed)
         """
@@ -359,20 +369,12 @@ class Config:
 
     # Streaming Configuration
     @staticmethod
-    def streaming_timeout() -> int:
-        """
-        Get streaming timeout
-
-        """
-        return int(os.environ.get("STREAMING_TIMEOUT", "300"))
-
-    @staticmethod
     def total_timeout() -> int:
         """
-        Get total timeout in milliseconds
-        
+        Get total timeout in seconds
+
         """
-        return int(os.environ.get("TOTAL_TIMEOUT", "300")) * 1000
+        return int(os.environ.get("TOTAL_TIMEOUT", "300"))
 
     # Context and Memory Configuration
     @staticmethod
