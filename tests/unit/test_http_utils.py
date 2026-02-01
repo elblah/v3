@@ -342,7 +342,8 @@ class TestFetch:
 
     @patch('aicoder.utils.http_utils.urllib.request.urlopen')
     def test_fetch_default_timeout(self, mock_urlopen):
-        """Test fetch() uses default timeout of 30 seconds"""
+        """Test fetch() uses default timeout from Config"""
+        from aicoder.core.config import Config
         mock_response = MockResponse(status=200)
         mock_urlopen.return_value = mock_response
 
@@ -350,7 +351,7 @@ class TestFetch:
 
         assert result.status == 200
         call_kwargs = mock_urlopen.call_args[1]
-        assert call_kwargs["timeout"] == 30
+        assert call_kwargs["timeout"] == Config.socket_timeout()
 
     @patch('aicoder.utils.http_utils.urllib.request.urlopen')
     def test_fetch_handles_http_error(self, mock_urlopen):
