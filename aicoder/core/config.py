@@ -479,14 +479,6 @@ class Config:
         """
         return int(os.environ.get("DEFAULT_SHELL_TIMEOUT", "30"))
 
-    @staticmethod
-    def socket_timeout() -> int:
-        """
-        Get socket timeout in seconds (default: 2 minutes)
-
-        """
-        return int(os.environ.get("SOCKET_TIMEOUT", "120"))
-
     # Default directories to ignore when listing files
     DEFAULT_IGNORE_DIRS = [
         '.git',

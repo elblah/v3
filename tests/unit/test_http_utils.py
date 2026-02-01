@@ -336,9 +336,9 @@ class TestFetch:
 
         assert result.status == 200
         mock_urlopen.assert_called_once()
-        # Check timeout in call kwargs
+        # Check timeout in call kwargs (allow small variance due to time calculation)
         call_kwargs = mock_urlopen.call_args[1]
-        assert call_kwargs["timeout"] == 60
+        assert 55 <= call_kwargs["timeout"] <= 60
 
     @patch('aicoder.utils.http_utils.urllib.request.urlopen')
     def test_fetch_default_timeout(self, mock_urlopen):
@@ -351,7 +351,9 @@ class TestFetch:
 
         assert result.status == 200
         call_kwargs = mock_urlopen.call_args[1]
-        assert call_kwargs["timeout"] == Config.socket_timeout()
+        # Allow small variance due to time calculation between calls
+        expected = Config.total_timeout()
+        assert expected - 5 <= call_kwargs["timeout"] <= expected
 
     @patch('aicoder.utils.http_utils.urllib.request.urlopen')
     def test_fetch_handles_http_error(self, mock_urlopen):
