@@ -6,6 +6,7 @@ import json
 import urllib.request
 import urllib.error
 from typing import Dict, Any, Optional
+from aicoder.core.config import Config
 
 
 class Response:
@@ -101,7 +102,7 @@ def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     method = options.get("method", "GET")
     headers = options.get("headers", {})
     body = options.get("body")
-    timeout = options.get("timeout", 30)
+    timeout = options.get("timeout", Config.socket_timeout())
 
     # Create request
     if body:
