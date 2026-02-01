@@ -19,6 +19,15 @@ def create_plugin(ctx):
     # Config.colors is used throughout the codebase
     from aicoder.core.config import Config
     from aicoder.utils.log import LogUtils
+    import sys
+
+    # Check if output is piped - if so, strip all color codes
+    if not sys.stdout.isatty():
+        for key in Config.colors:
+            Config.colors[key] = ""
+        if Config.debug():
+            LogUtils.print("  - Luna theme applied (no colors, piped output)")
+        return
 
     # Update color codes (using \x1b for consistency)
     # Original Luna theme colors - light, pastel aesthetic
