@@ -3,6 +3,8 @@ Simple HTTP utilities - Python version of fetch-like functionality
 """
 
 import json
+import socket
+import time
 import urllib.request
 import urllib.error
 from typing import Dict, Any, Optional
@@ -12,7 +14,7 @@ from aicoder.core.config import Config
 class Response:
     """Simple response object mimicking fetch Response"""
 
-    def __init__(self, response_or_error: Any):
+    def __init__(self, response_or_error: Any, deadline: float = 0):
         # Handle both successful responses and HTTPError
         if hasattr(response_or_error, "read"):
             # Regular response
@@ -36,6 +38,19 @@ class Response:
                 except:
                     self._content = b""
 
+        self.deadline = deadline
+
+    def _enforce_timeout(self):
+        """Set socket timeout to remaining time before read operation"""
+        if self.deadline <= 0:
+            return
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout("Total timeout exceeded")
+        if hasattr(self.response, "fileno"):
+            sock = socket.fromfd(self.response.fileno(), socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(remaining)
+
     def ok(self) -> bool:
         """Check if response is successful"""
         return 200 <= self.status < 300
@@ -46,6 +61,7 @@ class Response:
             # Use cached content or read it
             if self._content is None:
                 if hasattr(self.response, "read"):
+                    self._enforce_timeout()
                     self._content = self.response.read()
                 else:
                     self._content = b""
@@ -71,6 +87,7 @@ class Response:
         """Read raw response bytes"""
         if self._content is None:
             if hasattr(self.response, "read"):
+                self._enforce_timeout()
                 self._content = self.response.read()
             else:
                 self._content = b""
@@ -79,6 +96,7 @@ class Response:
     def readline(self) -> bytes:
         """Read one line from response - needed for SSE streaming"""
         if hasattr(self.response, "readline"):
+            self._enforce_timeout()
             return self.response.readline()
         else:
             # Fallback to reading all and finding first line
@@ -94,7 +112,7 @@ class Response:
 
 def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     """
-    Simple fetch-like function - just
+    Simple fetch-like function with total timeout enforcement.
     """
     if options is None:
         options = {}
@@ -102,7 +120,10 @@ def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     method = options.get("method", "GET")
     headers = options.get("headers", {})
     body = options.get("body")
-    timeout = options.get("timeout", Config.socket_timeout())
+    total_timeout = options.get("timeout", Config.total_timeout())
+
+    # Calculate deadline for total timeout enforcement
+    deadline = time.monotonic() + total_timeout
 
     # Create request
     if body:
@@ -113,11 +134,15 @@ def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
 
     try:
-        response = urllib.request.urlopen(req, timeout=timeout)
-        return Response(response)
+        # Use remaining time for connection timeout
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout("Total timeout exceeded before connection")
+        response = urllib.request.urlopen(req, timeout=remaining)
+        return Response(response, deadline=deadline)
     except urllib.error.HTTPError as e:
         # Return error as Response object
-        return Response(e)
+        return Response(e, deadline=deadline)
     except Exception as e:
         # For connection errors etc., raise as exception
         raise Exception(f"Request failed: {e}")
