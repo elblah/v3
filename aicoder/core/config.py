@@ -265,6 +265,23 @@ class Config:
         return None
 
     @staticmethod
+    def plugins_allow() -> Optional[Set[str]]:
+        """
+        Get allowed plugins from PLUGINS_ALLOW environment variable.
+        Format: comma-separated list of plugin names (without .py extension).
+        If set, only these plugins will be loaded.
+
+        Example: PLUGINS_ALLOW="web,github,rag" (only load these plugins)
+
+        Returns:
+            Set of allowed plugin names, or None if not set (all plugins allowed)
+        """
+        env_val = os.environ.get("PLUGINS_ALLOW", "").strip()
+        if env_val:
+            return set(name.strip() for name in env_val.split(",") if name.strip())
+        return None
+
+    @staticmethod
     def http_headers() -> Dict[str, str]:
         """
         Get custom HTTP headers from AICODER_HTTP_HEADERS environment variable.

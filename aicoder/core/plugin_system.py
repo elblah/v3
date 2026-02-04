@@ -224,6 +224,16 @@ class PluginSystem:
 
         plugin_files.sort(key=sort_key)
 
+        # Filter by PLUGINS_ALLOW if set
+        allowed_plugins = Config.plugins_allow()
+        if allowed_plugins is not None:
+            filtered_files = []
+            for filename in plugin_files:
+                plugin_name = Path(filename).stem
+                if plugin_name in allowed_plugins:
+                    filtered_files.append(filename)
+            plugin_files = filtered_files
+
         # Load each plugin
         for filename in plugin_files:
             self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
