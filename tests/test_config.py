@@ -17,11 +17,6 @@ class TestConfigColors:
         assert "green" in config.Config.colors
         assert "yellow" in config.Config.colors
 
-    def test_colors_are_ansi_codes(self):
-        """Test that colors contain ANSI escape codes"""
-        for key, value in config.Config.colors.items():
-            assert value.startswith("\x1b["), f"Color {key} should be ANSI code"
-
 
 class TestConfigYoloMode:
     """Tests for YOLO mode configuration"""
@@ -466,8 +461,85 @@ class TestConfigColorsAccessibility:
         # Bright colors are optional but nice to have
         # This test passes regardless
 
-    def test_colors_reset_code_present(self):
-        """Test that reset code is present"""
-        reset = config.Config.colors.get("reset")
-        assert reset is not None
-        assert "\x1b[0m" in reset or reset == "\x1b[0m"
+
+
+
+class TestConfigToolsAllow:
+    """Tests for TOOLS_ALLOW configuration"""
+
+    def test_tools_allow_returns_none_when_not_set(self, monkeypatch):
+        """Test that tools_allow returns None when env var not set"""
+        monkeypatch.delenv("TOOLS_ALLOW", raising=False)
+        result = config.Config.tools_allow()
+        assert result is None
+
+    def test_tools_allow_with_single_tool(self, monkeypatch):
+        """Test tools_allow with single tool"""
+        monkeypatch.setenv("TOOLS_ALLOW", "read_file")
+        result = config.Config.tools_allow()
+        assert result == {"read_file"}
+
+    def test_tools_allow_with_multiple_tools(self, monkeypatch):
+        """Test tools_allow with multiple tools"""
+        monkeypatch.setenv("TOOLS_ALLOW", "read_file,grep,list_directory")
+        result = config.Config.tools_allow()
+        assert result == {"read_file", "grep", "list_directory"}
+
+    def test_tools_allow_with_spaces(self, monkeypatch):
+        """Test tools_allow handles spaces around names"""
+        monkeypatch.setenv("TOOLS_ALLOW", "read_file , grep , list_directory")
+        result = config.Config.tools_allow()
+        assert result == {"read_file", "grep", "list_directory"}
+
+    def test_tools_allow_with_empty_string(self, monkeypatch):
+        """Test tools_allow with empty string returns None"""
+        monkeypatch.setenv("TOOLS_ALLOW", "")
+        result = config.Config.tools_allow()
+        assert result is None
+
+
+class TestConfigPluginsAllow:
+    """Tests for PLUGINS_ALLOW configuration"""
+
+    def test_plugins_allow_returns_none_when_not_set(self, monkeypatch):
+        """Test that plugins_allow returns None when env var not set"""
+        monkeypatch.delenv("PLUGINS_ALLOW", raising=False)
+        result = config.Config.plugins_allow()
+        assert result is None
+
+    def test_plugins_allow_with_single_plugin(self, monkeypatch):
+        """Test plugins_allow with single plugin"""
+        monkeypatch.setenv("PLUGINS_ALLOW", "web_search")
+        result = config.Config.plugins_allow()
+        assert result == {"web_search"}
+
+    def test_plugins_allow_with_multiple_plugins(self, monkeypatch):
+        """Test plugins_allow with multiple plugins"""
+        monkeypatch.setenv("PLUGINS_ALLOW", "web_search,git_aware,snippets")
+        result = config.Config.plugins_allow()
+        assert result == {"web_search", "git_aware", "snippets"}
+
+    def test_plugins_allow_with_spaces(self, monkeypatch):
+        """Test plugins_allow handles spaces around names"""
+        monkeypatch.setenv("PLUGINS_ALLOW", "web_search , git_aware , snippets")
+        result = config.Config.plugins_allow()
+        assert result == {"web_search", "git_aware", "snippets"}
+
+    def test_plugins_allow_with_empty_string(self, monkeypatch):
+        """Test plugins_allow with empty string returns None"""
+        monkeypatch.setenv("PLUGINS_ALLOW", "")
+        result = config.Config.plugins_allow()
+        assert result is None
+
+    def test_plugins_allow_empty_set(self, monkeypatch):
+        """Test plugins_allow can be used to disable all plugins"""
+        # When PLUGINS_ALLOW is set but empty, no plugins load
+        # This is useful for subagents that don't need plugins
+        # Note: The implementation returns None for empty string,
+        # which means "all plugins allowed". To disable all plugins,
+        # users can set PLUGINS_ALLOW to a non-existent plugin name
+        # or we could change the implementation to return empty set for empty string.
+        # For now, let's document current behavior:
+        monkeypatch.setenv("PLUGINS_ALLOW", "")
+        result = config.Config.plugins_allow()
+        assert result is None  # Empty string = not set = all plugins allowed

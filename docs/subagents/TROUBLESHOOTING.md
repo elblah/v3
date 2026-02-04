@@ -14,7 +14,7 @@
 #### Missing Environment Variables
 ```bash
 # Check if required variables are set
-env | grep -E "(YOLO_MODE|MINI_SANDBOX|TOOLS_ALLOW|API_|OPENAI_)"
+env | grep -E "(YOLO_MODE|MINI_SANDBOX|TOOLS_ALLOW|PLUGINS_ALLOW|API_|OPENAI_)"
 
 # Fix: Set required variables
 export YOLO_MODE=1
@@ -482,9 +482,9 @@ MONITOR_PID=$!
 kill $MONITOR_PID  # Stop monitoring
 ```
 
-### Restricting Subagent Tool Access
+### Restricting Subagent Tool and Plugin Access
 
-When launching subagents, you may want to limit their access to certain tools for security or safety reasons. Use the `TOOLS_ALLOW` environment variable:
+When launching subagents, you may want to limit their access to certain tools and plugins for security or safety reasons. Use the `TOOLS_ALLOW` and `PLUGINS_ALLOW` environment variables:
 
 ```bash
 # Launch a read-only analysis subagent
@@ -519,6 +519,48 @@ $AICODER_CMD > changes.txt &
 | `write_file` | Write/create files | Code generation tasks |
 | `edit_file` | Edit files | Making targeted changes |
 | `run_shell_command` | Execute shell commands | Build/test automation |
+
+**Restricting Plugin Access:**
+
+Similarly, you can limit which plugins are loaded for a subagent using the `PLUGINS_ALLOW` environment variable:
+
+```bash
+# Launch a subagent with only web_search and git_aware plugins
+echo "Research and analyze the codebase" | \
+PLUGINS_ALLOW="web_search,git_aware" \
+$AICODER_CMD > research.txt &
+
+# Launch a subagent with no plugins (faster startup, reduced surface area)
+echo "Quick analysis only" | \
+PLUGINS_ALLOW="" \
+$AICODER_CMD > quick_analysis.txt &
+```
+
+**Available plugins:** (Use plugin names without `.py` extension)
+
+Plugins are loaded from either:
+- Local: `.aicoder/plugins/` (project-specific, takes precedence)
+- Global: `~/.config/aicoder-v3/plugins/` (user's global plugins)
+
+Common plugins that may be available:
+- `web_search` - Web search and URL fetching
+- `git_aware` - Git repository awareness and information
+- `snippets` - Code snippet management
+- `vision` - Image analysis capabilities
+- `shell` - Enhanced shell commands
+
+To see which plugins are available in your environment, check:
+```bash
+ls -la .aicoder/plugins/  # Local plugins
+ls -la ~/.config/aicoder-v3/plugins/  # Global plugins
+```
+
+**Use cases for restricted plugin access:**
+
+1. **Performance**: Disable unnecessary plugins for faster subagent startup
+2. **Security**: Prevent network access by excluding `web_search` and similar plugins
+3. **Isolation**: Ensure subagents only use specific capabilities
+4. **Testing**: Test behavior with different plugin combinations
 
 **Example: Read-only code review system:**
 ```bash

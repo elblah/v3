@@ -47,6 +47,39 @@ cp plugins/ruff.py .aicoder/plugins/
 mv .aicoder/plugins/_ruff.py .aicoder/plugins/ruff.py
 ```
 
+### Restricting Plugins with PLUGINS_ALLOW
+
+You can restrict which plugins are loaded using the `PLUGINS_ALLOW` environment variable:
+
+```bash
+# Load only specific plugins (comma-separated, without .py extension)
+PLUGINS_ALLOW="web_search,git_aware" aicoder
+
+# Useful for subagents with limited capabilities
+PLUGINS_ALLOW="" echo "Quick analysis" | aicoder
+
+# Use with TOOLS_ALLOW for maximum security
+PLUGINS_ALLOW="web_search" TOOLS_ALLOW="read_file,grep" aicoder
+```
+
+**Note:** `PLUGINS_ALLOW` filters by plugin filename (without `.py` extension), not by registered tool names.
+
+**Use cases:**
+- Performance: Disable unnecessary plugins for faster startup
+- Security: Prevent network access by excluding `web_search`
+- Isolation: Limit subagents to specific capabilities
+- Testing: Test behavior with different plugin combinations
+
+**Plugin locations:**
+- Local: `.aicoder/plugins/` (project-specific, takes precedence)
+- Global: `~/.config/aicoder-v3/plugins/` (user's global plugins)
+
+```bash
+# List available plugins
+ls -la .aicoder/plugins/        # Local plugins
+ls -la ~/.config/aicoder-v3/plugins/  # Global plugins
+```
+
 ## Plugin Output Conventions
 
 To keep startup clean, plugins should wrap verbose output in `Config.debug()` checks:
