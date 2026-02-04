@@ -22,7 +22,7 @@ AI Coder is a fast, lightweight AI-assisted development tool that runs anywhere.
 
 ### Plugin System
 Ultra-fast plugin system:
-- Available plugins in `plugins/` directory
+- Available plugins in `.aicoder/plugins/` (local, project-specific) or `~/.config/aicoder-v3/plugins/` (global)
 - Each plugin exports `create_plugin(context)` function
 - Plugins can register tools, commands, and hooks
 - Context provides access to full app via `ctx.app`
@@ -71,6 +71,7 @@ DEBUG=1                              # Debug mode
 YOLO_MODE=1                          # Auto-approve all tool actions
 MINI_SANDBOX=0                       # Disable file sandbox
 TOOLS_ALLOW=read_file,grep            # Restrict available tools (comma-separated)
+PLUGINS_ALLOW=web_search,git_aware   # Restrict loaded plugins (comma-separated, without .py)
 
 # Performance
 CONTEXT_SIZE=128000                  # Context window size

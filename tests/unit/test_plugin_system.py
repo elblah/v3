@@ -730,3 +730,110 @@ def create_plugin(ctx):
 
             # Should not crash
             assert len(ps.cleanup_handlers) == 0
+
+
+class TestPluginsAllowFiltering:
+    """Test PLUGINS_ALLOW filtering for plugin loading"""
+
+    def test_load_plugins_with_allow_filter(self):
+        """Test that only allowed plugins are loaded when PLUGINS_ALLOW is set"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create multiple plugins
+            for i in range(3):
+                plugin_path = os.path.join(tmpdir, f"plugin_{i}.py")
+                with open(plugin_path, "w") as f:
+                    f.write(f"""
+def create_plugin(ctx):
+    def tool_{i}(args):
+        return {{"tool": "test", "friendly": "Test", "detailed": "Done"}}
+    ctx.register_tool(f"tool_{i}", tool_{i}, "A test tool", {{"type": "object"}})
+""")
+
+            # Set PLUGINS_ALLOW to only load plugin_0 and plugin_2
+            try:
+                os.environ["PLUGINS_ALLOW"] = "plugin_0,plugin_2"
+                ps = PluginSystem(plugins_dir=tmpdir)
+                ps.load_plugins()
+
+                # Only tools from plugin_0 and plugin_2 should be registered
+                assert "tool_0" in ps.tools
+                assert "tool_1" not in ps.tools  # plugin_1 should not be loaded
+                assert "tool_2" in ps.tools
+            finally:
+                os.environ.pop("PLUGINS_ALLOW", None)
+
+    def test_load_plugins_with_empty_allow(self):
+        """Test that all plugins load when PLUGINS_ALLOW is not set"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create multiple plugins
+            for i in range(3):
+                plugin_path = os.path.join(tmpdir, f"plugin_{i}.py")
+                with open(plugin_path, "w") as f:
+                    f.write(f"""
+def create_plugin(ctx):
+    def tool_{i}(args):
+        return {{"tool": "test", "friendly": "Test", "detailed": "Done"}}
+    ctx.register_tool(f"tool_{i}", tool_{i}, "A test tool", {{"type": "object"}})
+""")
+
+            # Make sure PLUGINS_ALLOW is not set
+            os.environ.pop("PLUGINS_ALLOW", None)
+
+            ps = PluginSystem(plugins_dir=tmpdir)
+            ps.load_plugins()
+
+            # All plugins should be loaded
+            assert "tool_0" in ps.tools
+            assert "tool_1" in ps.tools
+            assert "tool_2" in ps.tools
+
+    def test_load_plugins_with_nonexistent_plugin_in_allow(self):
+        """Test that nonexistent plugins in PLUGINS_ALLOW are ignored"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create one plugin
+            plugin_path = os.path.join(tmpdir, "existing_plugin.py")
+            with open(plugin_path, "w") as f:
+                f.write("""
+def create_plugin(ctx):
+    def tool(args):
+        return {"tool": "test", "friendly": "Test", "detailed": "Done"}
+    ctx.register_tool("tool", tool, "A test tool", {"type": "object"})
+""")
+
+            try:
+                # Include a nonexistent plugin in the allow list
+                os.environ["PLUGINS_ALLOW"] = "existing_plugin,nonexistent_plugin"
+                ps = PluginSystem(plugins_dir=tmpdir)
+                ps.load_plugins()
+
+                # Only the existing plugin should be loaded
+                assert "tool" in ps.tools
+                assert len(ps.tools) == 1
+            finally:
+                os.environ.pop("PLUGINS_ALLOW", None)
+
+    def test_load_plugins_with_spaces_in_allow(self):
+        """Test that PLUGINS_ALLOW handles spaces around plugin names"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create plugins
+            for name in ["plugin_a", "plugin_b"]:
+                plugin_path = os.path.join(tmpdir, f"{name}.py")
+                with open(plugin_path, "w") as f:
+                    f.write(f"""
+def create_plugin(ctx):
+    def tool(args):
+        return {{"tool": "test", "friendly": "Test", "detailed": "Done"}}
+    ctx.register_tool(f"{name}_tool", tool, "A test tool", {{"type": "object"}})
+""")
+
+            try:
+                # Use spaces around plugin names
+                os.environ["PLUGINS_ALLOW"] = "plugin_a , plugin_b"
+                ps = PluginSystem(plugins_dir=tmpdir)
+                ps.load_plugins()
+
+                # Both plugins should be loaded
+                assert "plugin_a_tool" in ps.tools
+                assert "plugin_b_tool" in ps.tools
+            finally:
+                os.environ.pop("PLUGINS_ALLOW", None)
