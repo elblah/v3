@@ -15,7 +15,7 @@ class CompactCommand(BaseCommand):
         super().__init__(context)
         self._name = "compact"
         self._description = "Compact conversation history"
-        self.usage = "/compact [force <N> | force-messages <N> | prune [all|stats|<N>] | highlander]"
+        self.usage = "/compact [force <N> | force-messages <N> | prune [all|stats|<N>] | highlander | hm]"
         self._help_text = """Compact conversation history.
 
 Usage:
@@ -30,6 +30,7 @@ Usage:
   /compact prune <N>       - Remove N oldest (positive) or keep only |N| newest (negative) tool results
   /compact prune -10       - Keep only 10 newest tool results, prune all others
   /compact highlander      - Keep only the most recent [SUMMARY] message
+  /compact hm              - Keep only the last message (highlight-message mode, inserts placeholder if last message is not a user message)
   /compact stats           - Show conversation statistics"""
 
     def get_name(self) -> str:
@@ -108,6 +109,8 @@ Usage:
             parsed["stats"] = True
         elif command == "highlander":
             parsed["highlander"] = True
+        elif command == "hm":
+            parsed["hm"] = True
         elif command == "help":
             self._show_help()
             return {"help": True}  # Return special flag to indicate help was shown
@@ -146,6 +149,14 @@ Usage:
                 LogUtils.print("    Only the last [SUMMARY] remains")
             else:
                 LogUtils.warn("[i] Highlander: 0 or 1 [SUMMARY] messages found - nothing to prune")
+            return
+
+        if args.get("hm"):
+            pruned = message_history.keep_last_message()
+            if pruned > 0:
+                LogUtils.success(f"[✓] Highlight-message: removed {pruned} message(s), keeping only last")
+            else:
+                LogUtils.warn("[i] Highlight-message: only 0 or 1 message(s) found - nothing to remove")
             return
 
         # Normal auto-compaction
@@ -264,6 +275,7 @@ Usage:
         )
         LogUtils.print("    /compact stats               Show conversation statistics")
         LogUtils.print("    /compact highlander          Keep only last [SUMMARY] (there can be only one)")
+        LogUtils.print("    /compact hm                  Keep only last message (inserts placeholder if last is not user)")
         LogUtils.print("    /compact help                Show this help")
         LogUtils.print("  ")
         LogUtils.print("  Examples:")
@@ -277,6 +289,7 @@ Usage:
         LogUtils.print("    /compact prune -10           Keep only 10 newest tool results")
         LogUtils.print("    /compact prune stats         Show tool call stats")
         LogUtils.print("    /compact highlander          Keep only last [SUMMARY]")
+        LogUtils.print("    /compact hm                  Keep only last message")
         LogUtils.print("  ")
         LogUtils.print("  Definitions:")
         LogUtils.print("    Round = User + Assistant response (with tool calls)")
