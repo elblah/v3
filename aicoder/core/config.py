@@ -87,6 +87,34 @@ class Config:
 
     _thinking = _init_thinking_from_env()
 
+    # Clear thinking - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    # false = preserve reasoning across turns (recommended for coding)
+    # true = clear reasoning between turns (faster/cheaper for simple queries)
+    def _init_clear_thinking_from_env() -> Optional[bool]:
+        env_val = os.environ.get("CLEAR_THINKING", "").lower()
+        if env_val in ("1", "true", "yes", "on"):
+            return True
+        elif env_val in ("0", "false", "no", "off"):
+            return False
+        return None
+
+    _clear_thinking = _init_clear_thinking_from_env()
+
+    @staticmethod
+    def clear_thinking() -> Optional[bool]:
+        """
+        Get clear_thinking state (true=clear reasoning, false=preserve reasoning, None=use default)
+        """
+        return Config._clear_thinking
+
+    @classmethod
+    def set_clear_thinking(cls, value: bool) -> None:
+        """
+        Set clear_thinking state (true=clear reasoning, false=preserve reasoning)
+        """
+        cls._clear_thinking = value
+
     # Reasoning effort - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # Valid values configurable via REASONING_EFFORT_VALID env var
@@ -172,7 +200,8 @@ class Config:
         """
         Get extra_body for thinking mode if configured
         Returns None for "default", otherwise returns thinking config
-        Includes reasoning_effort if thinking is on and effort is set
+        Includes reasoning_effort and clear_thinking when thinking is on
+        Defaults to preserving reasoning (clear_thinking=false) when thinking is enabled
         """
         mode = Config.thinking()
         if mode == "default":
@@ -180,10 +209,22 @@ class Config:
         elif mode == "off":
             return {"thinking": {"type": "disabled"}}
         elif mode == "on":
+            thinking_config = {"type": "enabled"}
+
+            # Add reasoning_effort if set
             effort = Config.reasoning_effort()
             if effort:
-                return {"thinking": {"type": "enabled", "reasoning_effort": effort}}
-            return {"thinking": {"type": "enabled"}}
+                thinking_config["reasoning_effort"] = effort
+
+            # Add clear_thinking (false = preserve reasoning, true = clear reasoning)
+            # Default to preserving reasoning for coding workflows
+            clear_thinking = Config.clear_thinking()
+            if clear_thinking is None:
+                thinking_config["clear_thinking"] = False  # Default: preserve
+            else:
+                thinking_config["clear_thinking"] = clear_thinking
+
+            return {"thinking": thinking_config}
         return None
 
     # Retry Configuration

@@ -52,6 +52,7 @@ class SessionManager:
 
             has_tool_calls, status = self._validate_and_process_tool_calls(
                 streaming_result["full_response"],
+                streaming_result.get("reasoning_content", ""),
                 streaming_result["accumulated_tool_calls"],
             )
 
@@ -104,7 +105,7 @@ class SessionManager:
         return result
 
     def _validate_and_process_tool_calls(
-        self, full_response: str, accumulated_tool_calls: dict
+        self, full_response: str, reasoning_content: str, accumulated_tool_calls: dict
     ) -> tuple[bool, str]:
         """Validate and process accumulated tool calls
         
@@ -115,7 +116,7 @@ class SessionManager:
                 - "validation_error": Tool calls had invalid JSON (error condition)
         """
         if not accumulated_tool_calls:
-            self._handle_empty_response(full_response)
+            self._handle_empty_response(full_response, reasoning_content)
             return False, "empty_response"
 
         valid_tool_calls = self._validate_tool_calls(accumulated_tool_calls)
@@ -127,7 +128,7 @@ class SessionManager:
             )
             return False, "validation_error"
 
-        # Add assistant message with tool calls
+        # Add assistant message with tool calls and reasoning_content
         tool_calls_for_message = []
         for i, call in enumerate(valid_tool_calls):
             tool_calls_for_message.append(
@@ -142,12 +143,16 @@ class SessionManager:
                 }
             )
 
-        self.message_history.add_assistant_message(
-            {
-                "content": full_response or "I'll help you with that.",
-                "tool_calls": tool_calls_for_message,
-            }
-        )
+        assistant_message = {
+            "content": full_response or "I'll help you with that.",
+            "tool_calls": tool_calls_for_message,
+        }
+
+        # Add reasoning_content if present (preserved thinking)
+        if reasoning_content:
+            assistant_message["reasoning_content"] = reasoning_content
+
+        self.message_history.add_assistant_message(assistant_message)
 
         self.tool_executor.execute_tool_calls(valid_tool_calls)
         return True, "success"
@@ -185,20 +190,28 @@ class SessionManager:
         """Handle processing errors"""
         LogUtils.error(f"Processing error: {error}")
 
-    def _handle_empty_response(self, full_response: str) -> None:
+    def _handle_empty_response(self, full_response: str, reasoning_content: str) -> None:
         """Handle empty response from AI"""
         if full_response and full_response.strip() != "":
             # AI provided text response but no tools
+            assistant_message = {"content": full_response}
 
-            self.message_history.add_assistant_message(
-                {"content": full_response}
-            )
+            # Add reasoning_content if present (preserved thinking)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+
+            self.message_history.add_assistant_message(assistant_message)
             LogUtils.print("")
         else:
             # AI provided no text response (this is normal when AI has nothing to say)
             # Add a minimal message to show AI responded, then continue
+            assistant_message = {"content": ""}
 
-            self.message_history.add_assistant_message({"content": ""})
+            # Add reasoning_content if present (preserved thinking)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+
+            self.message_history.add_assistant_message(assistant_message)
             LogUtils.print("")
 
     def _validate_tool_calls(self, tool_calls: dict) -> list:

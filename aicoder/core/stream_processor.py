@@ -25,6 +25,7 @@ class StreamProcessor:
     ) -> Dict[str, Any]:
         """Process streaming response from API"""
         full_response = ""
+        accumulated_reasoning = ""
         accumulated_tool_calls = {}
         reasoning_detected = False
 
@@ -36,6 +37,7 @@ class StreamProcessor:
                 mode_text = f"Thinking: {mode}"
                 if mode == "on" and effort:
                     mode_text += f" (effort: {effort})"
+                mode_text += f" (preserve: {not Config.clear_thinking()})"
                 LogUtils.debug(f"*** {mode_text}")
 
         try:
@@ -46,6 +48,7 @@ class StreamProcessor:
                     return {
                         "should_continue": False,
                         "full_response": full_response,
+                        "reasoning_content": accumulated_reasoning,
                         "accumulated_tool_calls": accumulated_tool_calls,
                     }
 
@@ -65,9 +68,11 @@ class StreamProcessor:
                 if "delta" in choice:
                     delta = choice["delta"]
 
-                    # Check for reasoning tokens
-                    if delta.get("reasoning_content"):
+                    # Check for reasoning tokens and accumulate them
+                    reasoning = delta.get("reasoning_content")
+                    if reasoning:
                         reasoning_detected = True
+                        accumulated_reasoning += reasoning
 
                     content = delta.get("content")
                     if content:
@@ -95,6 +100,7 @@ class StreamProcessor:
             return {
                 "should_continue": False,
                 "full_response": "",
+                "reasoning_content": "",
                 "accumulated_tool_calls": {},
                 "error": str(e)
             }
@@ -102,6 +108,7 @@ class StreamProcessor:
         return {
             "should_continue": True,
             "full_response": full_response,
+            "reasoning_content": accumulated_reasoning,
             "accumulated_tool_calls": accumulated_tool_calls,
         }
 
