@@ -259,7 +259,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("Hello, how can I help?")
+        manager._handle_empty_response("Hello, how can I help?", "")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
         call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
@@ -270,7 +270,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("")
+        manager._handle_empty_response("", "")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
         call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
@@ -281,9 +281,33 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("   ")
+        manager._handle_empty_response("   ", "")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
+
+    def test_handle_empty_response_with_reasoning(self):
+        """Test handling response with reasoning content but no regular content."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        manager._handle_empty_response("", "Let me think about this...")
+
+        mock_app.message_history.add_assistant_message.assert_called_once()
+        call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
+        assert call_args["content"] == ""
+        assert call_args.get("reasoning_content") == "Let me think about this..."
+
+    def test_handle_empty_response_with_both_content_and_reasoning(self):
+        """Test handling response with both content and reasoning."""
+        mock_app = MagicMock()
+        manager = SessionManager(mock_app)
+
+        manager._handle_empty_response("Hello!", "Let me think...")
+
+        mock_app.message_history.add_assistant_message.assert_called_once()
+        call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
+        assert call_args["content"] == "Hello!"
+        assert call_args.get("reasoning_content") == "Let me think..."
 
 
 class TestSessionManagerForceCompaction:
