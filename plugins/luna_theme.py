@@ -20,13 +20,15 @@ def create_plugin(ctx):
     from aicoder.core.config import Config
     from aicoder.utils.log import LogUtils
     import sys
+    import os
 
-    # Check if output is piped - if so, strip all color codes
-    if not sys.stdout.isatty():
+    # Check if output is piped or colors disabled - if so, strip all color codes
+    if not sys.stdout.isatty() or os.environ.get('AICODER_DISABLE_COLORS') == '1':
         for key in Config.colors:
             Config.colors[key] = ""
         if Config.debug():
-            LogUtils.print("  - Luna theme applied (no colors, piped output)")
+            reason = "colors disabled" if os.environ.get('AICODER_DISABLE_COLORS') == '1' else "piped output"
+            LogUtils.print(f"  - Luna theme applied (no colors, {reason})")
         return
 
     # Update color codes (using \x1b for consistency)
