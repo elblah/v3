@@ -2,7 +2,7 @@
 Thinking command implementation
 """
 
-from typing import List
+from typing import List, Optional
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
@@ -27,34 +27,20 @@ class ThinkingCommand(BaseCommand):
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute thinking command"""
         current_mode = Config.thinking()
+        current_effort = Config.reasoning_effort()
 
         if not args:
-            # Show status
-            if current_mode == "default":
-                status = "default (not controlling behavior, using API defaults)"
-                status_color = "yellow"
-            elif current_mode == "on":
-                status = "on (explicitly enabled)"
-                status_color = "green"
-            else:
-                status = "off (explicitly disabled)"
-                status_color = "brightRed"
-
-            LogUtils.print(f"Thinking: {status}", color=status_color, bold=True)
-
-            if current_mode == "default":
-                LogUtils.info("Model will use its default thinking behavior")
-            elif current_mode == "on":
-                LogUtils.info("Sending extra_body: {\"thinking\": {\"type\": \"enabled\"}}")
-            else:
-                LogUtils.info("Sending extra_body: {\"thinking\": {\"type\": \"disabled\"}}")
-
-            LogUtils.dim("Use: /thinking [default|on|off]")
+            self._show_status(current_mode, current_effort)
             return CommandResult(should_quit=False, run_api_call=False)
 
         action = args[0].lower()
 
-        action = args[0].lower()
+        if action == "effort":
+            if len(args) >= 2:
+                self._set_effort(args[1])
+            else:
+                self._show_effort(current_effort)
+            return CommandResult(should_quit=False, run_api_call=False)
 
         if action == "default":
             if current_mode == "default":
@@ -93,11 +79,89 @@ class ThinkingCommand(BaseCommand):
                 LogUtils.success("[*] Thinking ENABLED")
                 LogUtils.info("Sending thinking enabled in API requests")
         else:
-            LogUtils.error("Invalid argument. Use: /thinking [default|on|off]")
-            LogUtils.dim("  /thinking - Show current status")
-            LogUtils.dim("  /thinking default - Use API defaults (don't send extra_body)")
-            LogUtils.dim("  /thinking on - Explicitly enable thinking")
-            LogUtils.dim("  /thinking off - Explicitly disable thinking")
-            LogUtils.dim("  /thinking toggle - Toggle between on/off")
+            self._show_help()
 
         return CommandResult(should_quit=False, run_api_call=False)
+
+    def _show_status(self, mode: str, effort: Optional[str]) -> None:
+        """Show current thinking and reasoning effort status"""
+        # Show thinking mode
+        if mode == "default":
+            status = "default (not controlling behavior, using API defaults)"
+            status_color = "yellow"
+        elif mode == "on":
+            status = "on (explicitly enabled)"
+            status_color = "green"
+        else:
+            status = "off (explicitly disabled)"
+            status_color = "brightRed"
+
+        LogUtils.print(f"Thinking: {status}", color=status_color, bold=True)
+
+        # Show reasoning effort
+        if effort:
+            LogUtils.print(f"Reasoning effort: {effort}", color="green", bold=True)
+        elif mode == "on":
+            LogUtils.info("Reasoning effort: API default (medium)")
+
+        # Show what will be sent
+        if mode == "default":
+            LogUtils.info("Model will use its default thinking behavior")
+        elif mode == "on":
+            if effort:
+                LogUtils.info(f'Sending extra_body: {{"thinking": {{"type": "enabled", "reasoning_effort": "{effort}"}}}}')
+            else:
+                LogUtils.info('Sending extra_body: {"thinking": {"type": "enabled"}}')
+        else:
+            LogUtils.info('Sending extra_body: {"thinking": {"type": "disabled"}}')
+
+        LogUtils.dim("Use: /thinking [default|on|off] [effort <level>]")
+
+    def _show_effort(self, effort: Optional[str]) -> None:
+        """Show current reasoning effort level"""
+        valid_values = Config._get_valid_reasoning_efforts()
+
+        if effort:
+            LogUtils.print(f"Reasoning effort: {effort}", color="green", bold=True)
+        else:
+            LogUtils.info("Reasoning effort: not set (API will use default)")
+
+        if valid_values:
+            LogUtils.info(f"Valid effort levels: {', '.join(sorted(valid_values))}")
+        LogUtils.dim("Use: /thinking effort <level>")
+
+    def _set_effort(self, value: str) -> None:
+        """Set reasoning effort level"""
+        try:
+            Config.set_reasoning_effort(value)
+            LogUtils.success(f"[*] Reasoning effort set to: {value}")
+        except ValueError as e:
+            LogUtils.error(f"[*] {e}")
+
+    def _show_help(self) -> None:
+        """Show help for thinking command"""
+        valid_values = Config._get_valid_reasoning_efforts()
+
+        help_text = """Usage:
+  /thinking [on|off|default]      Set thinking mode
+  /thinking effort <level>        Set reasoning effort level
+  /thinking effort                Show current effort level
+  /thinking                       Show current status
+  /thinking toggle                Toggle between on/off
+
+Examples:
+  /thinking on                    Enable thinking
+  /thinking off                   Disable thinking
+  /thinking effort high           Set reasoning effort to high
+  /thinking effort                Show current effort level
+
+Environment Variables:
+  THINKING=<mode>                  Set default thinking mode (default|on|off)
+  REASONING_EFFORT=<level>        Set default reasoning effort
+  REASONING_EFFORT_VALID=<vals>   Comma-separated valid effort levels
+"""
+
+        if valid_values:
+            help_text += f"\nValid effort levels (from REASONING_EFFORT_VALID):\n  {', '.join(sorted(valid_values))}\n"
+
+        LogUtils.print(help_text)

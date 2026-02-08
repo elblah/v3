@@ -28,6 +28,16 @@ class StreamProcessor:
         accumulated_tool_calls = {}
         reasoning_detected = False
 
+        # Debug: show thinking configuration at start of stream
+        if Config.debug():
+            mode = Config.thinking()
+            effort = Config.reasoning_effort()
+            if mode != "default":
+                mode_text = f"Thinking: {mode}"
+                if mode == "on" and effort:
+                    mode_text += f" (effort: {effort})"
+                LogUtils.debug(f"*** {mode_text}")
+
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
                 # Check if user interrupted
@@ -76,7 +86,9 @@ class StreamProcessor:
 
             # Print reasoning detection status when DEBUG is on
             if Config.debug():
-                LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}")
+                effort = Config.reasoning_effort()
+                effort_text = f" (effort: {effort})" if effort else ""
+                LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}{effort_text}")
 
         except Exception as e:
             LogUtils.error(f"\n[Streaming error: {e}]")
