@@ -591,3 +591,40 @@ class MessageHistory:
 
         self.estimate_context()
         return pruned_count
+
+    def keep_last_message(self) -> int:
+        """Keep only the last message, remove all others.
+
+        This is the 'highlight-message' (hm) mode - keep only the most recent
+        message regardless of its type (could be a summary, assistant response, etc.).
+        Useful when you want to ask AI to create a detailed summary and keep only that.
+
+        If the last message is not a user message (or is a summary), a placeholder
+        user message is inserted before it to ensure the first chat message is always
+        a user message.
+        """
+        if len(self.messages) <= 1:
+            return 0  # Nothing to remove
+
+        # Keep only the last message
+        last_message = self.messages[-1]
+        original_count = len(self.messages)
+
+        # Check if last message needs a placeholder before it
+        # Needs placeholder if: not a user message, OR is a summary (even if role is user)
+        content = self._get_content_as_string(last_message.get("content", ""))
+        needs_placeholder = (
+            last_message.get("role") != "user" or
+            (content and content.startswith("[SUMMARY]"))
+        )
+
+        if needs_placeholder:
+            placeholder = {"role": "user", "content": "..."}
+            self.messages = [placeholder, last_message]
+        else:
+            self.messages = [last_message]
+
+        pruned_count = original_count - len(self.messages)
+
+        self.estimate_context()
+        return pruned_count
