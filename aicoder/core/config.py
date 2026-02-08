@@ -87,6 +87,48 @@ class Config:
 
     _thinking = _init_thinking_from_env()
 
+    # Reasoning effort - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    # Valid values configurable via REASONING_EFFORT_VALID env var
+    def _init_reasoning_effort_from_env() -> Optional[str]:
+        env_val = os.environ.get("REASONING_EFFORT", "")
+        if not env_val:
+            return None
+        return env_val.lower()
+
+    _reasoning_effort = _init_reasoning_effort_from_env()
+
+    @staticmethod
+    def _get_valid_reasoning_efforts() -> Optional[Set[str]]:
+        """
+        Get valid reasoning effort values from env var REASONING_EFFORT_VALID
+        Returns None if not set (accept any value)
+        """
+        env_val = os.environ.get("REASONING_EFFORT_VALID", "")
+        if not env_val:
+            return None
+        return {v.strip().lower() for v in env_val.split(",")}
+
+    @staticmethod
+    def reasoning_effort() -> Optional[str]:
+        """
+        Get reasoning effort level
+        """
+        return Config._reasoning_effort
+
+    @classmethod
+    def set_reasoning_effort(cls, effort: Optional[str]) -> None:
+        """
+        Set reasoning effort level
+        Validates against REASONING_EFFORT_VALID if set
+        """
+        if effort is not None:
+            valid_values = cls._get_valid_reasoning_efforts()
+            if valid_values is not None and effort.lower() not in valid_values:
+                valid_list = ", ".join(sorted(valid_values))
+                raise ValueError(f"Invalid reasoning effort: {effort}. Valid values: {valid_list}")
+        cls._reasoning_effort = effort.lower() if effort else None
+
     @staticmethod
     def detail_mode() -> bool:
         """
@@ -130,14 +172,18 @@ class Config:
         """
         Get extra_body for thinking mode if configured
         Returns None for "default", otherwise returns thinking config
+        Includes reasoning_effort if thinking is on and effort is set
         """
         mode = Config.thinking()
         if mode == "default":
             return None
-        elif mode == "on":
-            return {"thinking": {"type": "enabled"}}
         elif mode == "off":
             return {"thinking": {"type": "disabled"}}
+        elif mode == "on":
+            effort = Config.reasoning_effort()
+            if effort:
+                return {"thinking": {"type": "enabled", "reasoning_effort": effort}}
+            return {"thinking": {"type": "enabled"}}
         return None
 
     # Retry Configuration
@@ -617,6 +663,16 @@ class Config:
 
         if Config.debug():
             LogUtils.warn("DEBUG MODE IS ON")
+
+        # Thinking mode
+        mode = Config.thinking()
+        if mode != "default":
+            mode_text = f"  Thinking: {mode}"
+            if mode == "on":
+                effort = Config.reasoning_effort()
+                if effort:
+                    mode_text += f" (effort: {effort})"
+            LogUtils.success(mode_text)
 
         if os.environ.get("TEMPERATURE"):
             LogUtils.success(f"  Temperature: {Config.temperature()}")
