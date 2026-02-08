@@ -64,15 +64,31 @@ class StreamProcessor:
 
                 choice = chunk["choices"][0]
 
-                # Content (ignore reasoning_content unless model is reasoning-only)
+                # Content and reasoning processing
                 if "delta" in choice:
                     delta = choice["delta"]
 
-                    # Check for reasoning tokens and accumulate them
-                    reasoning = delta.get("reasoning_content")
-                    if reasoning:
-                        reasoning_detected = True
-                        accumulated_reasoning += reasoning
+                    # Check for reasoning tokens across multiple field names
+                    # Different providers use different field names for reasoning:
+                    # - GLM, llama.cpp: "reasoning_content"
+                    # - Some OpenAI-compatible endpoints: "reasoning"
+                    # - Others: "reasoning_text"
+                    # Use first non-empty field to avoid duplication (e.g., chutes.ai returns both)
+                    reasoning_fields = ["reasoning_content", "reasoning", "reasoning_text"]
+                    detected_field = None
+
+                    for field in reasoning_fields:
+                        reasoning = delta.get(field)
+                        if reasoning and reasoning.strip():
+                            reasoning_detected = True
+                            accumulated_reasoning += reasoning
+                            detected_field = field
+                            # Only use the first non-empty field (avoid duplication)
+                            break
+
+                    # Debug: log which reasoning field was detected
+                    if Config.debug() and detected_field:
+                        LogUtils.debug(f"Reasoning detected via field: {detected_field}")
 
                     content = delta.get("content")
                     if content:
