@@ -173,6 +173,253 @@ class TestStreamProcessor:
         assert result["error"] == "Connection error"
         assert result["full_response"] == ""
 
+    def test_process_stream_with_reasoning_content_field(self):
+        """Test processing stream with reasoning_content field (GLM, llama.cpp)."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning_content": "Let me think about this carefully..."
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "content": "Here's the answer."
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        assert result["full_response"] == "Here's the answer."
+        assert result["reasoning_content"] == "Let me think about this carefully..."
+
+    def test_process_stream_with_reasoning_field(self):
+        """Test processing stream with reasoning field (some OpenAI-compatible endpoints)."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning": "Analyzing the request..."
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "content": "Response."
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        assert result["full_response"] == "Response."
+        assert result["reasoning_content"] == "Analyzing the request..."
+
+    def test_process_stream_with_reasoning_text_field(self):
+        """Test processing stream with reasoning_text field (other providers)."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning_text": "Thinking..."
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "content": "Done."
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        assert result["full_response"] == "Done."
+        assert result["reasoning_content"] == "Thinking..."
+
+    def test_process_stream_uses_first_non_empty_reasoning_field(self):
+        """Test that only first non-empty reasoning field is used (avoid duplication)."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning_content": "Reasoning from field 1",
+                        "reasoning": "Reasoning from field 2"
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "content": "Response."
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        # Should only capture first field (reasoning_content), not both
+        assert result["reasoning_content"] == "Reasoning from field 1"
+
+    def test_process_stream_accumulates_reasoning_across_chunks(self):
+        """Test that reasoning content is accumulated across multiple chunks."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning": "Thinking part 1"
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning": "Thinking part 2"
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "content": "Answer."
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        assert result["reasoning_content"] == "Thinking part 1Thinking part 2"
+
+    def test_process_stream_ignores_empty_reasoning_field(self):
+        """Test that empty/whitespace-only reasoning fields are skipped."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning_content": "   ",  # Only whitespace
+                        "reasoning": None
+                    }
+                }],
+                "usage": None
+            },
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning_text": "Actual reasoning"
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        # Should skip empty fields and use reasoning_text
+        assert result["reasoning_content"] == "Actual reasoning"
+
+    def test_process_stream_handles_reasoning_with_content(self):
+        """Test processing stream with both reasoning and content in same chunk."""
+        chunks = [
+            {
+                "choices": [{
+                    "delta": {
+                        "reasoning_content": "Reasoning...",
+                        "content": "Content..."
+                    }
+                }],
+                "usage": None
+            },
+        ]
+        self.mock_streaming_client.stream_request.return_value = iter(chunks)
+
+        is_processing = Mock(return_value=True)
+        process_chunk = Mock()
+
+        result = self.processor.process_stream(
+            [{"role": "user", "content": "hi"}],
+            is_processing,
+            process_chunk
+        )
+
+        assert result["should_continue"] == True
+        assert result["reasoning_content"] == "Reasoning..."
+        assert result["full_response"] == "Content..."
+
 
 class TestAccumulateToolCall:
     """Test accumulate_tool_call method."""
