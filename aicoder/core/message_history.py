@@ -162,11 +162,15 @@ class MessageHistory:
     def add_assistant_message(self, message: Dict[str, Any]) -> None:
         """Add an assistant message"""
         assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
-        
+
+        # Add reasoning_content if present (for preserved thinking)
+        if message.get("reasoning_content"):
+            assistant_message["reasoning_content"] = message.get("reasoning_content")
+
         # Cache tokens immediately on creation (performance optimization)
         from .token_estimator import cache_message
         cache_message(assistant_message)
-        
+
         self.messages.append(assistant_message)
         # Update context size estimate
         self.estimate_context()
