@@ -28,14 +28,27 @@ class ThinkingCommand(BaseCommand):
         """Execute thinking command"""
         current_mode = Config.thinking()
         current_effort = Config.reasoning_effort()
+        current_clear_thinking = Config.clear_thinking()
 
         if not args:
-            self._show_status(current_mode, current_effort)
+            self._show_status(current_mode, current_effort, current_clear_thinking)
             return CommandResult(should_quit=False, run_api_call=False)
 
         action = args[0].lower()
 
         if action == "effort":
+            if len(args) >= 2:
+                self._set_effort(args[1])
+            else:
+                self._show_effort(current_effort)
+            return CommandResult(should_quit=False, run_api_call=False)
+
+        if action == "clear":
+            if len(args) >= 2:
+                self._set_clear_thinking(args[1])
+            else:
+                self._show_clear_thinking(current_clear_thinking)
+            return CommandResult(should_quit=False, run_api_call=False)
             if len(args) >= 2:
                 self._set_effort(args[1])
             else:
@@ -83,7 +96,7 @@ class ThinkingCommand(BaseCommand):
 
         return CommandResult(should_quit=False, run_api_call=False)
 
-    def _show_status(self, mode: str, effort: Optional[str]) -> None:
+    def _show_status(self, mode: str, effort: Optional[str], clear_thinking: Optional[bool]) -> None:
         """Show current thinking and reasoning effort status"""
         # Show thinking mode
         if mode == "default":
@@ -104,18 +117,29 @@ class ThinkingCommand(BaseCommand):
         elif mode == "on":
             LogUtils.info("Reasoning effort: API default (medium)")
 
+        # Show clear_thinking (preserve reasoning)
+        if mode == "on":
+            if clear_thinking is None:
+                LogUtils.success("Reasoning preservation: AUTO (preserving across turns - default for coding)")
+            elif clear_thinking:
+                LogUtils.info("Reasoning preservation: OFF (clearing between turns)")
+            else:
+                LogUtils.success("Reasoning preservation: ON (preserving across turns)")
+
         # Show what will be sent
         if mode == "default":
             LogUtils.info("Model will use its default thinking behavior")
         elif mode == "on":
+            extra_body = {"thinking": {"type": "enabled"}}
             if effort:
-                LogUtils.info(f'Sending extra_body: {{"thinking": {{"type": "enabled", "reasoning_effort": "{effort}"}}}}')
-            else:
-                LogUtils.info('Sending extra_body: {"thinking": {"type": "enabled"}}')
+                extra_body["thinking"]["reasoning_effort"] = effort
+            # Default to preserving reasoning
+            extra_body["thinking"]["clear_thinking"] = clear_thinking if clear_thinking is not None else False
+            LogUtils.info(f'Sending extra_body: {extra_body}')
         else:
             LogUtils.info('Sending extra_body: {"thinking": {"type": "disabled"}}')
 
-        LogUtils.dim("Use: /thinking [default|on|off] [effort <level>]")
+        LogUtils.dim("Use: /thinking [default|on|off] [effort <level>] [clear <true|false>]")
 
     def _show_effort(self, effort: Optional[str]) -> None:
         """Show current reasoning effort level"""
@@ -138,6 +162,29 @@ class ThinkingCommand(BaseCommand):
         except ValueError as e:
             LogUtils.error(f"[*] {e}")
 
+    def _show_clear_thinking(self, clear_thinking: Optional[bool]) -> None:
+        """Show current clear_thinking setting"""
+        if clear_thinking is None:
+            LogUtils.info("Reasoning preservation: AUTO (preserving across turns - default for coding)")
+        elif clear_thinking:
+            LogUtils.info("Reasoning preservation: OFF (clearing between turns)")
+        else:
+            LogUtils.success("Reasoning preservation: ON (preserving across turns)")
+        LogUtils.dim("Use: /thinking clear <true|false>")
+
+    def _set_clear_thinking(self, value: str) -> None:
+        """Set clear_thinking (true=clear reasoning, false=preserve reasoning)"""
+        if value.lower() in ("true", "1", "yes", "on"):
+            Config.set_clear_thinking(True)
+            LogUtils.warn("[*] Clear thinking enabled (reasoning not preserved)")
+            LogUtils.info("Use this for faster/cheaper simple queries")
+        elif value.lower() in ("false", "0", "no", "off"):
+            Config.set_clear_thinking(False)
+            LogUtils.success("[*] Preserved thinking enabled")
+            LogUtils.info("Reasoning will be preserved across turns (recommended for coding)")
+        else:
+            LogUtils.error("Invalid value. Use: /thinking clear <true|false>")
+
     def _show_help(self) -> None:
         """Show help for thinking command"""
         valid_values = Config._get_valid_reasoning_efforts()
@@ -146,19 +193,23 @@ class ThinkingCommand(BaseCommand):
   /thinking [on|off|default]      Set thinking mode
   /thinking effort <level>        Set reasoning effort level
   /thinking effort                Show current effort level
+  /thinking clear <true|false>    Set reasoning preservation (false=preserve, true=clear)
+  /thinking clear                 Show current reasoning preservation setting
   /thinking                       Show current status
   /thinking toggle                Toggle between on/off
 
 Examples:
-  /thinking on                    Enable thinking
+  /thinking on                    Enable thinking with preserved reasoning (default for coding)
   /thinking off                   Disable thinking
   /thinking effort high           Set reasoning effort to high
-  /thinking effort                Show current effort level
+  /thinking clear false           Enable preserved thinking (recommended for coding)
+  /thinking clear true            Clear reasoning between turns (faster/cheaper)
 
 Environment Variables:
   THINKING=<mode>                  Set default thinking mode (default|on|off)
   REASONING_EFFORT=<level>        Set default reasoning effort
   REASONING_EFFORT_VALID=<vals>   Comma-separated valid effort levels
+  CLEAR_THINKING=<true|false>     Set reasoning preservation (false=preserve, true=clear)
 """
 
         if valid_values:
