@@ -38,32 +38,10 @@ class MemoryCommand(BaseCommand):
         temp_file = create_temp_file(f"aicoder-memory-{random_suffix}", ".json")
 
         try:
-            # Get messages from history
+            # Get messages from history and write directly to JSON
             messages = self.context.message_history.get_messages()
-
-            # Convert messages to JSON-serializable format
-            messages_dict = []
-            for msg in messages:
-                msg_dict = {
-                    "role": msg.get("role"),
-                    "content": msg.get("content") or "",
-                }
-
-                # Add tool calls if present
-                tool_calls = msg.get("tool_calls")
-                if tool_calls:
-                    msg_dict["tool_calls"] = tool_calls
-
-                # Add tool_call_id if present
-                tool_call_id = msg.get("tool_call_id")
-                if tool_call_id:
-                    msg_dict["tool_call_id"] = tool_call_id
-
-                messages_dict.append(msg_dict)
-
-            # Write messages to temp file as JSON
             with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(messages_dict, f, indent=2, ensure_ascii=False)
+                json.dump(messages, f, indent=2, ensure_ascii=False)
 
             LogUtils.info(f"Exported {len(messages)} messages to {temp_file}")
             LogUtils.info(f"Opening {editor} in tmux window...")
