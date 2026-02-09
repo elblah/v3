@@ -40,6 +40,9 @@ class StreamProcessor:
                 mode_text += f" (preserve: {not Config.clear_thinking()})"
                 LogUtils.debug(f"*** {mode_text}")
 
+        # Track which reasoning field name the provider uses
+        reasoning_field_name = None
+
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
                 # Check if user interrupted
@@ -49,6 +52,7 @@ class StreamProcessor:
                         "should_continue": False,
                         "full_response": full_response,
                         "reasoning_content": accumulated_reasoning,
+                        "reasoning_field": reasoning_field_name,
                         "accumulated_tool_calls": accumulated_tool_calls,
                     }
 
@@ -75,20 +79,21 @@ class StreamProcessor:
                     # - Others: "reasoning_text"
                     # Use first non-empty field to avoid duplication (e.g., chutes.ai returns both)
                     reasoning_fields = ["reasoning_content", "reasoning", "reasoning_text"]
-                    detected_field = None
 
                     for field in reasoning_fields:
                         reasoning = delta.get(field)
                         if reasoning and reasoning.strip():
                             reasoning_detected = True
                             accumulated_reasoning += reasoning
-                            detected_field = field
+                            # Remember the field name this provider uses (first one wins)
+                            if reasoning_field_name is None:
+                                reasoning_field_name = field
                             # Only use the first non-empty field (avoid duplication)
                             break
 
                     # Debug: log which reasoning field was detected
-                    if Config.debug() and detected_field:
-                        LogUtils.debug(f"Reasoning detected via field: {detected_field}")
+                    if Config.debug() and reasoning_field_name and accumulated_reasoning == reasoning:
+                        LogUtils.debug(f"Reasoning detected via field: {reasoning_field_name}")
 
                     content = delta.get("content")
                     if content:
@@ -109,7 +114,8 @@ class StreamProcessor:
             if Config.debug():
                 effort = Config.reasoning_effort()
                 effort_text = f" (effort: {effort})" if effort else ""
-                LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}{effort_text}")
+                field_text = f" (field: {reasoning_field_name})" if reasoning_field_name else ""
+                LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}{effort_text}{field_text}")
 
         except Exception as e:
             LogUtils.error(f"\n[Streaming error: {e}]")
@@ -117,6 +123,7 @@ class StreamProcessor:
                 "should_continue": False,
                 "full_response": "",
                 "reasoning_content": "",
+                "reasoning_field": None,
                 "accumulated_tool_calls": {},
                 "error": str(e)
             }
@@ -125,6 +132,7 @@ class StreamProcessor:
             "should_continue": True,
             "full_response": full_response,
             "reasoning_content": accumulated_reasoning,
+            "reasoning_field": reasoning_field_name,
             "accumulated_tool_calls": accumulated_tool_calls,
         }
 

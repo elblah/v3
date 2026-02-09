@@ -163,9 +163,11 @@ class MessageHistory:
         """Add an assistant message"""
         assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
 
-        # Add reasoning_content if present (for preserved thinking)
-        if message.get("reasoning_content"):
-            assistant_message["reasoning_content"] = message.get("reasoning_content")
+        # Preserve reasoning field with whatever name the provider uses
+        for field in ["reasoning_content", "reasoning", "reasoning_text"]:
+            if message.get(field):
+                assistant_message[field] = message.get(field)
+                break  # Only preserve first found
 
         # Cache tokens immediately on creation (performance optimization)
         from .token_estimator import cache_message
