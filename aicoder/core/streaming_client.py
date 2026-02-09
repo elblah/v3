@@ -3,6 +3,7 @@
 import json
 import time
 import itertools
+import os
 from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
@@ -75,6 +76,22 @@ class StreamingClient:
                 headers = self._build_headers()
 
                 self._log_api_config_debug(config)
+
+                # Save request payload for debugging
+                if Config.debug():
+                    debug_dir = os.path.join(os.getcwd(), ".aicoder")
+                    os.makedirs(debug_dir, exist_ok=True)
+                    debug_file = os.path.join(debug_dir, "last_request.json")
+                    try:
+                        with open(debug_file, "w") as f:
+                            json.dump({
+                                "endpoint": endpoint,
+                                "headers": {k: v if k.lower() != "authorization" else "***" for k, v in headers.items()},
+                                "body": request_data
+                            }, f, indent=2)
+                        log_debug(f"*** Request payload saved to {debug_file}")
+                    except Exception as e:
+                        log_debug(f"*** Failed to save request payload: {e}")
 
                 response = fetch(
                     endpoint,
@@ -283,6 +300,12 @@ class StreamingClient:
 
             if msg.get("tool_call_id"):
                 msg_dict["tool_call_id"] = msg["tool_call_id"]
+
+            # Preserve reasoning with the same field name the provider uses
+            for field in ["reasoning_content", "reasoning", "reasoning_text"]:
+                if msg.get(field):
+                    msg_dict[field] = msg[field]
+                    break
 
             formatted.append(msg_dict)
 
