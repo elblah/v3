@@ -8,6 +8,7 @@ AI Coder is a fast, lightweight AI-assisted development tool that runs anywhere.
 - **Simple and direct** - minimal abstractions, clear code flow
 - **Working over perfect** - prioritize functionality over elegance
 - **Systematic approach** - incremental progress with clear verification
+- **Stay in scope** - only modify files within the current working directory unless explicitly asked by the user to work elsewhere
 
 ## Core Architecture
 
