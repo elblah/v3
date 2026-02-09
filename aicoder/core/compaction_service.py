@@ -305,26 +305,37 @@ class CompactionService:
         if len(messages_to_summarize) == 0:
             return "No previous content"
 
-        prompt = f"""Based on the conversation below:
+        prompt = f"""Generate a self-contained session summary. This will be the ONLY context retained.
 
-Numbered conversation to analyze:
+Conversation:
 {self._format_messages_for_summary(messages_to_summarize)}
 
 ---
-Provide a detailed but concise summary of our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next. Generate at least 1000 if you have enough information available to do so."""
+
+Include:
+- Task and progress made
+- Key decisions with rationale
+- Current state: files modified/created (with paths and line numbers)
+- Failed approaches to avoid repeating
+- Session flow: brief narrative of exploration, iterations, user corrections (3-5 sentences)
+- Next steps
+
+Guidelines:
+- Be specific: file paths, function names, line numbers
+- Be assertive: no questions at the end
+- No meta-commentary: the summary IS the output
+- 800-1500 tokens depending on complexity"""
 
         try:
-            system_prompt = """You are a helpful AI assistant tasked with summarizing conversations.
+            system_prompt = """You are a helpful AI assistant tasked with summarizing conversations for context preservation.
 
-When asked to summarize, provide a detailed but concise summary of the conversation.
-Focus on information that would be helpful for continuing the conversation, including:
+The summary you generate will be the ONLY context retained. It must be self-contained and actionable.
 
-- What was done
-- What is currently being worked on
-- Which files are being modified
-- What needs to be done next
-
-Your summary should be comprehensive enough to provide context but concise enough to be quickly understood."""
+Prioritize:
+- Specific file paths and line numbers over general descriptions
+- Rationale behind decisions, not just outcomes
+- Failed approaches to prevent repeated mistakes
+- Narrative flow showing how the session progressed"""
 
             if not self.streaming_client:
                 LogUtils.warn("[!] No streaming client available for summarization")
@@ -418,7 +429,7 @@ Your summary should be comprehensive enough to provide context but concise enoug
 
     def _validate_summary(self, summary: str) -> bool:
         """Validate summary quality"""
-        return bool(summary and len(summary) >= 50)
+        return bool(summary and len(summary) >= 100)
 
     def _create_summary_message(self, summary: str) -> Dict[str, Any]:
         """Create summary message (user role to avoid model issues)"""
