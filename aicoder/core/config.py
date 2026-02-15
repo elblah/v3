@@ -115,6 +115,19 @@ class Config:
         """
         cls._clear_thinking = value
 
+    # Suppress error body - initialize from env var ONCE at module load time
+    # After this, only runtime state is used (env var ignored)
+    # false = include error body in HTTP error messages (default)
+    # true = suppress error body from HTTP error messages
+    _suppress_error_body = os.environ.get("AICODER_SUPPRESS_ERROR_BODY", "").lower() in ("1", "true", "yes", "on")
+
+    @staticmethod
+    def suppress_error_body() -> bool:
+        """
+        Get suppress_error_body state (true=hide error body, false=show error body)
+        """
+        return Config._suppress_error_body
+
     # Reasoning effort - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # Valid values configurable via REASONING_EFFORT_VALID env var
