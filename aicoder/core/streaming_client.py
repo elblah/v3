@@ -105,7 +105,15 @@ class StreamingClient:
 
                 if not response.ok():
                     self._log_error_response(response)
-                    raise Exception(f"HTTP {response.status}: {response.reason}")
+                    error_msg = f"HTTP {response.status}: {response.reason}"
+                    if not Config.suppress_error_body():
+                        try:
+                            error_data = response.json()
+                            if error_data and isinstance(error_data, dict):
+                                error_msg += f" - {json.dumps(error_data)}"
+                        except Exception:
+                            pass
+                    raise Exception(error_msg)
 
                 # Handle case-insensitive header access
                 content_type = ""
