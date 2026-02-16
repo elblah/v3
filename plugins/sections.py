@@ -317,6 +317,13 @@ def create_plugin(ctx):
 
 AI can organize conversation through section tagging and selective replacement.
 
+=== USAGE PATTERN ===
+✓ ALWAYS mark sections BEFORE ANY exploratory work or tool usage
+✓ Don't wait - mark immediately if you're about to search, read files, or investigate
+✓ Even simple tasks benefit from sections (keeps context clean)
+✓ If you're uncertain whether something is "exploratory" - MARK IT anyway
+✓ Better to over-use sections than to let context grow unmanaged
+
 === HOW TO USE ===
 
 **STEP 1 - START A SECTION (before doing work):**
