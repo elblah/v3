@@ -146,8 +146,8 @@ def create_plugin(ctx):
                 "detailed": "Need at least 2 messages in history.",
             }
 
-        # Special case: ENTIRE_SESSION
-        if tag_name == "ENTIRE_SESSION":
+        # Special case: ***ENTIRE_SESSION***
+        if tag_name == "***ENTIRE_SESSION***":
             sections_index = _get_sections_message_index()
             if sections_index is None:
                 return {
@@ -184,6 +184,53 @@ def create_plugin(ctx):
                 "detailed": f"Replaced entire session context with summary. Removed {removed_count} messages.",
             }
 
+        # Special case: ***START*** - replace from after [SECTIONS] to first section (or end if no sections)
+        if tag_name == "***START***":
+            sections_index = _get_sections_message_index()
+            if sections_index is None:
+                return {
+                    "tool": "replace_context_section",
+                    "friendly": "[!] Could not find [SECTIONS] message",
+                    "detailed": "Could not find [SECTIONS] marker in message history.",
+                }
+
+            all_sections = _find_all_sections()
+            last_tool_call_index = _find_last_tool_call_index()
+
+            if last_tool_call_index == -1:
+                return {
+                    "tool": "replace_context_section",
+                    "friendly": "[!] Could not find tool call message",
+                    "detailed": "Could not find the assistant message with tool_calls.",
+                }
+
+            # Start after [SECTIONS]
+            start_index = sections_index + 1
+
+            # End at first section (if exists) or last tool call
+            if all_sections:
+                end_index = all_sections[0][0]  # First section's message index
+            else:
+                # No sections - same as ENTIRE_SESSION
+                end_index = last_tool_call_index
+
+            if start_index >= end_index:
+                return {
+                    "tool": "replace_context_section",
+                    "friendly": "[!] Nothing to replace",
+                    "detailed": "No messages between [SECTIONS] and first section (or end of context).",
+                }
+
+            removed_count = _replace_range_with_summary(
+                start_index, end_index, "***START***", summary
+            )
+
+            return {
+                "tool": "replace_context_section",
+                "friendly": f"[✓] ***START*** replaced (removed {removed_count} messages)",
+                "detailed": f"Replaced context from [SECTIONS] to first section (or end) with summary. Removed {removed_count} messages.",
+            }
+
         # Normal case: find and replace tagged section
         all_sections = _find_all_sections()
 
@@ -202,7 +249,8 @@ def create_plugin(ctx):
                 "friendly": f"[!] Section '{tag_name}' not found",
                 "detailed": f"No section with tag '{tag_name}' found in message history. "
                            f"Make sure you used <begin-section>{tag_name}</begin-section> "
-                           f"to mark the section before calling replace_context_section.",
+                           f"to mark the section before calling replace_context_section. "
+                           f"Use '***START***' or '***ENTIRE_SESSION***' for special operations.",
             }
 
         # Find end: either next section start or last tool call
@@ -274,15 +322,17 @@ def create_plugin(ctx):
             "⚠️ IMPORTANT: Tag must be on FIRST LINE of a message (only thing on that line). Send section marker, do work, THEN call this tool.\n\n"
             "Summary should include: what you did, files/lines modified, decisions, failed approaches.\n"
             "Guidelines: be specific (files, lines), concise (50-200 tokens), assertive (no questions).\n\n"
-            "Use tag='ENTIRE_SESSION' to replace everything after [SECTIONS] message with a summary (clean slate).\n\n"
+            "Special tags:\n"
+            "- '***START***' - Replace from after [SECTIONS] to first tagged section (or end if no sections)\n"
+            "- '***ENTIRE_SESSION***' - Replace everything after [SECTIONS] message (clean slate)\n\n"
             "Args:\n"
-            "- tag (required): Section tag name (e.g., 'edit_auth_system', 'debug_crash') or 'ENTIRE_SESSION'\n"
+            "- tag (required): Section tag name (e.g., 'edit_auth_system', 'debug_crash') or special tag ('***START***', '***ENTIRE_SESSION***')\n"
             "- summary (required): What was accomplished (specific files, lines, outcomes)"
         ),
         parameters={
             "type": "object",
             "properties": {
-                "tag": {"type": "string", "description": "Section tag name (e.g., 'file_search', 'exploration')"},
+                "tag": {"type": "string", "description": "Section tag name (e.g., 'file_search', 'exploration') or special tag ('***START***', '***ENTIRE_SESSION***')"},
                 "summary": {"type": "string", "description": "Summary of what was accomplished/found in this section"}
             },
             "required": ["tag", "summary"]
@@ -302,27 +352,35 @@ def create_plugin(ctx):
 
 AI can organize conversation through section tagging and selective replacement.
 
+This is a helpful tool to keep context tidy - use it when it makes sense.
+
+=== TIMING: CLEAR AT START, NOT END ===
+When you do replace sections, do it at the BEGINNING of each interaction (before starting new work), not at the end.
+- START: Think about what previous info is still needed → optionally call replace_context_section() to clear old sections
+- THEN: Tag new work → Do work → Finish/stop
+- This way sections persist for follow-up questions in the next prompt
+
+Only replace when it's clear the information won't be needed anymore. It's perfectly fine to keep sections around if they might be useful.
+
 === USAGE PATTERN ===
-✓ ALWAYS mark sections BEFORE ANY exploratory work or tool usage
-✓ Don't wait - mark immediately if you're about to search, read files, or investigate
-✓ Even simple tasks benefit from sections (keeps context clean)
-✓ If you're uncertain whether something is "exploratory" - MARK IT anyway
-✓ Better to over-use sections than to let context grow unmanaged
+✓ Mark sections BEFORE exploratory work or tool usage (searches, file reads, debugging)
+✓ Use descriptive tags to help organize your thoughts
+✓ Sections help keep conversations organized when working on complex tasks
+✓ Only use sections when there's actual work being done
 
 === SECTION NAMING ===
-Use descriptive, action-oriented tags: `edit_auth_system`, `debug_crash`, `search_database`, `run_tests`
+Use descriptive tags: `edit_auth_system`, `debug_crash`, `search_database`, `run_tests`
 Avoid: `section1`, `task`, `work` (too vague)
 
-=== WHEN NOT TO USE SECTIONS ===
-Skip sections for: single-line answers, simple clarifications, confirmations without tool usage
-Use sections for: any file operations, searches, edits, debugging, multi-step tasks
+=== WHEN TO USE SECTIONS ===
+Use sections for: file operations, searches, edits, debugging, multi-step tasks
+Skip sections for: single-line answers, simple clarifications, confirmations
 
 === COMMON MISTAKES ===
-✗ Tag not on first line - must be the ONLY content on line 1
-✗ Trying to replace section in same message - need at least one message between
-✗ Using vague tag names - use descriptive tags like `edit_user_auth` not `task1`
-✗ Forgetting to replace sections - they stay in context until compaction
-✗ Using XML syntax for replace_context_section - call it as a FUNCTION, not XML!
+- Tag not on first line - must be the ONLY content on line 1
+- Trying to replace section in same message - need at least one message between
+- Using vague tag names - use descriptive tags like `edit_user_auth` not `task1'
+- Using XML syntax for replace_context_section - call it as a FUNCTION, not XML!
 
 === WRITING EFFECTIVE SUMMARIES ===
 
@@ -355,60 +413,52 @@ AI writes: <begin-section>SECTION_TAG</begin-section>
 I'll now search the files...
 
 Use any descriptive tag name (e.g., "file_search", "exploration", "debug_session").
-⚠️ IMPORTANT: Mark the section BEFORE starting work you want to summarize later.
+Mark the section BEFORE starting work.
 
-⚠️ CRITICAL: The <begin-section>TAG_NAME</begin-section> MUST be the FIRST LINE of the message
-with ONLY the tag on that line. Add an empty line after the tag for readability. You can write any content after the first line.
+The `<begin-section>TAG_NAME</begin-section>` MUST be the FIRST LINE of the message
+with ONLY the tag on that line. Add an empty line after the tag for readability.
 
 Valid:
 <begin-section>exploring_file_search</begin-section>
 
 I'll explore the file search now...
 
-Invalid (tag embedded in text):
-I was exploring and found: <begin-section>exploring_file_search</begin-section>
-I'll explore more...
-
-Invalid (tag not on first line):
-I was exploring and found:
-
-<begin-section>exploring_file_search</begin-section>
-I'll explore more...
-
 **STEP 2 - DO YOUR WORK:**
 Use tools, read files, grep, etc. within the section.
 
-**STEP 3 - REPLACE THE SECTION (CALL replace_context_section TOOL):**
-replace_context_section(tag='SECTION_TAG', summary='key findings here')
+**OPTIONAL: LATER - REPLACE OLD SECTIONS:**
+When starting a new interaction and it's clear previous info won't be needed, call:
+replace_context_section(tag='SECTION_TAG', summary='key findings')
 
-⚠️ IMPORTANT: begin-section uses XML tags, but replace_context_section is a FUNCTION CALL.
-Do NOT use XML syntax for replace_context_section!
+Note: begin-section uses XML tags, but replace_context_section is a FUNCTION CALL.
 
-=== SPECIAL: ENTIRE_SESSION ===
+=== SPECIAL TAGS ===
 
-Use tag='ENTIRE_SESSION' to replace EVERYTHING after [SECTIONS] message with a summary.
+Use tag='***START***' to replace context from after [SECTIONS] to the first tagged section.
+Useful for clearing initial context while preserving later sections.
+
+Use tag='***ENTIRE_SESSION***' to replace EVERYTHING after [SECTIONS] message with a summary.
 This gives you a clean slate. No <begin-section> needed.
 
-Example: replace_context_section(tag='ENTIRE_SESSION', summary='Clean slate - continuing with new approach')
+Examples:
+- replace_context_section(tag='***START***', summary='Cleared initial exploration')
+- replace_context_section(tag='***ENTIRE_SESSION***', summary='Clean slate - continuing with new approach')
 
 === WHEN TO USE ===
 
-✓ Before starting exploratory work (file searches, debugging, investigations)
-✓ After you find what you were looking for
-✓ Before starting a new phase of work
-✓ Anytime you want to reduce context noise without losing findings
-✓ Use ENTIRE_SESSION when conversation is messy or you want to restart from scratch
+- Before starting exploratory work (file searches, debugging, investigations)
+- Before starting a new phase of work
+- When starting a new interaction and it's clear previous info won't be needed
+- Use ***ENTIRE_SESSION*** when conversation is messy and you want to restart from scratch
 
 === KEY POINTS ===
 
 - Section tags are NOT parsed or treated specially - they just mark ranges
-- ENTIRE_SESSION replaces everything after [SECTIONS] message
+- ***ENTIRE_SESSION*** replaces everything after [SECTIONS] message
 - /sections list shows all active sections
-- IMPORTANT: Tags MUST be the FIRST LINE of a message (only thing on that line)
-- CRITICAL: You CANNOT create and replace a section in the same message.
-  - You must send one message with <begin-section>TAG</begin-section>
-  - Then do some work (or at least send another message)
-  - THEN call replace_context_section in a separate message
+- Tags MUST be the FIRST LINE of a message (only thing on that line)
+- You CANNOT create and replace a section in the same message
+- Replace sections at the START of new interactions (when info is clearly not needed)
 
 === SECTION SUMMARY MESSAGES ===
 
