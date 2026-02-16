@@ -250,3 +250,11 @@ See `auto_approve.py` plugin for a regex-based implementation.
   - Applies Luna color palette with soft pink/magenta, lime green, gold, and light cyan tones
   - Updates `Config.colors` with Luna's true color RGB values
   - No dependencies - pure Python stdlib
+
+- `tasks.py` - Task tracking for long autonomous sessions
+  - Tools: `add_task`, `update_task`, `list_tasks`, `delete_task`, `clear_all_tasks`
+  - Commands: `/tasks` (summary), `/task <id>` (details), `/task done <id>`, `/task cancel <id>`
+  - Hooks: `before_user_prompt` (shows pending/in-progress tasks)
+  - Storage: `.aicoder/tasks.json` (persistent)
+  - Statuses: pending, in_progress, completed, cancelled
+  - Use case: Maintains "harness" during long sessions to reduce AI drift

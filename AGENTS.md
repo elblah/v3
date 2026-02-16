@@ -23,7 +23,8 @@ AI Coder is a fast, lightweight AI-assisted development tool that runs anywhere.
 
 ### Plugin System
 Ultra-fast plugin system:
-- Available plugins in `.aicoder/plugins/` (local, project-specific) or `~/.config/aicoder-v3/plugins/` (global)
+- Plugins source code in plugins dir (./plugins in the project root)
+- Inslalled plugins in `.aicoder/plugins/` (local, project-specific) or `~/.config/aicoder-v3/plugins/` (global). DO NOT READ FROM THESE DIRS. THE USER IS RESPONSIBLE FOR INSTALLING PLUGINS IN THESE INSTALLATION DIRS. YOUR RESPONSIBILITY IS TO READ/WRITE FROM/TO THE project ./plugins directory which is controlled by git.
 - Each plugin exports `create_plugin(context)` function
 - Plugins can register tools, commands, and hooks
 - Context provides access to full app via `ctx.app`
