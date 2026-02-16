@@ -944,5 +944,134 @@ end
 - Orthogonal penalty keeps movement predictable
 - Works for any selectable objects
 
+# Simple Settings Persistence
+
+Lightweight key=value format (no JSON dependency):
+
+```lua
+local Settings = {
+    data = {theme = "classic", volume = 0.8, fullscreen = false},
+    filename = "settings.txt"
+}
+
+function Settings.serialize(tbl)
+    local lines = {}
+    for k, v in pairs(tbl) do
+        local value
+        if type(v) == "string" then value = string.format("%q", v)
+        elseif type(v) == "boolean" then value = v and "true" or "false"
+        else value = tostring(v) end
+        table.insert(lines, k .. "=" .. value)
+    end
+    return table.concat(lines, "\n")
+end
+
+function Settings.deserialize(str)
+    local result = {}
+    for line in str:gmatch("[^\r\n]+") do
+        local key, value = line:match("^([^=]+)=(.*)$")
+        if key and value then
+            key = key:match("^%s*(.-)%s*$")
+            value = value:match("^%s*(.-)%s*$")
+            if value == "true" then result[key] = true
+            elseif value == "false" then result[key] = false
+            elseif value:match("^%d+%.?%d*$") then result[key] = tonumber(value)
+            elseif value:match('^".*"$') then result[key] = value:sub(2, -2)
+            else result[key] = value end
+        end
+    end
+    return result
+end
+
+function Settings.load()
+    local content = love.filesystem.read(Settings.filename)
+    if content then
+        local loaded = Settings.deserialize(content)
+        for k, v in pairs(loaded) do Settings.data[k] = v end
+    end
+end
+
+function Settings.save()
+    love.filesystem.write(Settings.filename, Settings.serialize(Settings.data))
+end
+
+function Settings.get(key) return Settings.data[key] end
+function Settings.set(key, value) Settings.data[key] = value end
+```
+
+**Benefits:**
+- Human-readable and editable
+- No external JSON dependency
+- Automatic type detection
+- Easy to add new settings
+
+# Speech Bubble UI
+
+Dynamic player-linked speech bubbles with auto-cleanup:
+
+```lua
+local UI = {speechBubbles = {}}
+
+function UI.addSpeechBubble(playerId, text, duration)
+    duration = duration or 3
+    for i = #UI.speechBubbles, 1, -1 do
+        if UI.speechBubbles[i].playerId == playerId then
+            table.remove(UI.speechBubbles, i)
+        end
+    end
+    table.insert(UI.speechBubbles, {
+        playerId = playerId,
+        text = text,
+        time = love.timer.getTime(),
+        duration = duration
+    })
+end
+
+function UI.drawSpeechBubbles(theme)
+    local now = love.timer.getTime()
+    local w, h = love.graphics.getDimensions()
+
+    for i = #UI.speechBubbles, 1, -1 do
+        if now - UI.speechBubbles[i].time > UI.speechBubbles[i].duration then
+            table.remove(UI.speechBubbles, i)
+        end
+    end
+
+    for _, bubble in ipairs(UI.speechBubbles) do
+        local player = Game.players[bubble.playerId]
+        if player then
+            UI.drawBubble(player, bubble.text, theme, w, h)
+        end
+    end
+end
+
+function UI.drawBubble(player, text, theme, w, h)
+    local bubbleX = player.x or w / 2
+    local bubbleY = player.y or h / 2
+
+    local padding = 15
+    love.graphics.setFont(theme.fonts.small)
+    local textW = theme.fonts.small:getWidth(text)
+    local textH = theme.fonts.small:getHeight()
+    local bubbleW = textW + padding * 2
+    local bubbleH = textH + padding * 2
+    local bubbleLeft = bubbleX - bubbleW / 2
+    local bubbleTop = bubbleY - bubbleH / 2
+
+    love.graphics.setColor(1, 1, 1, 0.95)
+    love.graphics.rectangle("fill", bubbleLeft, bubbleTop, bubbleW, bubbleH, 10)
+    love.graphics.setColor(0, 0, 0, 1)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", bubbleLeft, bubbleTop, bubbleW, bubbleH, 10)
+    love.graphics.printf(text, bubbleLeft + padding, bubbleTop + padding/2, textW, "center")
+end
+```
+
+**Benefits:**
+- Player-linked bubbles
+- Duration-based auto-cleanup
+- Replaces old bubbles to prevent overlap
+- Perfect for multiplayer/NPC games
+
 
 
