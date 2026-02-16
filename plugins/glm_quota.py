@@ -2,7 +2,7 @@
 GLM Quota Plugin - Query Z.ai GLM Coding Plan quota and usage statistics
 
 Commands:
-- /glm quota: Query current quota and usage statistics
+- /glm-quota [week|month]: Query quota and usage for specified time period (default: 24h)
 """
 
 from typing import Dict, Any
@@ -40,23 +40,31 @@ def create_plugin(ctx):
         else:
             return f"{minutes}m"
 
-    def get_time_window() -> Dict[str, str]:
-        """Get 24-hour rolling time window"""
+    def get_time_window(period: str = "24h") -> Dict[str, str]:
+        """Get time window for specified period (24h, week, month)"""
         now = datetime.now()
-        # Start: yesterday at current hour, 0 minutes, 0 seconds
-        start_time = datetime(
-            now.year, now.month, now.day - 1,
-            now.hour, 0, 0, 0
-        )
-        # End: today at current hour, 59 minutes, 59 seconds
-        end_time = datetime(
-            now.year, now.month, now.day,
-            now.hour, 59, 59, 0
-        )
+
+        if period == "week":
+            start_time = now - timedelta(days=7)
+            end_time = now
+        elif period == "month":
+            start_time = now - timedelta(days=30)
+            end_time = now
+        else:
+            # Default: 24-hour rolling window
+            start_time = datetime(
+                now.year, now.month, now.day - 1,
+                now.hour, 0, 0, 0
+            )
+            end_time = datetime(
+                now.year, now.month, now.day,
+                now.hour, 59, 59, 0
+            )
 
         return {
             "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S")
+            "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "period": period
         }
 
     def is_zai_url(url: str) -> bool:
@@ -77,7 +85,7 @@ def create_plugin(ctx):
             return f"{parsed.scheme}://{parsed.netloc}"
         return ""
 
-    def fetch_quota_data(base_url: str, api_key: str) -> Dict[str, Any]:
+    def fetch_quota_data(base_url: str, api_key: str, period: str = "24h") -> Dict[str, Any]:
         """Fetch quota data from Z.ai endpoints"""
         import urllib.parse
 
@@ -85,7 +93,7 @@ def create_plugin(ctx):
             return {"error": "Missing base URL or API key"}
 
         # Get time window query parameters
-        time_window = get_time_window()
+        time_window = get_time_window(period)
         query_params = f"startTime={urllib.parse.quote(time_window['start_time'])}&endTime={urllib.parse.quote(time_window['end_time'])}"
 
         if Config.debug():
@@ -130,7 +138,7 @@ def create_plugin(ctx):
 
         return results
 
-    def format_quota_output(data: Dict[str, Any]) -> str:
+    def format_quota_output(data: Dict[str, Any], period: str = "24h") -> str:
         """Format quota data for display"""
         if "error" in data:
             return f"{Config.colors['red']}Error: {data['error']}{Config.colors['reset']}"
@@ -145,11 +153,13 @@ def create_plugin(ctx):
             output.append(f"{Config.colors['yellow']}Model Usage:{Config.colors['reset']} {Config.colors['red']}{model_usage.get('error', 'Unknown error')}{Config.colors['reset']}")
         elif isinstance(model_usage, dict) and model_usage.get("success"):
             total_usage = model_usage.get("data", {}).get("totalUsage", {})
-            output.append(f"{Config.colors['yellow']}Model Usage (24h):{Config.colors['reset']}")
+            period_label = "24h" if period == "24h" else period
+            output.append(f"{Config.colors['yellow']}Model Usage ({period_label}):{Config.colors['reset']}")
             output.append(f"  Calls: {Config.colors['green']}{total_usage.get('totalModelCallCount', 0)}{Config.colors['reset']}")
             output.append(f"  Tokens: {Config.colors['green']}{total_usage.get('totalTokensUsage', 0):,}{Config.colors['reset']}")
         else:
-            output.append(f"{Config.colors['yellow']}Model Usage:{Config.colors['reset']} {Config.colors['dim']}No usage in 24h window{Config.colors['reset']}")
+            period_label = "24h" if period == "24h" else period
+            output.append(f"{Config.colors['yellow']}Model Usage:{Config.colors['reset']} {Config.colors['dim']}No usage in {period_label} window{Config.colors['reset']}")
 
         # Tool Usage
         tool_usage = data.get("tool_usage", {})
@@ -157,12 +167,14 @@ def create_plugin(ctx):
             output.append(f"{Config.colors['yellow']}Tool Usage:{Config.colors['reset']} {Config.colors['red']}{tool_usage.get('error', 'Unknown error')}{Config.colors['reset']}")
         elif isinstance(tool_usage, dict) and tool_usage.get("success"):
             total_usage = tool_usage.get("data", {}).get("totalUsage", {})
-            output.append(f"{Config.colors['yellow']}Tool Usage (24h):{Config.colors['reset']}")
+            period_label = "24h" if period == "24h" else period
+            output.append(f"{Config.colors['yellow']}Tool Usage ({period_label}):{Config.colors['reset']}")
             output.append(f"  Network Search: {Config.colors['green']}{total_usage.get('totalNetworkSearchCount', 0)}{Config.colors['reset']}")
             output.append(f"  Web Read MCP: {Config.colors['green']}{total_usage.get('totalWebReadMcpCount', 0)}{Config.colors['reset']}")
             output.append(f"  Zread MCP: {Config.colors['green']}{total_usage.get('totalZreadMcpCount', 0)}{Config.colors['reset']}")
         else:
-            output.append(f"{Config.colors['yellow']}Tool Usage:{Config.colors['reset']} {Config.colors['dim']}No usage in 24h window{Config.colors['reset']}")
+            period_label = "24h" if period == "24h" else period
+            output.append(f"{Config.colors['yellow']}Tool Usage:{Config.colors['reset']} {Config.colors['dim']}No usage in {period_label} window{Config.colors['reset']}")
 
         # Quota Limit
         quota_limit = data.get("quota_limit", {})
@@ -203,7 +215,9 @@ def create_plugin(ctx):
         return "\n".join(output)
 
     def cmd_glm_quota(args: str) -> None:
-        """Handle /glm quota command"""
+        """Handle /glm-quota command
+        Arguments: week, month (default: 24h)
+        """
         # Get API configuration
         base_url = Config.base_url()
         api_key = Config.api_key()
@@ -215,6 +229,14 @@ def create_plugin(ctx):
         if not api_key:
             print(f"{Config.colors['red']}Error: API_KEY not configured{Config.colors['reset']}")
             return
+
+        # Parse period argument
+        period = "24h"
+        args_lower = args.lower().strip()
+        if args_lower in ("week", "month"):
+            period = args_lower
+        elif args_lower and args_lower not in ("24h", "default"):
+            print(f"{Config.colors['yellow']}Warning: Unknown period '{args}', using default (24h){Config.colors['reset']}\n")
 
         # Check if it's a Z.ai URL
         if not is_zai_url(base_url):
@@ -233,8 +255,9 @@ def create_plugin(ctx):
             print(f"{Config.colors['dim']}[DEBUG] Z.ai base URL: {zai_base_url}{Config.colors['reset']}")
 
         # Fetch quota data
-        print(f"{Config.colors['cyan']}Querying Z.ai quota...{Config.colors['reset']}")
-        data = fetch_quota_data(zai_base_url, api_key)
+        period_label = period.upper() if period != "24h" else "24h"
+        print(f"{Config.colors['cyan']}Querying Z.ai quota ({period_label})...{Config.colors['reset']}")
+        data = fetch_quota_data(zai_base_url, api_key, period)
 
         # Debug: show raw data
         if Config.debug():
@@ -243,12 +266,12 @@ def create_plugin(ctx):
             print(json.dumps(data, indent=2, default=str))
 
         # Display results
-        output = format_quota_output(data)
+        output = format_quota_output(data, period)
         print(output)
 
     # Register command
-    ctx.register_command("glm-quota", cmd_glm_quota, "Query Z.ai GLM Coding Plan quota and usage statistics")
+    ctx.register_command("glm-quota", cmd_glm_quota, "Query Z.ai GLM Coding Plan quota and usage statistics [week|month]")
 
     if Config.debug():
         print(f"[+] GLM Quota plugin loaded")
-        print(f"    - /glm quota command")
+        print(f"    - /glm-quota command")
