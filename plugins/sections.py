@@ -362,6 +362,21 @@ When you do replace sections, do it at the BEGINNING of each interaction (before
 
 Only replace when it's clear the information won't be needed anymore. It's perfectly fine to keep sections around if they might be useful.
 
+=== RECOGNIZING WHEN TO TAG ===
+
+The key insight: tag BEFORE you start a series of related operations that you might want to summarize later.
+
+Ask yourself before starting work:
+"Will this be a series of related actions that I'd want to summarize as a unit?"
+
+If yes, start with a tag. Common patterns:
+- "I'm going to search through multiple files to understand X" → <begin-section>exploring_X</begin-section>
+- "I need to make several edits to fix this bug" → <begin-section>fix_bug_name</begin-section>
+- "I'll debug this issue by checking multiple things" → <begin-section>debug_issue_name</begin-section>
+- "Time to implement this feature with multiple steps" → <begin-section>implement_feature</begin-section>
+
+Think of it as marking a logical chunk of work - like a transaction.
+
 === USAGE PATTERN ===
 ✓ Mark sections BEFORE exploratory work or tool usage (searches, file reads, debugging)
 ✓ Use descriptive tags to help organize your thoughts
