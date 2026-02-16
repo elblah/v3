@@ -1073,5 +1073,91 @@ end
 - Replaces old bubbles to prevent overlap
 - Perfect for multiplayer/NPC games
 
+# Multi-Theme System
+
+Semantic color themes with runtime switching:
+
+```lua
+local THEMES = {
+    monokai = {
+        name = "Monokai",
+        bg = {39, 40, 34},
+        text = {248, 248, 242},
+        accent = {166, 226, 46},
+        button = {73, 72, 62},
+        buttonHover = {103, 102, 92},
+    },
+    nord = {
+        name = "Nord",
+        bg = {46, 52, 64},
+        text = {236, 239, 244},
+        accent = {136, 192, 208},
+        button = {67, 76, 94},
+        buttonHover = {94, 129, 172},
+    },
+}
+
+local THEME_NAMES = {"monokai", "nord"}
+local currentThemeIndex = 1
+
+function getTheme()
+    return THEMES[THEME_NAMES[currentThemeIndex]]
+end
+
+function nextTheme()
+    currentThemeIndex = currentThemeIndex % #THEME_NAMES + 1
+    saveSettings()
+end
+
+function setThemeIndex(index)
+    if index >= 1 and index <= #THEME_NAMES then
+        currentThemeIndex = index
+    end
+end
+
+function loadSettings()
+    local data = love.filesystem.read("settings.txt")
+    if data then
+        local idx = tonumber(data:match("^theme=(%d+)"))
+        if idx then setThemeIndex(idx) end
+    end
+end
+
+function saveSettings()
+    love.filesystem.write("settings.txt", "theme=" .. currentThemeIndex)
+end
+
+-- Helper: 0-255 to 0-1 range
+function setColor(r, g, b, a)
+    love.graphics.setColor(r/255, g/255, b/255, (a or 255)/255)
+end
+```
+
+**Usage:**
+```lua
+function love.load()
+    loadSettings()
+end
+
+function love.draw()
+    local theme = getTheme()
+    setColor(unpack(theme.bg))
+    love.graphics.rectangle("fill", 0, 0, w, h)
+
+    setColor(unpack(theme.text))
+    love.graphics.print("Hello", x, y)
+end
+
+function love.keypressed(key)
+    if key == "t" then nextTheme() end
+end
+```
+
+**Best Practices:**
+- Use semantic names: `bg`, `text`, `accent` (not `color1`, `color2`)
+- Save immediately on theme change
+- Load settings first in `love.load()`
+- Use `setColor()` helper for consistent 0-255 input
+
 
 
