@@ -240,3 +240,69 @@ local function saveSettings()
     love.filesystem.write(SETTINGS_FILE, json)
 end
 ```
+
+# Performance: Dirty Flag Pattern
+
+A pattern to avoid recalculating expensive computations every frame. Only recalculate when data changes.
+
+## When to Use
+
+- Expensive layout calculations (positioning, pathfinding, AI)
+- Layout depends on data that changes infrequently
+- Currently calculating every frame in `draw()` or `update()`
+
+## Implementation
+
+```lua
+-- 1. Initialize flag and cache
+local layoutCache = nil
+local layoutDirty = true
+
+-- 2. Mark dirty whenever data changes
+function addPiece(piece)
+    table.insert(pieces, piece)
+    layoutDirty = true
+end
+
+function love.resize(w, h)
+    layoutDirty = true
+end
+
+-- 3. Check and recalculate in update()
+function love.update(dt)
+    if layoutDirty and pieces then
+        layoutCache = calculateLayout(pieces)
+        layoutDirty = false
+    end
+end
+
+-- 4. Use cache in draw()
+function love.draw()
+    if layoutCache then
+        for i, pos in ipairs(layoutCache) do
+            drawPiece(pieces[i], pos.x, pos.y)
+        end
+    end
+end
+```
+
+## Key Points
+
+- **Flag + Cache**: Boolean flag (`layoutDirty`) + result cache
+- **Mark Dirty**: Set flag whenever data changes (add/remove/resize)
+- **Lazy Evaluation**: Calculate in `update()`, not immediately
+- **Guard Clause**: Check data exists before recalculation
+- **Clear Flag**: Set to false after calculation
+
+## Benefits
+
+- **Performance**: Avoids expensive calculations every frame
+- **Simplicity**: Clear separation - mark dirty → check → use cache
+- **Maintainability**: Easy to add new dirty triggers
+
+## Common Pitfalls
+
+- Forgot to set dirty flag when data changes
+- Set dirty but never check the flag
+- Forgot to clear flag after calculation
+- Recalculating every frame (most common)
