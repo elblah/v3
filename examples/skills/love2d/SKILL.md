@@ -437,3 +437,111 @@ if isMobile() then
 end
 ```
 
+# Physics: Fixed Timestep
+
+Frame-rate independent physics using accumulator pattern:
+
+```lua
+local physics_accumulator = 0
+local physics_step = 1/60  -- Fixed 60Hz physics
+
+function love.update(dt)
+    physics_accumulator = physics_accumulator + dt
+    while physics_accumulator >= physics_step do
+        physics_accumulator = physics_accumulator - physics_step
+        update_physics(physics_step)
+    end
+end
+```
+
+**Benefits:**
+- Consistent physics regardless of frame rate
+- Prevents tunneling issues
+- Makes gameplay frame-rate independent
+
+# Proportional Layout System
+
+Responsive UI that scales with screen size:
+
+```lua
+local function update_layout()
+    local sh = love.graphics.getHeight()
+    local sw = love.graphics.getWidth()
+
+    header_height = math.max(40, math.min(80, sh * 0.08))
+    button_width = math.max(60, math.min(100, sw * 0.1))
+
+    font_small = love.graphics.newFont(math.max(8, math.floor(sh * 0.02)))
+    font_med = love.graphics.newFont(math.max(10, math.floor(sh * 0.025)))
+end
+
+function love.resize(w, h)
+    update_layout()
+end
+```
+
+**Benefits:**
+- Game looks good on any screen size
+- Critical for mobile/desktop cross-platform
+- Constrained between min/max values for usability
+
+# Multi-Input System
+
+Unified handling of keyboard, mouse, joystick, and touch:
+
+```lua
+-- Unified input state
+local input = {
+    aim_x = 0, aim_y = 0,
+    charge = false, release = false,
+    joystick = nil
+}
+
+-- Touch tracking with IDs
+local touch_aim_id = nil
+local touch_charge_id = nil
+
+function love.touchpressed(id, x, y)
+    -- Track which finger does what
+end
+
+function love.mousepressed(x, y, button)
+    -- Same logic for mouse
+end
+
+function love.joystickpressed(joystick, button)
+    input.joystick = joystick
+end
+```
+
+**Benefits:**
+- Single input system works across all platforms
+- Critical for cross-platform games
+- Touch IDs prevent gesture confusion
+
+# Font Caching
+
+Never create fonts every frame - cache and reuse:
+
+```lua
+-- Cached fonts (don't create every frame!)
+local font_small, font_med, font_large
+
+function update_layout()
+    local sh = love.graphics.getHeight()
+    font_small = love.graphics.newFont(math.max(8, math.floor(sh * 0.02)))
+    font_med = love.graphics.newFont(math.max(10, math.floor(sh * 0.025)))
+end
+
+function love.draw()
+    love.graphics.setFont(font_med)
+    -- Draw text
+end
+```
+
+**Benefits:**
+- Prevents expensive font recreation every frame
+- Update fonts only on resize
+- Significant performance improvement
+```
+
