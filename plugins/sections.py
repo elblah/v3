@@ -271,28 +271,13 @@ def create_plugin(ctx):
         fn=_replace_section_with_summary,
         description=(
             "Replace a tagged section of message history with a summary.\n\n"
-            "⚠️ IMPORTANT: You must have marked a section FIRST with <begin-section>YOUR_TAG</begin-section> on the FIRST LINE of a message (only thing on that line). Add an empty line after for readability. You can write any content after the first line.\n\n"
-            "⚠️ CRITICAL: You CANNOT create and replace a section in the same message. Send the section marker in one message, do work (or send another message), THEN call this tool.\n\n"
-            "=== SPECIAL CASE: ENTIRE_SESSION ===\n"
-            "Use tag='ENTIRE_SESSION' to replace EVERYTHING after [SECTIONS] message with a summary.\n"
-            "This gives you a clean slate. No <begin-section> needed. Use this to fresh start when conversation is\n"
-            "messy or you want to restart.\n\n"
-            "=== NORMAL SECTIONS ===\n"
-            "Workflow:\n"
-            "1. Message 1: <begin-section>your_tag</begin-section> on first line, empty line, then your content\n"
-            "2. Message 2+: Do your work (file searches, debugging, exploration)\n"
-            "3. Later message: replace_context_section(tag='your_tag', summary='key findings')\n\n"
-            "The section (from <begin-section> to next section or end) will be replaced with your summary.\n"
-            "All other messages are preserved.\n\n"
+            "⚠️ IMPORTANT: Tag must be on FIRST LINE of a message (only thing on that line). Send section marker, do work, THEN call this tool.\n\n"
+            "Summary should include: what you did, files/lines modified, decisions, failed approaches.\n"
+            "Guidelines: be specific (files, lines), concise (50-200 tokens), assertive (no questions).\n\n"
+            "Use tag='ENTIRE_SESSION' to replace everything after [SECTIONS] message with a summary (clean slate).\n\n"
             "Args:\n"
-            "- tag (required): The section tag name (e.g., 'file_search', 'exploration') or 'ENTIRE_SESSION' for clean slate\n"
-            "- summary (required): What to replace the section with (key findings, conclusion)\n\n"
-            "When to use:\n"
-            "- After finding what you were looking for\n"
-            "- Before starting a new phase of work\n"
-            "- After debugging and finding root cause\n"
-            "- Anytime you want to reduce context noise without losing findings\n"
-            "- Use ENTIRE_SESSION when you want a completely fresh start"
+            "- tag (required): Section tag name (e.g., 'edit_auth_system', 'debug_crash') or 'ENTIRE_SESSION'\n"
+            "- summary (required): What was accomplished (specific files, lines, outcomes)"
         ),
         parameters={
             "type": "object",
@@ -323,6 +308,42 @@ AI can organize conversation through section tagging and selective replacement.
 ✓ Even simple tasks benefit from sections (keeps context clean)
 ✓ If you're uncertain whether something is "exploratory" - MARK IT anyway
 ✓ Better to over-use sections than to let context grow unmanaged
+
+=== SECTION NAMING ===
+Use descriptive, action-oriented tags: `edit_auth_system`, `debug_crash`, `search_database`, `run_tests`
+Avoid: `section1`, `task`, `work` (too vague)
+
+=== WHEN NOT TO USE SECTIONS ===
+Skip sections for: single-line answers, simple clarifications, confirmations without tool usage
+Use sections for: any file operations, searches, edits, debugging, multi-step tasks
+
+=== COMMON MISTAKES ===
+✗ Tag not on first line - must be the ONLY content on line 1
+✗ Trying to replace section in same message - need at least one message between
+✗ Using vague tag names - use descriptive tags like `edit_user_auth` not `task1`
+✗ Forgetting to replace sections - they stay in context until compaction
+
+=== WRITING EFFECTIVE SUMMARIES ===
+
+**Include:**
+- What you did (task completed)
+- Key decisions with rationale (if applicable)
+- Files modified/created (with paths and line numbers)
+- Failed approaches to avoid repeating (if any)
+
+**Guidelines:**
+- Be specific: file paths, function names, line numbers
+- Be concise: 50-200 tokens depending on complexity
+- Be assertive: no questions at the end
+- No meta-commentary: the summary IS the output
+
+=== SECTION LIFECYCLE ===
+
+- Sections marked with `<begin-section>` remain in context until you replace them
+- If you never replace a section, it will eventually be collected by auto compaction
+- Auto compaction replaces old messages (including unreplaced sections) with `[SUMMARY]`
+- Use `replace_context_section()` to control what gets summarized and when
+- `[SECTION_SUMMARY]` messages from manual replacement are preserved through auto compaction
 
 === HOW TO USE ===
 
