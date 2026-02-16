@@ -660,4 +660,145 @@ end
 - Portrait orientation locked
 - Memory-efficient module loading
 
+# Canvas Caching with Dirty Flag
+
+Optimize canvas rendering by only redrawing when content changes:
+
+```lua
+local canvas = nil
+local needs_redraw = true
+
+function update_canvas_if_needed()
+    if needs_redraw then
+        canvas = love.graphics.newCanvas(width, height)
+        love.graphics.setCanvas(canvas)
+        -- Draw complex content
+        love.graphics.setCanvas()
+        needs_redraw = false
+    end
+end
+
+function draw()
+    update_canvas_if_needed()
+    love.graphics.draw(canvas, 0, 0)
+end
+```
+
+**Benefits:**
+- Optimizes complex rendering (text, shapes, patterns)
+- Redraws only when content changes
+- Significant performance improvement for static content
+
+# Double-Back to Exit (Mobile)
+
+Prevent accidental app exits on mobile with double-press pattern:
+
+```lua
+local back_press_time = 0
+local back_press_delay = 2.0
+
+function love.keypressed(key)
+    if key == "escape" or key == "back" then
+        local current_time = love.timer.getTime()
+        if current_time - back_press_time < back_press_delay then
+            love.event.quit()
+        else
+            back_press_time = current_time
+            -- Show "press again to exit" toast
+        end
+    end
+end
+```
+
+**Benefits:**
+- Common mobile UX pattern
+- Prevents accidental app closure
+- 2-second delay between presses
+
+# Responsive Grid Layout
+
+Grid-based layout with min/max constraints for tile/card games:
+
+```lua
+local function calculate_grid_layout(cols, rows, sw, sh, margin_pct, min_size, max_size)
+    margin_pct = margin_pct or 0.02
+    local margin = math.min(sw, sh) * margin_pct
+
+    local avail_w = sw - (cols + 1) * margin
+    local avail_h = sh - (rows + 1) * margin
+
+    local cell_w = math.max(min_size, math.min(max_size, avail_w / cols))
+    local cell_h = math.max(min_size, math.min(max_size, avail_h / rows))
+
+    return cell_w, cell_h, margin
+end
+```
+
+**Benefits:**
+- Scales grid cells to fit screen
+- Constrained between min/max sizes
+- Essential for tile/card games
+
+# Grid-Based Input Handling
+
+Convert mouse/touch coordinates to grid indices:
+
+```lua
+local function grid_input_to_cell(x, y, cell_w, cell_h, margin)
+    local col = math.floor((x - margin) / (cell_w + margin)) + 1
+    local row = math.floor((y - margin) / (cell_h + margin)) + 1
+    return col, row
+end
+
+function love.mousepressed(x, y, button)
+    local col, row = grid_input_to_cell(x, y, cell_w, cell_h, margin)
+    if grid[row] and grid[row][col] then
+        -- Handle cell selection
+    end
+end
+```
+
+**Benefits:**
+- Essential for tile/card/puzzle games
+- Works with both mouse and touch
+- Handles margin spacing
+
+# Keyboard Shortcuts with Multiple Keybinds
+
+Unified handling of alternative key bindings:
+
+```lua
+local key_map = {
+    up = {"w", "up"},
+    down = {"s", "down"},
+    left = {"a", "left"},
+    right = {"d", "right"},
+    select = {"return", "space", "e"},
+    back = {"escape", "back", "q"}
+}
+
+function get_mapped_action(key)
+    for action, keys in pairs(key_map) do
+        for _, k in ipairs(keys) do
+            if k == key then return action end
+        end
+    end
+end
+
+function love.keypressed(key)
+    local action = get_mapped_action(key)
+    if action == "up" then
+        -- Move up
+    elseif action == "select" then
+        -- Select
+    end
+end
+```
+
+**Benefits:**
+- WASD + arrow keys support
+- Improved accessibility
+- Centralized key mapping
+
+
 
