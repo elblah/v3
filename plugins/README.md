@@ -251,6 +251,13 @@ See `auto_approve.py` plugin for a regex-based implementation.
   - Updates `Config.colors` with Luna's true color RGB values
   - No dependencies - pure Python stdlib
 
+- `summaron.py` - Round-based automatic context digestion
+  - Commands: `/summaron status`, `/summaron set <N>`, `/summaron limit <N>`, `/summaron rounds`, `/summaron digest <N>`, `/summaron enable/disable`
+  - Hooks: `after_user_message_added`, `after_assistant_message_added`, `after_tool_results_added`, `after_compaction`, `on_session_change`
+  - Config: `SUMMARON_THRESHOLD` (default: 50%), `SUMMARON_LIMIT` (default: 100k), `SUMMARON_ENABLED` (default: 1)
+  - Features: Automatic round creation, <summary> extraction, 50% working space, user message preservation
+  - Use case: Prevents surprise auto-compaction by maintaining context at 50% automatically
+
 - `tasks.py` - Task tracking for long autonomous sessions
   - Tools: `add_task`, `update_task`, `list_tasks`, `delete_task`, `clear_all_tasks`
   - Commands: `/tasks` (summary), `/task <id>` (details), `/task done <id>`, `/task cancel <id>`
