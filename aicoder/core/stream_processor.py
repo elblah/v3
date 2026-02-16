@@ -28,6 +28,7 @@ class StreamProcessor:
         accumulated_reasoning = ""
         accumulated_tool_calls = {}
         reasoning_detected = False
+        detected_model = None
 
         # Debug: show thinking configuration at start of stream
         if Config.debug():
@@ -45,6 +46,10 @@ class StreamProcessor:
 
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
+                # Detect model from first chunk that contains it
+                if Config.debug() and not detected_model and chunk.get("model"):
+                    detected_model = chunk["model"]
+                    LogUtils.debug(f"*** Response model: {detected_model}")
                 # Check if user interrupted
                 if not is_processing_callback():
                     LogUtils.print("\n[AI response interrupted]")
