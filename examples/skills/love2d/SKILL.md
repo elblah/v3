@@ -545,3 +545,119 @@ end
 - Significant performance improvement
 ```
 
+# Touch Debouncing
+
+Prevent multiple rapid clicks/touches from triggering actions multiple times:
+
+```lua
+local lastClickTime = 0
+local clickDelay = 0.3  -- seconds
+
+function handle_click()
+    if love.timer.getTime() - lastClickTime < clickDelay then
+        return  -- Debounced
+    end
+    lastClickTime = love.timer.getTime()
+    -- Handle click...
+end
+```
+
+**Benefits:**
+- Prevents accidental double-taps
+- Essential for touch interfaces
+- Configurable delay per UI element
+
+# UTF-8 Multi-Language Support
+
+Handle international text with UTF-8 utilities:
+
+```lua
+-- UTF-8 character count (not byte count)
+function utf8_length(str)
+    return select(2, str:gsub("[^\128-\191]", ""))
+end
+
+-- UTF-8 substring by character position
+function utf8_sub(str, start_char, end_char)
+    local byte_start = utf8_offset(str, start_char)
+    local byte_end = end_char and utf8_offset(str, end_char + 1) - 1 or -1
+    return str:sub(byte_start, byte_end)
+end
+
+-- Helper: find byte offset for character position
+function utf8_offset(str, char_pos)
+    local byte_pos = 0
+    local char_count = 0
+    while byte_pos < #str and char_count < char_pos do
+        byte_pos = byte_pos + 1
+        local byte = str:byte(byte_pos)
+        if byte < 0x80 or byte > 0xBF then
+            char_count = char_count + 1
+        end
+    end
+    return byte_pos + 1
+end
+```
+
+**Benefits:**
+- Essential for multi-language games
+- Correct character counting for CJK, Arabic, etc.
+- Prevents broken text rendering
+
+# Mobile Vibration Feedback
+
+Provide haptic feedback on mobile devices:
+
+```lua
+function vibrate(duration)
+    duration = duration or 50  -- milliseconds
+    if love.system.getOS() == "Android" or love.system.getOS() == "iOS" then
+        if love.vibrate then
+            love.vibrate(duration)
+        end
+    end
+end
+
+-- Usage
+vibrate(50)  -- 50ms vibration
+```
+
+**Benefits:**
+- Better mobile UX with tactile feedback
+- Works only on mobile platforms
+- Requires LÖVE 11.2+
+
+# Mobile-Friendly Configuration
+
+Optimize conf.lua for mobile devices:
+
+```lua
+function love.conf(t)
+    t.window.title = "Your Game"
+    t.window.vsync = true
+
+    -- Mobile portrait mode
+    t.window.width = 390   -- Portrait width
+    t.window.height = 844  -- Portrait height
+
+    -- Performance settings
+    t.window.msaa = 4  -- Anti-aliasing
+
+    -- Enable touch support
+    t.modules.touch = true
+
+    -- File system
+    t.filesystem.identity = "your_game"
+
+    -- Optional: disable unused modules to save memory
+    -- t.modules.audio = false
+    -- t.modules.sound = false
+end
+```
+
+**Benefits:**
+- Optimized for mobile performance
+- Portrait orientation locked
+- Memory-efficient module loading
+
+
