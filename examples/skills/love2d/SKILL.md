@@ -1,5 +1,5 @@
 ---
-name: love2d-game-dev
+name: love2d
 description: Löve2d Game development essential tips (like how to create screenshots, run in xvfb, etc)
 ---
 
