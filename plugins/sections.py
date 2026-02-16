@@ -404,6 +404,39 @@ Skip sections for: single-line answers, simple clarifications, confirmations
 - Use `replace_context_section()` to control what gets summarized and when
 - `[SECTION_SUMMARY]` messages from manual replacement are preserved through auto compaction
 
+=== EXAMPLE SCENARIOS ===
+
+**Editing Multiple Files:**
+<begin-section>edit_auth_system</begin-section>
+I'll edit the authentication files to add JWT support...
+[edits utils.py, auth.py, middleware.py - 500+ lines]
+replace_context_section(tag='edit_auth_system', summary='Added JWT authentication: edited utils.py (lines 42-58, 101-115), auth.py (lines 20-45), middleware.py (lines 10-28). Added token generation, validation, and refresh logic.')
+
+**Reading Large Codebase:**
+<begin-section>explore_codebase</begin-section>
+I'll search for the user model...
+[reads 20+ files to understand architecture]
+replace_context_section(tag='explore_codebase', summary='Found user model in models/user.py, authentication flow in auth/, validation in validators/. Uses SQLAlchemy with JWT tokens stored in Redis.')
+
+**Debugging Issue:**
+<begin-section>debug_crash</begin-section>
+I'll investigate the crash in the request handler...
+[reads logs, adds debug output, tests]
+replace_context_section(tag='debug_crash', summary='Fixed crash in request_handler.py line 156 - was accessing None response object. Added null check and error handling.')
+
+**Running Tests:**
+<begin-section>run_tests</begin-section>
+I'll run the test suite to verify changes...
+[runs pytest, checks results, fixes failures]
+replace_context_section(tag='run_tests', summary='Ran pytest - 47 passed, 3 failed. Fixed 2 failures in user tests (line 89, 102), 1 in auth tests (line 45). All tests now pass.')
+
+**Searching Code:**
+<begin-section>search_database_usage</begin-section>
+I'll search for all database query patterns...
+[greps, reads 15 files]
+replace_context_section(tag='search_database_usage', summary='Found 23 database queries across 8 files. Mostly using SQLAlchemy ORM, 3 raw SQL queries in legacy code. All queries use parameterized inputs, no SQL injection risk.')
+
+
 === HOW TO USE ===
 
 **STEP 1 - START A SECTION (before doing work):**
