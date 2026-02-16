@@ -306,3 +306,134 @@ end
 - Set dirty but never check the flag
 - Forgot to clear flag after calculation
 - Recalculating every frame (most common)
+
+# State Machine Pattern
+
+Manage multiple game screens (menu, gameplay, settings, etc.) with a clean state system:
+
+```lua
+local currentState = nil
+
+function love.load()
+    GamePlayState = require("gameplay")
+    MenuState = require("menu")
+    SettingsState = require("settings")
+
+    currentState = MenuState
+    currentState.load()
+end
+
+-- Delegate all callbacks to current state
+function love.update(dt)
+    if currentState and currentState.update then
+        currentState.update(dt)
+    end
+end
+
+function love.draw()
+    if currentState and currentState.draw then
+        currentState.draw()
+    end
+end
+
+function love.mousepressed(x, y, button)
+    if currentState and currentState.mousepressed then
+        currentState.mousepressed(x, y, button)
+    end
+end
+
+function switchState(newState)
+    if currentState and currentState.exit then
+        currentState.exit()
+    end
+    currentState = newState
+    if currentState.load then
+        currentState.load()
+    end
+end
+```
+
+**Key Points:**
+- States are separate modules with `load/update/draw/exit` functions
+- Main.lua delegates all callbacks to current state
+- `switchState()` handles cleanup and initialization
+
+# Utility Functions
+
+Common table and string helpers frequently needed in games:
+
+```lua
+-- Shuffle array in place
+function table.shuffle(arr)
+    for i = #arr, 2, -1 do
+        local j = math.random(i)
+        arr[i], arr[j] = arr[j], arr[i]
+    end
+end
+
+-- Split string by separator
+function string:split(sep)
+    sep = sep or "%s"
+    local t = {}
+    for str in string.gmatch(self, "([^"..sep.."]+)") do
+        table.insert(t, str)
+    end
+    return t
+end
+
+-- Check string prefix
+function string.startswith(text, prefix)
+    return text:find(prefix, 1, true) == 1
+end
+
+-- Find element index
+function table.index(arr, value)
+    for i, v in ipairs(arr) do
+        if v == value then return i end
+    end
+end
+
+-- Check if arrays share any element
+function table.any(arr1, arr2)
+    for _, v1 in ipairs(arr1) do
+        for _, v2 in ipairs(arr2) do
+            if v1 == v2 then return true end
+        end
+    end
+end
+
+-- Reverse array
+function table.reverse(tbl)
+    local rev = {}
+    for i = #tbl, 1, -1 do
+        rev[#rev+1] = tbl[i]
+    end
+    return rev
+end
+
+-- Remove element by value
+function table.removel(tbl, el)
+    local idx = table.index(tbl, el)
+    if idx then table.remove(tbl, idx) end
+end
+```
+
+# Mobile Detection Helper
+
+Convenient helper to detect mobile platform:
+
+```lua
+function isMobile()
+    local os = love.system.getOS()
+    return os == "Android" or os == "iOS"
+end
+```
+
+**Usage:**
+```lua
+if isMobile() then
+    -- Show mobile-specific UI
+    -- Hide fullscreen setting (always on mobile)
+end
+```
+
