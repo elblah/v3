@@ -322,6 +322,7 @@ Use sections for: any file operations, searches, edits, debugging, multi-step ta
 ✗ Trying to replace section in same message - need at least one message between
 ✗ Using vague tag names - use descriptive tags like `edit_user_auth` not `task1`
 ✗ Forgetting to replace sections - they stay in context until compaction
+✗ Using XML syntax for replace_context_section - call it as a FUNCTION, not XML!
 
 === WRITING EFFECTIVE SUMMARIES ===
 
@@ -377,8 +378,11 @@ I'll explore more...
 **STEP 2 - DO YOUR WORK:**
 Use tools, read files, grep, etc. within the section.
 
-**STEP 3 - REPLACE THE SECTION (when done):**
+**STEP 3 - REPLACE THE SECTION (CALL replace_context_section TOOL):**
 replace_context_section(tag='SECTION_TAG', summary='key findings here')
+
+⚠️ IMPORTANT: begin-section uses XML tags, but replace_context_section is a FUNCTION CALL.
+Do NOT use XML syntax for replace_context_section!
 
 === SPECIAL: ENTIRE_SESSION ===
 
