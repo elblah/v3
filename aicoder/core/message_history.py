@@ -385,6 +385,10 @@ class MessageHistory:
 
             LogUtils.warn(f"[*] Compacting conversation ({self.stats.current_prompt_size or 0:,} tokens)...")
 
+            # Call before_compaction hook (before compaction starts)
+            if self._plugin_system:
+                self._plugin_system.call_hooks("before_compaction")
+
             compaction = CompactionService(self.api_client)
             original_count = len(self.messages)
 
@@ -407,18 +411,34 @@ class MessageHistory:
         # Import here to avoid circular imports
         from .compaction_service import CompactionService
 
+        # Call before_compaction hook
+        if self._plugin_system:
+            self._plugin_system.call_hooks("before_compaction")
+
         compaction = CompactionService(self.api_client)
         new_messages = compaction.force_compact_rounds(self.messages, n)
         self.set_messages(new_messages)
+
+        # Call after_compaction hook
+        if self._plugin_system:
+            self._plugin_system.call_hooks("after_compaction")
 
     def force_compact_messages(self, n: int) -> None:
         """Force compact N oldest messages"""
         # Import here to avoid circular imports
         from .compaction_service import CompactionService
 
+        # Call before_compaction hook
+        if self._plugin_system:
+            self._plugin_system.call_hooks("before_compaction")
+
         compaction = CompactionService(self.api_client)
         new_messages = compaction.force_compact_messages(self.messages, n)
         self.set_messages(new_messages)
+
+        # Call after_compaction hook
+        if self._plugin_system:
+            self._plugin_system.call_hooks("after_compaction")
 
     def should_auto_compact(self) -> bool:
         """Check if auto-compaction should be triggered"""
