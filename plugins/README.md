@@ -265,3 +265,10 @@ See `auto_approve.py` plugin for a regex-based implementation.
   - Storage: `.aicoder/tasks.json` (persistent)
   - Statuses: pending, in_progress, completed, cancelled
   - Use case: Maintains "harness" during long sessions to reduce AI drift
+
+- `notes.py` - Persistent notes that survive compaction
+  - Tools: `save_note(action="append|replace", content="<content>")`
+  - Commands: `/notes` (show all notes)
+  - Hooks: `before_compaction` (saves notes), `after_compaction` (restores notes)
+  - Features: [NOTE] messages persist through compaction
+  - Use case: Store important context (file locations, decisions, state, pending tasks)
