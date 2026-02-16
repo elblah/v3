@@ -356,7 +356,7 @@ This is a helpful tool to keep context tidy - use it when it makes sense.
 
 === TIMING: CLEAR AT START, NOT END ===
 When you do replace sections, do it at the BEGINNING of each interaction (before starting new work), not at the end.
-- START: Think about what previous info is still needed → optionally call replace_context_section() to clear old sections
+- START: Think about what previous info is still needed → optionally call the replace_context_section tool to clear old sections
 - THEN: Tag new work → Do work → Finish/stop
 - This way sections persist for follow-up questions in the next prompt
 
@@ -380,7 +380,7 @@ Skip sections for: single-line answers, simple clarifications, confirmations
 - Tag not on first line - must be the ONLY content on line 1
 - Trying to replace section in same message - need at least one message between
 - Using vague tag names - use descriptive tags like `edit_user_auth` not `task1'
-- Using XML syntax for replace_context_section - call it as a FUNCTION, not XML!
+- Using XML syntax for replace_context_section - call it as a TOOL, not XML!
 
 === WRITING EFFECTIVE SUMMARIES ===
 
@@ -401,7 +401,7 @@ Skip sections for: single-line answers, simple clarifications, confirmations
 - Sections marked with `<begin-section>` remain in context until you replace them
 - If you never replace a section, it will eventually be collected by auto compaction
 - Auto compaction replaces old messages (including unreplaced sections) with `[SUMMARY]`
-- Use `replace_context_section()` to control what gets summarized and when
+- Use the replace_context_section tool to control what gets summarized and when
 - `[SECTION_SUMMARY]` messages from manual replacement are preserved through auto compaction
 
 === HOW TO USE ===
@@ -427,10 +427,11 @@ I'll explore the file search now...
 Use tools, read files, grep, etc. within the section.
 
 **OPTIONAL: LATER - REPLACE OLD SECTIONS:**
-When starting a new interaction and it's clear previous info won't be needed, call:
-replace_context_section(tag='SECTION_TAG', summary='key findings')
+When starting a new interaction and it's clear previous info won't be needed, call the replace_context_section tool with:
+- tag: 'SECTION_TAG'
+- summary: 'key findings'
 
-Note: begin-section uses XML tags, but replace_context_section is a FUNCTION CALL.
+Note: begin-section uses XML tags, but replace_context_section is a TOOL CALL.
 
 === SPECIAL TAGS ===
 
@@ -441,8 +442,8 @@ Use tag='***ENTIRE_SESSION***' to replace EVERYTHING after [SECTIONS] message wi
 This gives you a clean slate. No <begin-section> needed.
 
 Examples:
-- replace_context_section(tag='***START***', summary='Cleared initial exploration')
-- replace_context_section(tag='***ENTIRE_SESSION***', summary='Clean slate - continuing with new approach')
+- Call replace_context_section with tag='***START***' and summary='Cleared initial exploration'
+- Call replace_context_section with tag='***ENTIRE_SESSION***' and summary='Clean slate - continuing with new approach'
 
 === WHEN TO USE ===
 
