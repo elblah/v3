@@ -92,12 +92,12 @@ class InputHandler:
         try:
             entries = prompt_history.read_history()
             # Only add prompts (not commands starting with /) to readline history
-            # Take only last 10 (oldest first for readline)
+            # Take only last 100 (oldest first for readline)
             self.history = [
                 entry["prompt"]
                 for entry in entries
                 if not entry["prompt"].startswith("/")
-            ][-10:]
+            ][-100:]
 
             # Add to readline history
             for prompt in self.history:
