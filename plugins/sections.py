@@ -313,7 +313,9 @@ def create_plugin(ctx):
         """Ensure [SECTIONS] message exists in message history."""
         sections_text = """[SECTIONS] Collaborative Context Segmentation
 
-Both AI and user can organize conversation through section tagging and selective replacement.
+⚠️ NOTE: This message is AUTOMATICALLY INSERTED by aicoder to educate the AI. It is NOT controlled by the user.
+
+AI can organize conversation through section tagging and selective replacement.
 
 === HOW TO USE ===
 
@@ -375,6 +377,19 @@ Example: replace_context_section(tag='ENTIRE_SESSION', summary='Clean slate - co
   - You must send one message with <begin-section>TAG</begin-section>
   - Then do some work (or at least send another message)
   - THEN call replace_context_section in a separate message
+
+=== SECTION SUMMARY MESSAGES ===
+
+Messages that start with `[SECTION_SUMMARY]` are ALREADY condensed summaries of previously
+completed sections. When asked to summarize the entire session:
+
+✓ DO: Acknowledge these as "Previous section summaries:" and briefly mention what they cover
+✗ DON'T: Re-summarize or expand these summaries - they're already condensed
+✗ DON'T: Include them in a detailed breakdown - just note their existence
+
+Example: "Previous sections included file exploration (found the issue in utils.py line 42) and debugging (confirmed the fix)."
+
+These summaries represent completed work that has already been condensed for efficiency.
 """
 
         messages = app.message_history.messages
