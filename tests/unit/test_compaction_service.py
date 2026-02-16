@@ -176,9 +176,10 @@ class TestCompactionServiceUnit:
     def test_validate_summary_valid(self):
         """Test summary validation accepts valid summaries."""
         service = CompactionService(api_client=None)
-        assert service._validate_summary("x" * 50) is True
-        # This has exactly 50 characters
-        assert service._validate_summary("This is a valid summary with enough characters in it") is True
+        assert service._validate_summary("x" * 100) is True
+        # This has more than 100 characters
+        long_summary = "This is a valid summary with enough characters in it. It definitely exceeds the minimum requirement."
+        assert service._validate_summary(long_summary) is True
 
     def test_create_summary_message(self):
         """Test creating summary message."""
@@ -315,16 +316,16 @@ class TestCompactionServiceUnit:
         assert "Hello" in result
 
     def test_validate_summary_exactly_50_chars(self):
-        """Test summary validation with exactly 50 characters."""
+        """Test summary validation with exactly 100 characters."""
         service = CompactionService(api_client=None)
-        # 50 characters exactly should be valid
-        summary = "x" * 50
+        # 100 characters exactly should be valid
+        summary = "x" * 100
         assert service._validate_summary(summary) is True
 
     def test_validate_summary_49_chars(self):
-        """Test summary validation with 49 characters (invalid)."""
+        """Test summary validation with 99 characters (invalid)."""
         service = CompactionService(api_client=None)
-        summary = "x" * 49
+        summary = "x" * 99
         assert service._validate_summary(summary) is False
 
     def test_replace_messages_all_match(self):

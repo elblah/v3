@@ -259,7 +259,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("Hello, how can I help?", "")
+        manager._handle_empty_response("Hello, how can I help?", "", "")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
         call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
@@ -270,7 +270,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("", "")
+        manager._handle_empty_response("", "", "")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
         call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
@@ -281,7 +281,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("   ", "")
+        manager._handle_empty_response("   ", "", "")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
 
@@ -290,7 +290,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("", "Let me think about this...")
+        manager._handle_empty_response("", "Let me think about this...", "reasoning_content")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
         call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
@@ -302,7 +302,7 @@ class TestSessionManagerHandleEmptyResponse:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("Hello!", "Let me think...")
+        manager._handle_empty_response("Hello!", "Let me think...", "reasoning_content")
 
         mock_app.message_history.add_assistant_message.assert_called_once()
         call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
