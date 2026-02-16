@@ -800,5 +800,149 @@ end
 - Improved accessibility
 - Centralized key mapping
 
+# Layered Object Selection
+
+Select objects when multiple objects overlap (higher layers drawn on top):
+
+```lua
+-- Method 1: Sort and pick first match (faster)
+function getObjectAtPointer(x, y, objects)
+    -- Sort by layer descending (top objects first)
+    local sorted = {}
+    for i, obj in ipairs(objects) do
+        sorted[i] = obj
+    end
+    table.sort(sorted, function(a, b)
+        return (a.layer or 0) > (b.layer or 0)
+    end
+
+    for _, obj in ipairs(sorted) do
+        if x >= obj.x and x < obj.x + obj.w and
+           y >= obj.y and y < obj.y + obj.h then
+            return obj  -- First match (topmost)
+        end
+    end
+    return nil
+end
+
+-- Method 2: Distance with layer bonus (more accurate)
+function getObjectAtPointerAccurate(x, y, objects)
+    local closest = nil
+    local min_distance = math.huge
+
+    for _, obj in ipairs(objects) do
+        if x >= obj.x and x < obj.x + obj.w and
+           y >= obj.y and y < obj.y + obj.h then
+
+            local center_x = obj.x + obj.w / 2
+            local center_y = obj.y + obj.h / 2
+            local dx = x - center_x
+            local dy = y - center_y
+            local distance = math.sqrt(dx * dx + dy * dy)
+
+            -- Prefer higher layers (topmost objects)
+            local layer_bonus = (obj.layer or 0) * 100
+            local adjusted_distance = distance - layer_bonus
+
+            if adjusted_distance < min_distance then
+                min_distance = adjusted_distance
+                closest = obj
+            end
+        end
+    end
+    return closest
+end
+```
+
+**Benefits:**
+- Essential for tile games, UI overlays, card stacks
+- Works with any objects that have a `layer` property
+- Method 1: Fast for many objects
+- Method 2: Accurate for partial overlaps
+
+# Direction-Based Object Selection
+
+Find object in direction from current selection (keyboard/touchpad navigation):
+
+```lua
+function findNextObject(current, direction, objects)
+    -- Pass 1: Prefer objects on same row or column
+    local candidates = {}
+    local threshold = 5  -- pixel tolerance
+
+    for _, obj in ipairs(objects) do
+        if obj ~= current then
+            local same_row = math.abs(obj.y - current.y) < threshold
+            local same_col = math.abs(obj.x - current.x) < threshold
+
+            if direction == "up" and same_col and obj.y < current.y then
+                table.insert(candidates, obj)
+            elseif direction == "down" and same_col and obj.y > current.y then
+                table.insert(candidates, obj)
+            elseif direction == "left" and same_row and obj.x < current.x then
+                table.insert(candidates, obj)
+            elseif direction == "right" and same_row and obj.x > current.x then
+                table.insert(candidates, obj)
+            end
+        end
+    end
+
+    if #candidates > 0 then
+        return getClosestInDirection(current, candidates, direction)
+    end
+
+    -- Pass 2: Any object in general direction
+    candidates = {}
+    for _, obj in ipairs(objects) do
+        if obj ~= current then
+            if direction == "up" and obj.y < current.y then
+                table.insert(candidates, obj)
+            elseif direction == "down" and obj.y > current.y then
+                table.insert(candidates, obj)
+            elseif direction == "left" and obj.x < current.x then
+                table.insert(candidates, obj)
+            elseif direction == "right" and obj.x > current.x then
+                table.insert(candidates, obj)
+            end
+        end
+    end
+
+    if #candidates > 0 then
+        return getClosestInDirection(current, candidates, direction)
+    end
+
+    return nil
+end
+
+function getClosestInDirection(current, candidates, direction)
+    local closest = nil
+    local min_distance = math.huge
+
+    for _, obj in ipairs(candidates) do
+        local dx = obj.x - current.x
+        local dy = obj.y - current.y
+
+        -- Penalty for orthogonal deviation
+        if direction == "up" or direction == "down" then
+            distance = math.abs(dy) + math.abs(dx) * 2
+        else
+            distance = math.abs(dx) + math.abs(dy) * 2
+        end
+
+        if distance < min_distance then
+            min_distance = distance
+            closest = obj
+        end
+    end
+    return closest
+end
+```
+
+**Benefits:**
+- Natural keyboard/touchpad navigation
+- Two-pass: same row/col preferred, then general direction
+- Orthogonal penalty keeps movement predictable
+- Works for any selectable objects
+
 
 
