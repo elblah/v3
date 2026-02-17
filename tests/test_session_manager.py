@@ -361,6 +361,21 @@ class TestSessionManagerPerformAutoCompaction:
             # Should not raise even in debug mode
             manager._perform_auto_compaction()
 
+    def test_perform_auto_compaction_skip_via_hook(self):
+        """Test auto compaction skipped when plugin hook returns True."""
+        mock_app = MagicMock()
+        mock_app.message_history.compact_memory = MagicMock()
+        mock_app.plugin_system = MagicMock()
+        mock_app.plugin_system.call_hooks.return_value = [True]  # Skip compaction
+        manager = SessionManager(mock_app)
+
+        manager._perform_auto_compaction()
+
+        # Should NOT call compact_memory when hook returns True
+        mock_app.message_history.compact_memory.assert_not_called()
+        # Hook should be called
+        mock_app.plugin_system.call_hooks.assert_called_once_with("before_auto_compaction")
+
 
 class TestSessionManagerEnsureToolCallsHaveResponses:
     """Test SessionManager ensure tool calls have responses."""

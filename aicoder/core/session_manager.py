@@ -249,8 +249,18 @@ class SessionManager:
             LogUtils.error(f"Force compaction failed: {e}")
 
     def _perform_auto_compaction(self) -> None:
-        """Perform automatic compaction"""
+        """Perform automatic compaction
+
+        Plugins can intercept via before_auto_compaction hook.
+        Hook returns True to skip AI compaction (e.g., if pruning was effective).
+        """
         try:
+            # Call before_auto_compaction hook - skip if plugin handles it
+            if self.plugin_system:
+                skip_compaction = self.plugin_system.call_hooks("before_auto_compaction")
+                if skip_compaction and True in skip_compaction:
+                    return
+
             self.message_history.compact_memory()
         except Exception as e:
             if Config.debug():
