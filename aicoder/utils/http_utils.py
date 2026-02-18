@@ -39,14 +39,26 @@ class Response:
                     self._content = b""
 
         self.deadline = deadline
+        self._last_read_time = 0.0  # Track when we last received data
 
     def _enforce_timeout(self):
-        """Set socket timeout to remaining time before read operation"""
+        """Set socket timeout with activity-based extension for streaming"""
         if self.deadline <= 0:
             return
+        
         remaining = self.deadline - time.monotonic()
+        extension = Config.total_timeout_extension()
+        
+        # Activity-based extension: if data was flowing recently, grant more time
+        if extension > 0 and remaining <= extension:
+            time_since_last_read = time.monotonic() - self._last_read_time
+            if time_since_last_read < extension:
+                # Recent activity - extend tolerance
+                remaining += extension
+        
         if remaining <= 0:
             raise socket.timeout("Total timeout exceeded")
+        
         if hasattr(self.response, "fileno"):
             sock = socket.fromfd(self.response.fileno(), socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(remaining)
@@ -89,6 +101,7 @@ class Response:
             if hasattr(self.response, "read"):
                 self._enforce_timeout()
                 self._content = self.response.read()
+                self._last_read_time = time.monotonic()
             else:
                 self._content = b""
         return self._content
@@ -97,7 +110,9 @@ class Response:
         """Read one line from response - needed for SSE streaming"""
         if hasattr(self.response, "readline"):
             self._enforce_timeout()
-            return self.response.readline()
+            line = self.response.readline()
+            self._last_read_time = time.monotonic()
+            return line
         else:
             # Fallback to reading all and finding first line
             content = self.read()
