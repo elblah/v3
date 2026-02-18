@@ -493,6 +493,16 @@ class Config:
         """
         return int(os.environ.get("TOTAL_TIMEOUT", "300"))
 
+    @staticmethod
+    def total_timeout_extension() -> int:
+        """
+        Get timeout extension for active streaming (seconds)
+        Grants extra time when data is actively flowing.
+        Set to 0 to disable (hard timeout).
+
+        """
+        return int(os.environ.get("TOTAL_TIMEOUT_EXTENSION", "30"))
+
     # Context and Memory Configuration
     @staticmethod
     def context_size() -> int:
