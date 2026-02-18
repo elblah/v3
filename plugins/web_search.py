@@ -28,6 +28,19 @@ def create_plugin(ctx):
         except:
             return False
 
+    # Generic blocking indicators - provider-agnostic
+    BLOCKING_INDICATORS = (
+        "error-lite@duckduckgo.com",  # DDG specific error
+        "Please complete the following challenge",  # CAPTCHA/challenge page
+        "verify you are human",
+        "Access denied",
+        "Too many requests",
+    )
+
+    def detect_blocking(content: str) -> bool:
+        """Detect if search provider is blocking/banning the request"""
+        return any(indicator in content for indicator in BLOCKING_INDICATORS)
+
     def fetch_url_text(url: str, lines: int = DEFAULT_LINES_PER_PAGE) -> str:
         """Fetch URL text using lynx browser with user agent"""
         try:
@@ -37,8 +50,7 @@ def create_plugin(ctx):
             return "Error: lynx browser not installed. Install with: sudo apt install lynx"
 
         try:
-            # Use lynx with user agent to avoid DuckDuckGo blocking (error 4458)
-            # User agent makes it look like a regular browser
+            # Use lynx with user agent to avoid bot detection
             result = subprocess.run(
                 ["lynx", "-dump", "-useragent=Mozilla/5.0", url],
                 capture_output=True,
@@ -46,7 +58,18 @@ def create_plugin(ctx):
                 timeout=30
             )
             output_lines = result.stdout.split("\n")[:lines]
-            return "\n".join(output_lines)
+            content = "\n".join(output_lines)
+
+            # Detect if provider is blocking the request
+            if detect_blocking(content):
+                warning = (
+                    "\n"
+                    "[!] WARNING: Search provider has blocked this request as bot traffic.\n"
+                    "    The AI cannot continue using web search until this is resolved.\n\n"
+                )
+                content = warning + content
+
+            return content
         except subprocess.TimeoutExpired:
             return "Error: Request timed out after 30 seconds"
         except Exception as e:
@@ -67,9 +90,15 @@ def create_plugin(ctx):
             search_url = f"https://lite.duckduckgo.com/lite/?q={encoded}"
             content = fetch_url_text(search_url, DEFAULT_LINES_PER_PAGE)
 
+            # Check for blocking warning in content
+            is_blocked = detect_blocking(content)
+            friendly_msg = f"Web search for '{query}'"
+            if is_blocked:
+                friendly_msg = "[!] WARNING: Search provider blocked as bot traffic"
+
             return {
                 "tool": "web_search",
-                "friendly": f"Web search for '{query}'",
+                "friendly": friendly_msg,
                 "detailed": f"Web search results:\n\n{content}",
             }
         except Exception as e:
