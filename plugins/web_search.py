@@ -1,15 +1,22 @@
 """
-Web Search Plugin - Ultra-fast using DuckDuckGo and lynx
+Web Search Plugin - Ultra-fast using search providers and lynx
 
 Tools:
 - web_search: Search to web
 - get_url_content: Fetch URL content
+
+Environment Variables:
+- WEB_SEARCH_PROVIDERS: Semicolon-separated list of search providers
+  Format: "ProviderName,URL;Provider2Name,URL2;"
+  The URL should include the query parameter placeholder, the plugin appends the encoded query
+  Default: DuckDuckGo only
 """
 
 import urllib.request
 import urllib.parse
 import subprocess
-from typing import Dict, Any
+import os
+from typing import Dict, Any, Tuple
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
@@ -19,6 +26,31 @@ def create_plugin(ctx):
     """Web search and URL content plugin"""
 
     DEFAULT_LINES_PER_PAGE = 150
+
+    # Parse search providers from environment variable
+    # Format: "Name1,URL1;Name2,URL2;"
+    DEFAULT_PROVIDER = ("DuckDuckGo", "https://lite.duckduckgo.com/lite/?q=")
+
+    def parse_providers() -> list[Tuple[str, str]]:
+        """Parse WEB_SEARCH_PROVIDERS env var into list of (name, url) tuples"""
+        providers_str = os.environ.get("WEB_SEARCH_PROVIDERS", "").strip()
+        if not providers_str:
+            return [DEFAULT_PROVIDER]
+
+        providers = []
+        for part in providers_str.split(";"):
+            if not part:
+                continue
+            parts = part.split(",", 1)
+            if len(parts) != 2:
+                continue
+            name, url = parts
+            if name and url:
+                providers.append((name, url))
+
+        return providers if providers else [DEFAULT_PROVIDER]
+
+    SEARCH_PROVIDERS = parse_providers()
 
     def validate_url(url: str) -> bool:
         """Basic URL validation"""
@@ -76,7 +108,7 @@ def create_plugin(ctx):
             return f"Error fetching URL: {e}"
 
     def web_search(args: Dict[str, Any]) -> Dict[str, Any]:
-        """Search to web using DuckDuckGo"""
+        """Search to web using configured providers in order"""
         query = args.get("query", "").strip()
         if not query:
             return {
@@ -85,28 +117,36 @@ def create_plugin(ctx):
                 "detailed": "Query cannot be empty",
             }
 
-        try:
-            encoded = urllib.parse.quote_plus(query)
-            search_url = f"https://lite.duckduckgo.com/lite/?q={encoded}"
-            content = fetch_url_text(search_url, DEFAULT_LINES_PER_PAGE)
+        failed_providers = []
+        encoded = urllib.parse.quote_plus(query)
 
-            # Check for blocking warning in content
-            is_blocked = detect_blocking(content)
-            friendly_msg = f"Web search for '{query}'"
-            if is_blocked:
-                friendly_msg = "[!] WARNING: Search provider blocked as bot traffic"
+        for provider_name, base_url in SEARCH_PROVIDERS:
+            try:
+                search_url = base_url + encoded
+                content = fetch_url_text(search_url, DEFAULT_LINES_PER_PAGE)
 
-            return {
-                "tool": "web_search",
-                "friendly": friendly_msg,
-                "detailed": f"Web search results:\n\n{content}",
-            }
-        except Exception as e:
-            return {
-                "tool": "web_search",
-                "friendly": f"Error searching web: {e}",
-                "detailed": f"Error: {e}",
-            }
+                # Check if this provider blocked us
+                if detect_blocking(content):
+                    failed_providers.append((provider_name, "blocked"))
+                    continue
+
+                # Success! Return results with provider info
+                return {
+                    "tool": "web_search",
+                    "friendly": f"Web search for '{query}' (via {provider_name})",
+                    "detailed": f"Web search results:\n\n{content}",
+                }
+
+            except Exception as e:
+                failed_providers.append((provider_name, str(e)))
+
+        # All providers failed
+        error_details = "\n".join([f"  - {name}: {reason}" for name, reason in failed_providers])
+        return {
+            "tool": "web_search",
+            "friendly": "[!] All search providers failed",
+            "detailed": f"Failed to search '{query}'. Tried providers:\n{error_details}",
+        }
 
     def get_url_content(args: Dict[str, Any]) -> Dict[str, Any]:
         """Get URL content"""
