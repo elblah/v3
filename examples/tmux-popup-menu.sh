@@ -141,7 +141,8 @@ show_menu() {
         "Toggle Sandbox-FS (${sandbox_enabled})" f "run-shell -b 'echo sandbox > ${response_file}'" \
         "Toggle Sandbox-NET (snet)"              n "run-shell -b 'echo snet > ${response_file}'" \
         "Toggle Sandbox-Disk (sdisk)"            d "run-shell -b 'echo sdisk > ${response_file}'" \
-        "Force Compact (1 round)" C  "run-shell -b 'echo forcecompact > ${response_file}'" \
+        "Force Compact (1 round)" c  "run-shell -b 'echo forcecompact1 > ${response_file}'" \
+        "Force Compact (leave 1 round)" C  "run-shell -b 'echo forcecompactleave1 > ${response_file}'" \
         "Unlimited Retries" u  "run-shell -b 'echo unlimitedretries > ${response_file}'" \
         "Inject Message"    i  "run-shell -b 'echo inject > ${response_file}'" \
         "Save Session"      s  "run-shell -b 'echo save > ${response_file}'" \
@@ -231,6 +232,10 @@ execute_action() {
         "forcecompact"*)
             cmd="command /compact force 1"
             display_msg="Force Compact 1 Round"
+            ;;
+        "forcecompactleave1"*)
+            cmd="command /compact force -1"
+            display_msg="Force Compact Leave 1 Round"
             ;;
         "snet"*)
             cmd="command /snet toggle"
