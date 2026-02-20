@@ -245,11 +245,21 @@ def create_plugin(ctx):
                 return None
 
     def extract_tts_content(text: str) -> Optional[str]:
-        """Extract [TTS]...[/TTS] tagged content if present"""
-        match = re.search(r'\[TTS\](.*?)\[/TTS\]', text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return None
+        """Extract content from first <tts> to last </tts> - AI should use only ONE tts block"""
+        # Check if both tags exist
+        if '<tts>' not in text or '</tts>' not in text:
+            return None
+
+        # Find first <tts> and last </tts>
+        start_idx = text.find('<tts>')
+        end_idx = text.rfind('</tts>')
+
+        if start_idx >= end_idx:
+            return None
+
+        # Extract EVERYTHING between tags (including any text between multiple <tts>...</tts> blocks)
+        content = text[start_idx + 5:end_idx]
+        return content.strip() if content.strip() else None
 
     def speak(text: str):
         """Speak text using configured engine (interrupts previous)"""
@@ -293,14 +303,16 @@ def create_plugin(ctx):
 
     def generate_tts_instructions() -> str:
         """Generate [TTS_INSTRUCTIONS] message"""
-        return """[TTS_INSTRUCTIONS] Text-to-speech is enabled. When you want to emphasize or ensure something is read aloud, wrap it in [TTS]...[/TTS] tags.
+        return """[TTS_INSTRUCTIONS] Text-to-speech is enabled. When you want to emphasize or ensure something is read aloud, wrap it in <tts>...</tts> tags.
+
+IMPORTANT: Use ONLY ONE <tts>...</tts> block per message. The TTS reads everything from the first <tts> to the last </tts>.
 
 Examples:
-- End with a question: [TTS]What do you think about this approach?[/TTS]
-- Highlight key point: [TTS]The most important thing is to backup your data first.[/TTS]
-- Summarize: [TTS]So in summary, we need to update three files and restart the server.[/TTS]
+- End with a question: <tts>What do you think about this approach?</tts>
+- Highlight key point: <tts>The most important thing is to backup your data first.</tts>
+- Summarize: <tts>So in summary, we need to update three files and restart the server.</tts>
 
-Use [TTS] tags for questions, important warnings, or key summaries. Without tags, normal TTS behavior applies."""
+Use a single <tts>...</tts> block for questions, important warnings, or key summaries. Without tags, normal TTS behavior applies."""
 
     def before_user_prompt():
         """
