@@ -18,33 +18,36 @@ from aicoder.utils.log import LogUtils
 def create_plugin(ctx):
     """Audio notifications plugin"""
 
-    DEV_NULL = "/dev/null"  # Keep simple for now
+    DEV_NULL = "/dev/null"
 
-    current_sink = "pipewire/combined"  # Default sink
+    # Configuration
+    voice = os.environ.get("NOTIFY_VOICE", "en-us+f3")  # Default female f3
+    speed = int(os.environ.get("NOTIFY_SPEED", "250"))  # Faster than default (175)
+
+    # Detect audio sink (HDMI preferred)
+    current_sink = "pipewire/combined"
 
     def detect_audio_sink():
         """Detect audio sink (HDMI preferred, fallback to pipewire)"""
         nonlocal current_sink
         try:
-            # Try to detect HDMI sink first
             result = subprocess.run(
                 ["pactl", "list", "sinks", "short"],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=2  # Don't hang if pactl is slow
             )
             for line in result.stdout.split("\n"):
                 if "hdmi" in line.lower():
-                    # Extract sink name (second column)
                     parts = line.split()
                     if len(parts) >= 2:
                         current_sink = parts[1]
                         return
-        except:
+        except Exception:
             pass
-        # Fallback to default
         current_sink = "pipewire/combined"
 
-    # Detect audio sink on load
+    # Detect audio sink on load (cached)
     detect_audio_sink()
 
     def should_notify() -> bool:
@@ -52,10 +55,15 @@ def create_plugin(ctx):
         return os.path.exists(".notify-prompt")
 
     def say(message: str) -> None:
-        """Speak message using espeak with audio sink"""
+        """Speak message using espeak with audio sink, voice, and speed"""
+        # Build environment with audio sink
+        env = os.environ.copy()
+        env["PULSE_SINK"] = current_sink
+
+        # Use list args for faster startup (no shell=True)
         subprocess.Popen(
-            f'PULSE_SINK="{current_sink}" espeak "{message}" 2>{DEV_NULL}',
-            shell=True,
+            ["espeak", "-v", voice, "-s", str(speed), message],
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
@@ -75,5 +83,5 @@ def create_plugin(ctx):
     ctx.register_hook("before_approval_prompt", on_before_approval_prompt)
 
     if Config.debug():
-        LogUtils.print("  - before_user_prompt hook")
-        LogUtils.print("  - before_approval_prompt hook")
+        LogUtils.print(f"  - before_user_prompt hook (notify, voice: {voice}, speed: {speed})")
+        LogUtils.print(f"  - before_approval_prompt hook (notify, sink: {current_sink})")
