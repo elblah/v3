@@ -50,6 +50,14 @@ def create_plugin(ctx):
     # Track current TTS process for interruption
     current_process: Optional[subprocess.Popen] = None
 
+    # Exclude phrases - filter out common filler phrases
+    # Format: pipe-separated list, one phrase per line
+    exclude_phrases_str = os.environ.get("TTS_EXCLUDE", "")
+    exclude_phrases = []
+    if exclude_phrases_str:
+        # Split by pipe or newlines
+        exclude_phrases = [p.strip() for p in re.split(r'[|\n]', exclude_phrases_str) if p.strip()]
+
     def detect_audio_sink():
         """Detect audio sink (HDMI preferred, fallback to pipewire)"""
         nonlocal current_sink
@@ -124,6 +132,21 @@ def create_plugin(ctx):
         text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
         text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
         return text.strip()
+
+    def apply_exclude_filter(text: str) -> str:
+        """Remove excluded phrases from text (case-insensitive)"""
+        if not exclude_phrases:
+            return text
+
+        result = text
+        for phrase in exclude_phrases:
+            # Case-insensitive replacement
+            pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+            result = pattern.sub('', result)
+
+        # Clean up extra whitespace left after removal
+        result = re.sub(r'\s+', ' ', result).strip()
+        return result
 
     def truncate_to_word_limit(text: str) -> str:
         """Truncate text to word limit at sentence boundary"""
@@ -240,6 +263,9 @@ def create_plugin(ctx):
         text = strip_code_blocks(text)
         text = strip_markdown(text)
         text = truncate_to_word_limit(text)
+
+        # Apply exclude filter to remove filler phrases
+        text = apply_exclude_filter(text)
 
         if not text.strip():
             return
