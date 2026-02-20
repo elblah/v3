@@ -302,13 +302,15 @@ Examples:
 
 Use [TTS] tags for questions, important warnings, or key summaries. Without tags, normal TTS behavior applies."""
 
-    def ensure_tts_instructions_message(message_history) -> None:
+    def before_user_prompt():
         """
         Ensure [TTS_INSTRUCTIONS] message exists in history when TTS is enabled
         - Replaces existing [TTS_INSTRUCTIONS] message
         - Adds new one if missing (when enabled)
         - Removes it if TTS is disabled
         """
+        message_history = ctx.app.message_history
+
         if not enabled:
             # Remove [TTS_INSTRUCTIONS] message if present
             for idx, msg in enumerate(message_history.messages):
@@ -451,7 +453,7 @@ Use [TTS] tags for questions, important warnings, or key summaries. Without tags
             return
 
     # Register hooks and commands
-    ctx.register_hook("before_user_prompt", ensure_tts_instructions_message)
+    ctx.register_hook("before_user_prompt", before_user_prompt)
     ctx.register_hook("after_assistant_message_added", on_after_assistant_message)
     ctx.register_command("/tts", handle_tts_command, description="Text-to-speech settings")
 
