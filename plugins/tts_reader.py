@@ -244,6 +244,13 @@ def create_plugin(ctx):
                     LogUtils.error(f"TTS flite error: {e}")
                 return None
 
+    def extract_tts_content(text: str) -> Optional[str]:
+        """Extract [TTS]...[/TTS] tagged content if present"""
+        match = re.search(r'\[TTS\](.*?)\[/TTS\]', text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return None
+
     def speak(text: str):
         """Speak text using configured engine (interrupts previous)"""
         nonlocal current_process
@@ -259,10 +266,15 @@ def create_plugin(ctx):
             except:
                 current_process.kill()
 
-        # Process text
-        text = strip_code_blocks(text)
-        text = strip_markdown(text)
-        text = truncate_to_word_limit(text)
+        # Check for [TTS]...[/TTS] tags first
+        tts_content = extract_tts_content(text)
+        if tts_content:
+            text = tts_content
+        else:
+            # No tags - process text normally
+            text = strip_code_blocks(text)
+            text = strip_markdown(text)
+            text = truncate_to_word_limit(text)
 
         # Apply exclude filter to remove filler phrases
         text = apply_exclude_filter(text)
@@ -278,6 +290,50 @@ def create_plugin(ctx):
         else:
             if Config.debug():
                 LogUtils.error(f"Unknown TTS engine: {engine}")
+
+    def generate_tts_instructions() -> str:
+        """Generate [TTS_INSTRUCTIONS] message"""
+        return """[TTS_INSTRUCTIONS] Text-to-speech is enabled. When you want to emphasize or ensure something is read aloud, wrap it in [TTS]...[/TTS] tags.
+
+Examples:
+- End with a question: [TTS]What do you think about this approach?[/TTS]
+- Highlight key point: [TTS]The most important thing is to backup your data first.[/TTS]
+- Summarize: [TTS]So in summary, we need to update three files and restart the server.[/TTS]
+
+Use [TTS] tags for questions, important warnings, or key summaries. Without tags, normal TTS behavior applies."""
+
+    def ensure_tts_instructions_message(message_history) -> None:
+        """
+        Ensure [TTS_INSTRUCTIONS] message exists in history when TTS is enabled
+        - Replaces existing [TTS_INSTRUCTIONS] message
+        - Adds new one if missing (when enabled)
+        - Removes it if TTS is disabled
+        """
+        if not enabled:
+            # Remove [TTS_INSTRUCTIONS] message if present
+            for idx, msg in enumerate(message_history.messages):
+                content = msg.get("content", "")
+                if msg.get("role") == "user" and content.startswith("[TTS_INSTRUCTIONS]"):
+                    message_history.messages.pop(idx)
+                    return
+            return
+
+        # TTS is enabled - ensure message exists
+        tts_text = generate_tts_instructions()
+
+        # Find and replace existing [TTS_INSTRUCTIONS] message
+        for idx, msg in enumerate(message_history.messages):
+            content = msg.get("content", "")
+            if msg.get("role") == "user" and content.startswith("[TTS_INSTRUCTIONS]"):
+                message_history.messages[idx]["content"] = tts_text
+                return
+
+        # Add if missing (after system message at index 0, before first user message)
+        insert_idx = 1
+        message_history.messages.insert(insert_idx, {
+            "role": "user",
+            "content": tts_text
+        })
 
     def on_after_assistant_message(assistant_message: dict):
         """Hook: Called after AI adds assistant message"""
@@ -395,6 +451,7 @@ def create_plugin(ctx):
             return
 
     # Register hooks and commands
+    ctx.register_hook("before_user_prompt", ensure_tts_instructions_message)
     ctx.register_hook("after_assistant_message_added", on_after_assistant_message)
     ctx.register_command("/tts", handle_tts_command, description="Text-to-speech settings")
 
