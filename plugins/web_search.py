@@ -73,13 +73,18 @@ def create_plugin(ctx):
         "If this persists, please [1]email us.",
         "Our support email address includes an anonymized error code that helps",
         "Error getting results",
+        "Our system has detected the type of high-volume traffic",
+        "bots and scrapers",
+        "please enter in the characters you see",
+        "Why am I seeing CAPTCHA?",
+        "Have trouble reading the CAPTCHA?",
     )
 
     def detect_blocking(content: str) -> bool:
         """Detect if search provider is blocking/banning the request"""
         return any(indicator in content for indicator in BLOCKING_INDICATORS)
 
-    def fetch_url_text(url: str, lines: int = DEFAULT_LINES_PER_PAGE) -> str:
+    def fetch_url_text(url: str, lines: int = DEFAULT_LINES_PER_PAGE, user_agent: str = None) -> str:
         """Fetch URL text using lynx browser with user agent"""
         try:
             # Check if lynx exists
@@ -90,7 +95,7 @@ def create_plugin(ctx):
         try:
             # Use lynx with user agent to avoid bot detection
             result = subprocess.run(
-                ["lynx", "-dump", url],
+                ["lynx", "-dump", "-nolist", "-useragent='Mozilla/5.0'" if user_agent else "", url],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -174,7 +179,8 @@ def create_plugin(ctx):
             }
 
         try:
-            content = fetch_url_text(url, DEFAULT_LINES_PER_PAGE * page)
+            content = fetch_url_text(url, DEFAULT_LINES_PER_PAGE * page,
+                                        user_agent="Mozilla/5.0")
             lines = content.split("\n")
             start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
             end_idx = page * DEFAULT_LINES_PER_PAGE
