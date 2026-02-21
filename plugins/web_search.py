@@ -67,6 +67,12 @@ def create_plugin(ctx):
         "verify you are human",
         "Access denied",
         "Too many requests",
+        "Your request has been flagged",
+        "captcha for you",
+        "your network appears to be sending automated queries",
+        "If this persists, please [1]email us.",
+        "Our support email address includes an anonymized error code that helps",
+        "Error getting results",
     )
 
     def detect_blocking(content: str) -> bool:
@@ -84,7 +90,7 @@ def create_plugin(ctx):
         try:
             # Use lynx with user agent to avoid bot detection
             result = subprocess.run(
-                ["lynx", "-dump", "-useragent=Mozilla/5.0", url],
+                ["lynx", "-dump", url],
                 capture_output=True,
                 text=True,
                 timeout=30
