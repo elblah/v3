@@ -5,12 +5,87 @@ Finds all .aicoder/stats.log files and aggregates usage statistics.
 
 Usage:
     python ai_usage.py [24h|week|month|year|hours <N>|days <N>|<start_date> <end_date>]
+    python ai_usage.py update      # Force refresh cache
+    python ai_usage.py clear-cache # Delete cache
     Default: last 24 hours. Date format: YYYY-MM-DD
 """
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import List
+
+CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
+CACHE_MAX_AGE = timedelta(hours=3)
+
+
+def get_cache_file() -> Path:
+    """Ensure cache directory exists, return cache file path."""
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    return CACHE_FILE
+
+
+def read_cache() -> List[Path] | None:
+    """Read cached stats.log paths if valid and fresh."""
+    if not CACHE_FILE.exists():
+        return None
+
+    # Check cache age
+    cache_mtime = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, tz=timezone.utc).replace(tzinfo=None)
+    if datetime.now(timezone.utc).replace(tzinfo=None) - cache_mtime > CACHE_MAX_AGE:
+        return None
+
+    try:
+        paths = []
+        for line in CACHE_FILE.read_text().splitlines():
+            if line.strip():
+                p = Path(line.strip())
+                if p.exists():
+                    paths.append(p)
+        return paths if paths else None
+    except (OSError, IOError):
+        return None
+
+
+def write_cache(paths: List[Path]) -> None:
+    """Write stats.log paths to cache."""
+    try:
+        cache = get_cache_file()
+        cache.write_text("\n".join(str(p) for p in paths))
+    except (OSError, IOError):
+        pass
+
+
+def clear_cache() -> None:
+    """Delete cache file if exists."""
+    if CACHE_FILE.exists():
+        try:
+            CACHE_FILE.unlink()
+        except (OSError, IOError):
+            pass
+
+
+def find_stats_files() -> List[Path]:
+    """Find all stats.log files, using cache if available."""
+    cwd = Path.cwd()
+    home = Path.home()
+
+    # Use cache only when running from home directory
+    if cwd == home:
+        cached = read_cache()
+        if cached:
+            return cached
+
+    # Search filesystem
+    files = list(Path(".").rglob(".aicoder/stats.log"))
+    # Convert to absolute paths for cache consistency
+    files = [f.resolve() for f in files]
+
+    # Write cache only when running from home directory
+    if cwd == home and files:
+        write_cache(files)
+
+    return files
 
 
 def get_time_range(period: str) -> tuple[datetime, datetime]:
@@ -52,6 +127,16 @@ def main():
     import sys
     args = sys.argv[1:]
 
+    # Handle manual cache commands
+    if "clear-cache" in args:
+        clear_cache()
+        print("Cache cleared.")
+        sys.exit(0)
+    elif "update" in args:
+        args = [a for a in args if a != "update"]
+        # Force refresh by clearing cache before search
+        clear_cache()
+
     # Parse time range
     if len(args) >= 2 and args[0] in ("hours", "days", "minutes"):
         try:
@@ -89,7 +174,7 @@ def main():
         label = period
 
     # Find and parse stats files
-    files = list(Path(".").rglob(".aicoder/stats.log"))
+    files = find_stats_files()
     if not files:
         print("No .aicoder/stats.log files found.")
         sys.exit(0)
