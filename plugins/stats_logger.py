@@ -6,7 +6,7 @@ Format: <timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elap
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from aicoder.core.config import Config
 from aicoder.core.token_estimator import _estimate_weighted_tokens
 
@@ -69,8 +69,8 @@ def create_plugin(ctx):
         # Get elapsed time from stats
         elapsed = stats.last_api_time
 
-        # Format timestamp (UTC)
-        timestamp = datetime.now().isoformat(timespec='seconds')
+        # Format timestamp (UTC) - naive for consistency
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
 
         # Format log line
         log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}\n"
