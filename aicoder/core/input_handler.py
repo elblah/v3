@@ -77,6 +77,10 @@ class InputHandler:
                     self.stats, self.message_history
                 )
 
+            # Clear last API time before new user input
+            if self.stats:
+                self.stats.last_api_time = 0
+
             # Show input prompt
             prompt = f"> "
             return input(prompt).strip()
