@@ -41,7 +41,8 @@ def _get_colors():
 
 def _is_debug() -> bool:
     """Check if debug mode is enabled"""
-    return os.environ.get("DEBUG") == "1"
+    from aicoder.core.config import Config
+    return Config.debug()
 
 
 @dataclass
