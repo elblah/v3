@@ -455,13 +455,19 @@ class StreamingClient:
             choice = data["choices"][0]
 
             if choice.get("message"):
+                message = choice["message"]
                 # Create synthetic streaming chunk from complete message
+                # Include reasoning fields for multi-provider support
                 chunk: Dict[str, Any] = {
                     "choices": [
                         {
                             "delta": {
-                                "content": choice["message"].get("content"),
-                                "tool_calls": choice["message"].get("tool_calls"),
+                                "content": message.get("content"),
+                                "tool_calls": message.get("tool_calls"),
+                                # Include reasoning fields (same list as streaming handler)
+                                "reasoning_content": message.get("reasoning_content"),
+                                "reasoning": message.get("reasoning"),
+                                "reasoning_text": message.get("reasoning_text"),
                             },
                             "finish_reason": choice.get("finish_reason"),
                             "index": choice.get("index", 0),
