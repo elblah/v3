@@ -59,8 +59,25 @@ class ContextBar:
 
         # Add time at the end if provided (dimmed)
         time_str = self.get_current_hour()
-        if time_str:
+
+        # Add last API time if available
+        last_api = getattr(stats, 'last_api_time', 0)
+        if last_api:
+            if last_api >= 60:
+                mins = int(last_api // 60)
+                secs = int(last_api % 60)
+                api_time_str = f"{mins}m{secs}s"
+            else:
+                api_time_str = f"{last_api:.0f}s"
+        else:
+            api_time_str = None
+
+        if time_str and api_time_str:
+            return f"{context_bar}{Config.colors['dim']} - {time_str} - {api_time_str}{Config.colors['reset']}"
+        elif time_str:
             return f"{context_bar}{Config.colors['dim']} - {time_str}{Config.colors['reset']}"
+        elif api_time_str:
+            return f"{context_bar}{Config.colors['dim']} - {api_time_str}{Config.colors['reset']}"
 
         return f"{context_bar}{Config.colors['reset']}"
 

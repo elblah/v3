@@ -19,6 +19,7 @@ class Stats:
         self.api_success = 0
         self.api_errors = 0
         self.api_time_spent = 0
+        self.last_api_time = 0
         self.messages_sent = 0
         self.tokens_processed = 0
         self.compactions = 0
@@ -56,6 +57,7 @@ class Stats:
         
         """
         self.api_time_spent += time
+        self.last_api_time = time
 
     def increment_messages_sent(self) -> None:
         """
@@ -154,6 +156,7 @@ class Stats:
         self.api_success = 0
         self.api_errors = 0
         self.api_time_spent = 0
+        self.last_api_time = 0
         self.messages_sent = 0
         self.tokens_processed = 0
         self.compactions = 0
