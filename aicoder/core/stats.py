@@ -128,13 +128,18 @@ class Stats:
     def print_stats(self) -> None:
         """
         Print statistics on exit
-        
+
         """
         LogUtils.print("\n=== Session Statistics ===")
         LogUtils.print(
             f"API Requests: {self.api_requests} (Success: {self.api_success}, Errors: {self.api_errors})"
         )
-        LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s")
+        # Format API time with average per request
+        if self.api_requests > 0:
+            avg_time = self.api_time_spent / self.api_requests
+            LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s ({avg_time:.2f}s/req)")
+        else:
+            LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s")
         LogUtils.print(f"Messages Sent: {self.messages_sent}")
         LogUtils.print(f"Tokens Processed: {self.tokens_processed:,}")
         LogUtils.print(f"Prompt Tokens: {self.prompt_tokens:,}")
