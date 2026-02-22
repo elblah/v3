@@ -9,13 +9,13 @@ Usage:
 """
 
 from collections import defaultdict
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 def get_time_range(period: str) -> tuple[datetime, datetime]:
-    """Return (start, end) datetime for a period in UTC (naive for file comparison)."""
-    now = datetime.now(UTC).replace(tzinfo=None)
+    """Return (start, end) datetime for a period in UTC."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     delta = {
         "24h": timedelta(days=1),
         "week": timedelta(weeks=1),
@@ -34,6 +34,8 @@ def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
             continue
         ts, url, model, p_tok, c_tok, elapsed = line.split("|")
         try:
+            # Handle both T and underscore separators
+            ts = ts.replace("_", "T")
             dt = datetime.fromisoformat(ts)
             if start and (dt < start or dt > end):
                 continue
@@ -63,7 +65,7 @@ def main():
             else:
                 delta = timedelta(minutes=n)
                 label = f"last {n} minutes"
-            now = datetime.now(UTC).replace(tzinfo=None)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             start = now - delta
             end = now
         except ValueError:
