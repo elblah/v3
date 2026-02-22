@@ -81,7 +81,7 @@ class StreamingClient:
                 if Config.debug():
                     debug_dir = os.path.join(os.getcwd(), ".aicoder")
                     os.makedirs(debug_dir, exist_ok=True)
-                    debug_file = os.path.join(debug_dir, "last_request.json")
+                    debug_file = os.path.join(debug_dir, "last-request.json")
                     try:
                         with open(debug_file, "w") as f:
                             json.dump({
@@ -357,7 +357,7 @@ class StreamingClient:
             while True:
                 line_bytes = (
                     response.readline()
-                )  # Read one SSE line at a time like dt-aicoder
+                )  # Read one SSE line at a time
                 if not line_bytes:
                     break
 
@@ -420,8 +420,17 @@ class StreamingClient:
                         continue
 
         finally:
-            # Python doesn't have reader.releaseLock() like TS
-            pass
+            # Save raw SSE response for debugging
+            if Config.debug():
+                debug_dir = os.path.join(os.getcwd(), ".aicoder")
+                os.makedirs(debug_dir, exist_ok=True)
+                debug_file = os.path.join(debug_dir, "last-response.log")
+                try:
+                    with open(debug_file, "w") as f:
+                        f.write(raw_response)
+                    log_debug(f"*** Streaming response saved to {debug_file}")
+                except Exception as e:
+                    log_debug(f"*** Failed to save streaming response: {e}")
 
     def _handle_non_streaming_response(
         self, response: Response
@@ -429,7 +438,19 @@ class StreamingClient:
         """Handle non-streaming response - handleNonStreamingResponse"""
         data = response.json()
 
-        # Convert non-streaming response to streaming format like TS
+        # Save response for debugging
+        if Config.debug():
+            debug_dir = os.path.join(os.getcwd(), ".aicoder")
+            os.makedirs(debug_dir, exist_ok=True)
+            debug_file = os.path.join(debug_dir, "last-response.json")
+            try:
+                with open(debug_file, "w") as f:
+                    json.dump(data, f, indent=2)
+                log_debug(f"*** Non-streaming response saved to {debug_file}")
+            except Exception as e:
+                log_debug(f"*** Failed to save response: {e}")
+
+        # Convert non-streaming response to streaming format
         if data.get("choices") and len(data["choices"]) > 0:
             choice = data["choices"][0]
 
