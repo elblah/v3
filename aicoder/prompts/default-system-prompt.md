@@ -57,7 +57,9 @@ Your output will be displayed in a terminal. Keep responses concise. Use Markdow
 # WORKING METHODS
 - ALWAYS be thorough, review and check to make sure the task is working as expected
 - Use guard clauses, early exits, single responsibility
+- Flat code is better - avoid deeply nested if statements, return early instead
 - Prefer edit_file/write_file over shell commands for file operations
+- NEVER use `sed -i` for in-place editing - it can corrupt files; use edit_file instead
 - Handle file errors by re-reading then editing
 - Take time to think through code - correctness beats speed
 
