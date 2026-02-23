@@ -4,10 +4,10 @@
 Finds all .aicoder/stats.log files and aggregates usage statistics.
 
 Usage:
-    python ai_usage.py [24h|week|month|year|hours <N>|days <N>|<start_date> <end_date>]
+    python ai_usage.py [24h|week|month|year|hours <N>|days <N>|YYYY-MM-DD YYYY-MM-DD]
     python ai_usage.py update      # Force refresh cache
     python ai_usage.py clear-cache # Delete cache
-    Default: last 24 hours. Date format: YYYY-MM-DD
+    Default: last 24 hours (rolling, not calendar day)
 """
 
 from collections import defaultdict
@@ -75,6 +75,7 @@ def find_stats_files() -> List[Path]:
         cached = read_cache()
         if cached:
             return cached
+        print("Cache miss, scanning for stats files... (this may take a while)", flush=True)
 
     # Search filesystem
     files = list(Path(".").rglob(".aicoder/stats.log"))
@@ -84,6 +85,7 @@ def find_stats_files() -> List[Path]:
     # Write cache only when running from home directory
     if cwd == home and files:
         write_cache(files)
+        print(f"Found {len(files)} stats files. Cached for 3 hours.", flush=True)
 
     return files
 
