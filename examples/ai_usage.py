@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import List
 
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
-CACHE_MAX_AGE = timedelta(hours=3)
+CACHE_MAX_AGE_HOURS = 3  # Cache duration in hours
 
 
 def get_cache_file() -> Path:
@@ -32,7 +32,7 @@ def read_cache() -> List[Path] | None:
 
     # Check cache age
     cache_mtime = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, tz=timezone.utc).replace(tzinfo=None)
-    if datetime.now(timezone.utc).replace(tzinfo=None) - cache_mtime > CACHE_MAX_AGE:
+    if datetime.now(timezone.utc).replace(tzinfo=None) - cache_mtime > timedelta(hours=CACHE_MAX_AGE_HOURS):
         return None
 
     try:
@@ -85,7 +85,7 @@ def find_stats_files() -> List[Path]:
     # Write cache only when running from home directory
     if cwd == home and files:
         write_cache(files)
-        print(f"Found {len(files)} stats files. Cached for 3 hours.", flush=True)
+        print(f"Found {len(files)} stats files. Cached for {CACHE_MAX_AGE_HOURS} hours.", flush=True)
 
     return files
 
