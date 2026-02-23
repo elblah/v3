@@ -24,6 +24,11 @@ class StreamingClient:
         self.tool_manager = tool_manager
         self.message_history = message_history
         self._recovery_attempted = False
+        self._plugin_system = None
+
+    def set_plugin_system(self, plugin_system) -> None:
+        """Set plugin system for hooks"""
+        self._plugin_system = plugin_system
 
     def _calculate_backoff(self, attempt_num: int) -> float:
         """Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, max_backoff (capped)"""
@@ -92,6 +97,10 @@ class StreamingClient:
                         log_debug(f"*** Request payload saved to {debug_file}")
                     except Exception as e:
                         log_debug(f"*** Failed to save request payload: {e}")
+
+                # Call plugin hook before API request (for throttling, etc.)
+                if self._plugin_system:
+                    self._plugin_system.call_hooks("before_api_request", endpoint, request_data)
 
                 response = fetch(
                     endpoint,

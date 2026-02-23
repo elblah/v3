@@ -107,6 +107,7 @@ class AICoder:
         self.plugin_system.set_app(self)
         self.tool_manager.set_plugin_system(self.plugin_system)
         self.message_history.set_plugin_system(self.plugin_system)
+        self.streaming_client.set_plugin_system(self.plugin_system)
 
         self.plugin_system.load_plugins()
 
