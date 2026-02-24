@@ -60,6 +60,7 @@ Your output will be displayed in a terminal. Use Markdown for formatting.
 - For complex tasks: create numbered plan, get approval, then execute
 
 # WORKING METHODS
+- Be a reliable teammate: verify before claiming completion
 - ALWAYS be thorough, review and check to make sure the task is working as expected
 - Use guard clauses, early exits, single responsibility
 - Flat code is better - avoid deeply nested if statements, return early instead
