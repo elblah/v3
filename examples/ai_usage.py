@@ -2,12 +2,18 @@
 """AI Usage Statistics Reporter.
 
 Finds all .aicoder/stats.log files and aggregates usage statistics.
+Uses a persistent cache (no expiration). Run --update to refresh cache.
 
 Usage:
     python ai_usage.py [24h|week|month|year|hours <N>|days <N>|YYYY-MM-DD YYYY-MM-DD]
-    python ai_usage.py update      # Force refresh cache
-    python ai_usage.py clear-cache # Delete cache
+    python ai_usage.py update      # Scan and refresh cache
+    python ai_usage.py clear-cache  # Delete cache
     Default: last 24 hours (rolling, not calendar day)
+
+Cache behavior:
+    - Cache persists indefinitely (no automatic expiration)
+    - --update scans all dirs below, adds new entries, removes invalid ones
+    - Normal runs filter cache to current $PWD and verify stats.log exists
 """
 
 from collections import defaultdict
@@ -16,7 +22,6 @@ from pathlib import Path
 from typing import List
 
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
-CACHE_MAX_AGE_HOURS = 3  # Cache duration in hours
 
 
 def get_cache_file() -> Path:
@@ -25,33 +30,25 @@ def get_cache_file() -> Path:
     return CACHE_FILE
 
 
-def read_cache() -> List[Path] | None:
-    """Read cached stats.log paths if valid and fresh."""
+def read_cache() -> List[Path]:
+    """Read all cached project directories (no expiration)."""
     if not CACHE_FILE.exists():
-        return None
-
-    # Check cache age
-    cache_mtime = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, tz=timezone.utc).replace(tzinfo=None)
-    if datetime.now(timezone.utc).replace(tzinfo=None) - cache_mtime > timedelta(hours=CACHE_MAX_AGE_HOURS):
-        return None
-
+        return []
     try:
         paths = []
         for line in CACHE_FILE.read_text().splitlines():
             if line.strip():
-                p = Path(line.strip())
-                if p.exists():
-                    paths.append(p)
-        return paths if paths else None
+                paths.append(Path(line.strip()))
+        return paths
     except (OSError, IOError):
-        return None
+        return []
 
 
 def write_cache(paths: List[Path]) -> None:
-    """Write stats.log paths to cache."""
+    """Write project directories to cache."""
     try:
         cache = get_cache_file()
-        cache.write_text("\n".join(str(p) for p in paths))
+        cache.write_text("\n".join(str(p) for p in paths) + "\n")
     except (OSError, IOError):
         pass
 
@@ -65,27 +62,79 @@ def clear_cache() -> None:
             pass
 
 
-def find_stats_files() -> List[Path]:
-    """Find all stats.log files, using cache if available."""
-    cwd = Path.cwd()
-    home = Path.home()
+def update_cache() -> List[Path]:
+    """Scan filesystem, add new project dirs, remove invalid ones, return all valid dirs."""
+    print("Scanning for .aicoder/stats.log files...", flush=True)
 
-    # Use cache only when running from home directory
-    if cwd == home:
-        cached = read_cache()
-        if cached:
-            return cached
-        print("Cache miss, scanning for stats files... (this may take a while)", flush=True)
-
-    # Search filesystem
+    # Find all stats.log files and get their GRANDPARENT directories (project dirs)
     files = list(Path(".").rglob(".aicoder/stats.log"))
-    # Convert to absolute paths for cache consistency
-    files = [f.resolve() for f in files]
+    # stats.log is in .aicoder which is in project dir, so go up 2 levels
+    found_dirs = set(f.parent.parent.resolve() for f in files)  # e.g., /home/blah/poc
 
-    # Write cache only when running from home directory
-    if cwd == home and files:
-        write_cache(files)
-        print(f"Found {len(files)} stats files. Cached for {CACHE_MAX_AGE_HOURS} hours.", flush=True)
+    # Read existing cache
+    existing_cache = read_cache()
+
+    # Convert to project dirs (handle old cache formats)
+    existing_proj_dirs = set()
+    for p in existing_cache:
+        if p.name == "stats.log":
+            # /proj/.aicoder/stats.log -> /proj
+            existing_proj_dirs.add(p.parent.parent.resolve())
+        elif p.name == ".aicoder":
+            # /proj/.aicoder -> /proj
+            existing_proj_dirs.add(p.parent.resolve())
+        else:
+            # /proj (already project dir)
+            existing_proj_dirs.add(p.resolve())
+
+    # Validate: keep only dirs that still exist and have stats.log
+    valid_existing = [d for d in existing_proj_dirs if d.exists() and (d / ".aicoder" / "stats.log").exists()]
+
+    # Merge: keep valid existing + newly found
+    all_dirs = list(set(valid_existing) | found_dirs)
+    all_dirs.sort(key=str)
+
+    # Write back
+    if all_dirs:
+        write_cache(all_dirs)
+
+    print(f"Cache updated: {len(found_dirs)} found, {len(valid_existing)} valid from cache, {len(all_dirs)} total.", flush=True)
+    return all_dirs
+
+
+def find_stats_files() -> List[Path]:
+    """Read cache (project dirs), filter by current PWD, return stats.log paths."""
+    cached_dirs = read_cache()
+    if not cached_dirs:
+        print("Cache is empty. Run with --update to scan.", flush=True)
+        return []
+
+    cwd = Path.cwd().resolve()
+
+    # Convert cached paths to project directories (handle all old formats)
+    project_dirs = set()
+    for p in cached_dirs:
+        if p.name == "stats.log":
+            # /proj/.aicoder/stats.log -> /proj
+            proj = p.parent.parent
+        elif p.name == ".aicoder":
+            # /proj/.aicoder -> /proj
+            proj = p.parent
+        else:
+            # /proj (already project dir)
+            proj = p
+        project_dirs.add(proj.resolve())
+
+    # Filter: only project dirs in/below current PWD
+    files = []
+    for d in project_dirs:
+        try:
+            d.relative_to(cwd)
+            stats_file = d / ".aicoder" / "stats.log"
+            if stats_file.exists():
+                files.append(stats_file)
+        except ValueError:
+            pass
 
     return files
 
@@ -135,9 +184,9 @@ def main():
         print("Cache cleared.")
         sys.exit(0)
     elif "update" in args:
-        args = [a for a in args if a != "update"]
-        # Force refresh by clearing cache before search
-        clear_cache()
+        # Update cache: scan filesystem, add new dirs, remove invalid
+        update_cache()
+        sys.exit(0)
 
     # Parse time range
     if len(args) >= 2 and args[0] in ("hours", "days", "minutes"):
