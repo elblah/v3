@@ -91,14 +91,16 @@ class TestLogUtilsFormatting:
 
     def test_printc_debug_suppressed(self, capsys, monkeypatch):
         """Test debug messages are suppressed when DEBUG=0"""
-        monkeypatch.setenv("DEBUG", "0")
+        from aicoder.core.config import Config
+        monkeypatch.setattr(Config, '_debug_enabled', False)
         LogUtils.debug("Debug message")
         captured = capsys.readouterr()
         assert "Debug message" not in captured.out
 
     def test_printc_debug_enabled(self, capsys, monkeypatch):
         """Test debug messages show when DEBUG=1"""
-        monkeypatch.setenv("DEBUG", "1")
+        from aicoder.core.config import Config
+        monkeypatch.setattr(Config, '_debug_enabled', True)
         LogUtils.debug("Debug message")
         captured = capsys.readouterr()
         assert "Debug message" in captured.out
