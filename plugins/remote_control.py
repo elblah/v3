@@ -853,7 +853,7 @@ def on_before_ai_processing():
     """Hook: Called before AI starts processing - show reminder"""
     global state
     
-    if state.is_active:
+    if state.is_active and Config.debug():
         LogUtils.print(f"{Config.colors['yellow']}[Remote] Remote control session active{Config.colors['reset']}")
 
 
