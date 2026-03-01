@@ -75,6 +75,11 @@ class SessionManager:
         # Show context bar before AI response
         LogUtils.print()
         self.context_bar.print_context_bar(self.stats, self.message_history)
+        
+        # Call plugin hook before AI processing starts
+        if self.plugin_system:
+            self.plugin_system.call_hooks("before_ai_processing")
+        
         LogUtils.printc("AI: ", color="cyan", bold=True)
 
         # Check if interrupted
