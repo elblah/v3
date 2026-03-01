@@ -322,7 +322,7 @@ HTML_UI = """
     <!-- Auth Screen -->
     <div id="auth-screen">
         <div class="auth-box">
-            <h1>AI Coder Remote</h1>
+            <h1>AICoder</h1>
             <p>Enter the secret to access the remote control interface</p>
             <div class="error" id="auth-error"></div>
             <input type="password" id="secret-input" placeholder="Secret" />
@@ -334,7 +334,7 @@ HTML_UI = """
     <!-- Chat Screen -->
     <div id="chat-screen">
         <div class="chat-header">
-            <h1>AI Coder Remote Control</h1>
+            <h1>AICoder</h1>
             <div class="status-indicator">
                 <div class="status-dot" id="status-dot"></div>
                 <span id="status-text">Ready</span>
@@ -852,18 +852,21 @@ def on_before_user_prompt():
 
 
 def on_before_ai_processing():
-    """Hook: Called before AI starts processing - show reminder"""
-    global state
-    
-    if state.is_active and Config.debug():
-        LogUtils.print(f"{Config.colors['yellow']}[Remote] Remote control session active{Config.colors['reset']}")
-
-
-def on_after_assistant_message_added(message: dict):
-    """Hook: Track AI responses for web UI polling"""
+    """Hook: Called before AI starts processing - set processing flag"""
     global state
     
     if state.is_active:
+        state.is_processing = True
+        if Config.debug():
+            LogUtils.print(f"{Config.colors['yellow']}[Remote] Remote control session active{Config.colors['reset']}")
+
+
+def on_after_assistant_message_added(message: dict):
+    """Hook: Track AI responses for web UI polling and reset processing flag"""
+    global state
+    
+    if state.is_active:
+        state.is_processing = False  # Reset flag after AI response
         content = message.get('content', '')
         if content:
             add_to_history('AI', content, 'ai')
