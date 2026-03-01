@@ -15,6 +15,7 @@ AI Coder is a fast, lightweight AI-assisted development tool. Built using only P
 3. **Structured tool returns** - All tools must return `tool`, `friendly`, `detailed` dict
 4. **DO NOT** write to ~/.config/* or local .aicoder/* directories
 5. **DO NOT** try to install global plugins or snippets
+6. **Plugins directory** - The `plugins/` folder in project root is the ONLY place for plugins. Do NOT look in `.aicoder/plugins` or `~/.config/aicoder-v3/plugins`
 
 ## Core Components
 - `aicoder/core/aicoder.py` - Main application orchestrator
