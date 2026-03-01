@@ -309,8 +309,6 @@ class CouncilService:
         include_spec: bool = False
     ) -> str:
         """Get opinion from council member with retry logic"""
-        from aicoder.core.ai_processor import AIProcessor
-
         # Build system prompt
         system_prompt = f"You are {member['name']}.\n\n{member['prompt']}"
 
@@ -323,7 +321,7 @@ class CouncilService:
 
         # Build full context from message history
         # Filter out system messages, include tool calls
-        messages = self.app.message_history.get_messages() if self.app.message_history else []
+        messages = self.app.message_history.get_messages() if hasattr(self.app, 'message_history') and self.app.message_history else []
 
         context_lines = []
         for msg in messages:
@@ -364,9 +362,26 @@ class CouncilService:
             spec = CouncilService.get_current_spec()
             messages_for_api.append({"role": "user", "content": f"\n\nSpecification to review:\n{spec}"})
 
-        # Call AI
-        result = AIProcessor.process_single(messages_for_api, max_tokens=2000)
-        return result.content if result else "No response from council member"
+        # Call AI using app's streaming_client
+        try:
+            response = self.app.streaming_client.stream_request(
+                messages=messages_for_api,
+                stream=False,
+                throw_on_error=True,
+                send_tools=False,  # Council members don't use tools
+            )
+            
+            full_response = ""
+            for chunk in response:
+                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                if content:
+                    full_response += content
+            
+            return full_response.strip()
+        except Exception as error:
+            from aicoder.utils.log import LogUtils
+            LogUtils.warn(f"Council member opinion failed: {error}")
+            return f"Error getting opinion: {error}"
 
     def get_direct_expert_opinions(
         self,
@@ -462,7 +477,7 @@ class CouncilService:
         cyan(f"\n[Auto-Council] Iteration {CouncilService._auto_council_iteration}")
 
         # Get context for council review
-        messages = self.app.message_history.get_messages() if self.app.message_history else []
+        messages = self.app.message_history.get_messages() if hasattr(self.app, 'message_history') and self.app.message_history else []
 
         # Run auto-council review
         feedback = self.run_auto_council_review(messages)
@@ -475,7 +490,8 @@ class CouncilService:
 
         # Queue next iteration
         CouncilService._auto_council_reset_context = False
-        self.app.message_history.add_user_message(f"Council feedback:\n{feedback}")
+        if hasattr(self.app, 'message_history') and self.app.message_history:
+            self.app.message_history.add_user_message(f"Council feedback:\n{feedback}")
 
         return feedback
 
@@ -665,14 +681,16 @@ class CouncilPlugin:
                 CouncilService.enable_auto_council()
                 success("Specification loaded")
                 cyan("\nStarting implementation...")
-                self.app.message_history.add_user_message(f"Specification to implement:\n\n{spec_content}")
+                if hasattr(self.app, 'message_history') and self.app.message_history:
+                    self.app.message_history.add_user_message(f"Specification to implement:\n\n{spec_content}")
             else:
                 # Inline spec
                 CouncilService.load_spec(spec_content, "inline-spec.md")
                 CouncilService.enable_auto_council()
                 success("Specification loaded from text")
                 cyan("\nStarting implementation...")
-                self.app.message_history.add_user_message(f"Specification to implement:\n\n{spec_content}")
+                if hasattr(self.app, 'message_history') and self.app.message_history:
+                    self.app.message_history.add_user_message(f"Specification to implement:\n\n{spec_content}")
         else:
             # Normal council session
             members, moderator = self.service.load_members(filters if filters else None)
@@ -681,19 +699,27 @@ class CouncilPlugin:
                 warn("No council members found")
                 return ""
 
+            # Start session to track state
+            self.service.start_session([], auto_mode=False)
+
             # Get direct opinions or moderator synthesis
             if moderator:
                 result = self.service.get_consensus(moderator, {})
             else:
                 result = self.service.get_direct_expert_opinions(members, args)
 
-            self.service.clear_session()
+            # Save result to session for /council accept
+            if self.service.session and result:
+                self.service.session["final_plan"] = result
 
             if result:
                 log_print("")
                 cyan(f"\nCouncil review ({len(members)} members)")
                 log_print("")
                 success(result)
+
+            # Don't clear session - user may want to /council accept
+            # Session persists until user runs /council clear or accept
 
         return ""
 
@@ -709,6 +735,10 @@ class CouncilPlugin:
         success(session["final_plan"])
         return ""
 
+    def _handle_status(self, args: str) -> str:
+        """Alias for _handle_review - show current council review status"""
+        return self._handle_review(args)
+
     def _handle_accept(self, args: str) -> str:
         """Accept council plan"""
         session = self.service.get_session_status()
@@ -718,7 +748,8 @@ class CouncilPlugin:
             return ""
 
         final_plan = session["final_plan"]
-        self.app.message_history.add_user_message(f"Council feedback: {final_plan}")
+        if hasattr(self.app, 'message_history') and self.app.message_history:
+            self.app.message_history.add_user_message(f"Council feedback: {final_plan}")
 
         success("Council plan injected into conversation")
         cyan("AI will now consider this feedback")
@@ -917,13 +948,14 @@ COUNCIL DIRECTORIES:
         log_print(help_text)
 
 
-def create_plugin(app):
+def create_plugin(ctx):
     """Create council plugin"""
-    council_service = CouncilService(app)
-    council_plugin = CouncilPlugin(app)
+    # ctx is PluginContext, ctx.app is the AICoder instance
+    council_service = CouncilService(ctx.app)
+    council_plugin = CouncilPlugin(ctx.app)
 
-    app.register_command("council", council_plugin.handle_council, "Multi-expert advisory system")
-    app.register_command("council-cancel", lambda a: council_plugin._handle_cancel(""), "Cancel council session")
+    ctx.register_command("council", council_plugin.handle_council, "Multi-expert advisory system")
+    ctx.register_command("council-cancel", lambda a: council_plugin._handle_cancel(""), "Cancel council session")
 
     if Config.debug():
         log_print("[+] Council plugin loaded")
