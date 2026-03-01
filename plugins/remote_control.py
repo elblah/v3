@@ -24,7 +24,7 @@ import json
 import threading
 import signal
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 from typing import Dict, Any, Optional, List
 
@@ -35,7 +35,7 @@ from aicoder.utils.log import LogUtils
 # Global state
 class RemoteControlState:
     is_active = False
-    http_server: Optional[HTTPServer] = None
+    http_server: Optional[ThreadingHTTPServer] = None
     server_thread: Optional[threading.Thread] = None
     failed_auth_attempts = 0
     secret: Optional[str] = None  # Set via command or env var
@@ -47,7 +47,7 @@ class RemoteControlState:
     message_history_with_sender: List[Dict] = []
     last_history_index = 0
     stop_requested_by: Optional[str] = None
-    auth_token: Optional[str] = None  # Generated on successful auth
+    auth_tokens: set = set()  # Multiple valid tokens for multi-user support
 
 
 state = RemoteControlState()
@@ -695,16 +695,17 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
             }, 401)
             return
         
-        # Success - reset failed attempts and generate token
+        # Success - reset failed attempts and generate unique token
         state.failed_auth_attempts = 0
-        state.auth_token = f"token_{os.urandom(16).hex()}"
+        new_token = f"token_{os.urandom(16).hex()}"
+        state.auth_tokens.add(new_token)
         
         username = get_username_from_request(self)
         LogUtils.print(f"{Config.colors['green']}[Remote] User '{username}' authenticated from {get_client_ip(self)}{Config.colors['reset']}")
         
         self.send_json_response({
             'status': 'success',
-            'token': state.auth_token
+            'token': new_token
         })
     
     def handle_message(self, data):
@@ -759,7 +760,7 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
 def validate_auth(handler) -> bool:
     """Validate auth token from header"""
     token = handler.headers.get('X-Auth-Token')
-    return token == state.auth_token
+    return token in state.auth_tokens
 
 
 def start_server():
@@ -770,7 +771,8 @@ def start_server():
     state.port = int(os.environ.get('REMOTE_CONTROL_PORT', '8000'))
     
     try:
-        server = HTTPServer((state.host, state.port), RemoteControlHandler)
+        server = ThreadingHTTPServer((state.host, state.port), RemoteControlHandler)
+        server.timeout = 5  # 5 second timeout for requests
         state.http_server = server
         
         server.serve_forever()
@@ -788,7 +790,7 @@ def stop_server():
         state.http_server = None
     
     state.is_active = False
-    state.auth_token = None
+    state.auth_tokens.clear()  # Invalidate all tokens
     state.pending_message = None
     state.pending_message_user = None
     
@@ -941,6 +943,7 @@ def cmd_remote_control(args_str: str) -> None:
     state.last_history_index = 0
     state.failed_auth_attempts = 0
     state.stop_requested_by = None
+    state.auth_tokens = set()  # Clear any old tokens
     state.is_active = True  # Set BEFORE starting thread
     
     # Start server thread
