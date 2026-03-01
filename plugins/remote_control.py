@@ -31,6 +31,9 @@ from typing import Dict, Any, Optional, List
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
+# Store original LogUtils.print for monkey patching
+_original_log_print = None
+
 
 # Global state
 class RemoteControlState:
@@ -783,7 +786,7 @@ def start_server():
 
 def stop_server():
     """Stop HTTP server"""
-    global state, _yolo_mode_was_enabled
+    global state, _yolo_mode_was_enabled, _original_log_print
     
     if state.http_server:
         state.http_server.shutdown()
@@ -793,6 +796,11 @@ def stop_server():
     state.auth_tokens.clear()  # Invalidate all tokens
     state.pending_message = None
     state.pending_message_user = None
+    
+    # Restore original LogUtils.print
+    if _original_log_print is not None:
+        LogUtils.print = _original_log_print
+        _original_log_print = None
     
     # Restore yolo mode if it wasn't enabled before
     if not _yolo_mode_was_enabled:
@@ -882,6 +890,32 @@ def add_to_history(sender: str, content: str, msg_type: str):
     })
 
 
+def _patch_log_print():
+    """Monkey patch LogUtils.printc to capture output for remote control"""
+    global _original_log_print
+    
+    if _original_log_print is not None:
+        return  # Already patched
+    
+    import re
+    ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    
+    # Patch printc since all log methods route through it
+    _original_log_print = LogUtils.printc
+    
+    def patched_printc(message: str, options=None, color=None, bold=False, debug=False):
+        # Call original printc
+        _original_log_print(message, options=options, color=color, bold=bold, debug=debug)
+        
+        # Capture for remote control history (if active and not processing flag messages)
+        if state.is_active and message and not message.startswith('[Remote]'):
+            # Strip ANSI escape codes for clean web display
+            clean_message = ANSI_ESCAPE.sub('', message)
+            add_to_history('System', clean_message, 'system')
+    
+    LogUtils.printc = patched_printc
+
+
 def sync_message_history():
     """Sync message history from core to our tracked history"""
     global state
@@ -940,6 +974,9 @@ def cmd_remote_control(args_str: str) -> None:
     _yolo_mode_was_enabled = Config.yolo_mode()
     Config.set_yolo_mode(True)
     LogUtils.print(f"{Config.colors['yellow']}[Remote] Yolo mode enabled (auto-approve all tools){Config.colors['reset']}")
+    
+    # Patch LogUtils.print to capture output
+    _patch_log_print()
     
     # Reset state
     state.message_history_with_sender = []
