@@ -3,7 +3,6 @@
 import os
 import tempfile
 import pytest
-from unittest.mock import patch, MagicMock
 
 import sys
 sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
@@ -13,15 +12,6 @@ from aicoder.utils.diff_utils import (
     generate_unified_diff,
     generate_unified_diff_with_status,
 )
-
-
-class MockShellResult:
-    """Mock result for execute_command_sync."""
-    def __init__(self, success, exit_code, stdout, stderr):
-        self.success = success
-        self.exit_code = exit_code
-        self.stdout = stdout
-        self.stderr = stderr
 
 
 class TestColorizeDiff:
@@ -90,7 +80,7 @@ class TestGenerateUnifiedDiff:
     """Test generate_unified_diff function."""
 
     def test_identical_files(self):
-        """Test diff of identical files returns success."""
+        """Test diff of identical files returns no changes."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f1:
             f1.write("same content")
             path1 = f1.name
@@ -100,16 +90,15 @@ class TestGenerateUnifiedDiff:
             path2 = f2.name
 
         try:
-            with patch('aicoder.utils.diff_utils.execute_command_sync') as mock:
-                mock.return_value = MockShellResult(success=True, exit_code=0, stdout="", stderr="")
-                result = generate_unified_diff(path1, path2)
-                assert "No changes" in result or mock.called
+            result = generate_unified_diff(path1, path2)
+            # diff returns "No changes" message for identical files
+            assert "No changes" in result
         finally:
             os.unlink(path1)
             os.unlink(path2)
 
     def test_different_files(self):
-        """Test diff of different files."""
+        """Test diff of different files shows the differences."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f1:
             f1.write("old content")
             path1 = f1.name
@@ -119,14 +108,10 @@ class TestGenerateUnifiedDiff:
             path2 = f2.name
 
         try:
-            with patch('aicoder.utils.diff_utils.execute_command_sync') as mock:
-                mock.return_value = MockShellResult(
-                    success=False, exit_code=1,
-                    stdout="--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old content\n+new content\n",
-                    stderr=""
-                )
-                result = generate_unified_diff(path1, path2)
-                assert mock.called
+            result = generate_unified_diff(path1, path2)
+            # Real diff should show the changes
+            assert "old content" in result
+            assert "new content" in result
         finally:
             os.unlink(path1)
             os.unlink(path2)
@@ -137,33 +122,44 @@ class TestGenerateUnifiedDiffWithStatus:
 
     def test_no_changes(self):
         """Test diff with no changes returns has_changes=False."""
-        with patch('aicoder.utils.diff_utils.execute_command_sync') as mock:
-            mock.return_value = MockShellResult(success=True, exit_code=0, stdout="No changes", stderr="")
-            result = generate_unified_diff_with_status("/path1", "/path2")
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f1:
+            f1.write("same content")
+            path1 = f1.name
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f2:
+            f2.write("same content")
+            path2 = f2.name
+
+        try:
+            result = generate_unified_diff_with_status(path1, path2)
             assert result["has_changes"] is False
             assert result["exit_code"] == 0
+        finally:
+            os.unlink(path1)
+            os.unlink(path2)
 
     def test_with_changes(self):
         """Test diff with changes returns has_changes=True."""
-        with patch('aicoder.utils.diff_utils.execute_command_sync') as mock:
-            mock.return_value = MockShellResult(
-                success=False, exit_code=1,
-                stdout="--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
-                stderr=""
-            )
-            result = generate_unified_diff_with_status("/path1", "/path2")
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f1:
+            f1.write("old content")
+            path1 = f1.name
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f2:
+            f2.write("new content")
+            path2 = f2.name
+
+        try:
+            result = generate_unified_diff_with_status(path1, path2)
             assert result["has_changes"] is True
             assert result["exit_code"] == 1
+        finally:
+            os.unlink(path1)
+            os.unlink(path2)
 
     def test_error_in_diff(self):
         """Test diff with error returns has_changes=False."""
-        with patch('aicoder.utils.diff_utils.execute_command_sync') as mock:
-            mock.return_value = MockShellResult(
-                success=False, exit_code=2,
-                stdout="",
-                stderr="diff: /path: No such file or directory"
-            )
-            result = generate_unified_diff_with_status("/path1", "/path2")
-            assert result["has_changes"] is False
-            assert result["exit_code"] == 2
-            assert "Error" in result["diff"]
+        # Use non-existent paths to trigger an error
+        result = generate_unified_diff_with_status("/nonexistent/path1", "/nonexistent/path2")
+        assert result["has_changes"] is False
+        assert result["exit_code"] != 0
+        assert "Error" in result["diff"]
