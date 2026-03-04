@@ -277,7 +277,7 @@ def create_plugin(ctx):
         content = message.get("content", "")
         if content:
             # Don't echo commands (starts with /)
-            if not content.startswith('/'):
+            if isinstance(content, str) and not content.startswith('/'):
                 speak(content)
 
     def on_after_tool_results(tool_results: list):
