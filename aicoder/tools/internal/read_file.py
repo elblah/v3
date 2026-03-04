@@ -175,7 +175,7 @@ TOOL_DEFINITION = {
             },
             "limit": {
                 "type": "integer",
-                "description": f"The number of lines to read (default: {DEFAULT_READ_LIMIT}).",
+                "description": f"The number of lines to read (default: {DEFAULT_READ_LIMIT}, can be increased to read more).",
                 "default": DEFAULT_READ_LIMIT,
             },
         },
