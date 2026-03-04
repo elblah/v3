@@ -187,26 +187,38 @@ class ToolExecutor:
                     pass
 
         try:
-            approval = input("Approve [Y/n]: ").strip().lower()
-            if not approval:
-                approval = 'y'  # Default to yes
+            while True:
+                approval = input("Approve [Y/n]: ").strip().lower()
                 
-            # Handle yolo command
-            if approval == 'yolo':
-                Config.set_yolo_mode(True)
-                LogUtils.success('[*] YOLO mode ENABLED')
-                return True
+                # Empty input defaults to yes
+                if not approval:
+                    has_guidance = False
+                    canonical_answer = 'y'
+                    break
                 
-            # Parse + modifier for guidance
-            has_guidance = approval.endswith('+')
-            base_answer = approval[:-1] if has_guidance else approval
-            
-            # Canonical answers
-            canonical_answer = (
-                'y' if base_answer == 'a' else 
-                'n' if base_answer == 'd' else 
-                base_answer
-            )
+                # Handle yolo command
+                if approval == 'yolo':
+                    Config.set_yolo_mode(True)
+                    LogUtils.success('[*] YOLO mode ENABLED')
+                    return True
+                
+                # Parse + modifier for guidance
+                has_guidance = approval.endswith('+')
+                base_answer = approval[:-1] if has_guidance else approval
+                
+                # Canonical answers
+                canonical_answer = (
+                    'y' if base_answer == 'a' else 
+                    'n' if base_answer == 'd' else 
+                    base_answer
+                )
+                
+                # Validate input
+                if canonical_answer in ['y', 'n', 'yes', 'no']:
+                    break
+                
+                # Invalid input - show error and re-prompt
+                LogUtils.error("Invalid option. Valid: Y, n, a, d, yes, no (append + for guidance mode)")
             
             # User denied
             if canonical_answer not in ['y', 'yes']:
