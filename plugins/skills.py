@@ -163,12 +163,14 @@ To load a skill when needed, use: read_file(path/to/SKILL.md)
         - Replaces existing [SKILLS] message
         - Adds new one if missing
         """
+        from aicoder.core.message_history import MessageHistory
+
         skills_text = self.generate_skills_message()
 
         # Find and replace existing [SKILLS] message
         for idx, msg in enumerate(message_history.messages):
-            content = msg.get("content", "")
-            if msg.get("role") == "user" and content.startswith("[SKILLS]"):
+            content = MessageHistory._get_content_as_string(msg.get("content", ""))
+            if msg.get("role") == "user" and content and content.startswith("[SKILLS]"):
                 message_history.messages[idx]["content"] = skills_text
                 return
 
