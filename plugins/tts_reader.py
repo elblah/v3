@@ -327,7 +327,7 @@ Use a single <tts>...</tts> block for questions, important warnings, or key summ
             # Remove [TTS_INSTRUCTIONS] message if present
             for idx, msg in enumerate(message_history.messages):
                 content = msg.get("content", "")
-                if msg.get("role") == "user" and content.startswith("[TTS_INSTRUCTIONS]"):
+                if msg.get("role") == "user" and isinstance(content, str) and content.startswith("[TTS_INSTRUCTIONS]"):
                     message_history.messages.pop(idx)
                     return
             return
@@ -338,7 +338,7 @@ Use a single <tts>...</tts> block for questions, important warnings, or key summ
         # Find and replace existing [TTS_INSTRUCTIONS] message
         for idx, msg in enumerate(message_history.messages):
             content = msg.get("content", "")
-            if msg.get("role") == "user" and content.startswith("[TTS_INSTRUCTIONS]"):
+            if msg.get("role") == "user" and isinstance(content, str) and content.startswith("[TTS_INSTRUCTIONS]"):
                 message_history.messages[idx]["content"] = tts_text
                 return
 
