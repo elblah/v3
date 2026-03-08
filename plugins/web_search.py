@@ -16,6 +16,7 @@ import urllib.request
 import urllib.parse
 import subprocess
 import os
+import time
 from typing import Dict, Any, Tuple
 
 from aicoder.core.config import Config
@@ -26,6 +27,12 @@ def create_plugin(ctx):
     """Web search and URL content plugin"""
 
     DEFAULT_LINES_PER_PAGE = 150
+
+    # In-memory cache to avoid repeated requests
+    _cache: Dict[str, str] = {}
+    _provider_index = 0
+    _last_search_time = 0.0
+    SEARCH_COOLDOWN = 180  # 3 minutes - reset to preferred provider after this
 
     # Parse search providers from environment variable
     # Format: "Name1,URL1;Name2,URL2;"
@@ -84,7 +91,7 @@ def create_plugin(ctx):
         """Detect if search provider is blocking/banning the request"""
         return any(indicator in content for indicator in BLOCKING_INDICATORS)
 
-    def fetch_url_text(url: str, lines: int = DEFAULT_LINES_PER_PAGE, user_agent: str = None) -> str:
+    def fetch_url_text(url: str, user_agent: str = None) -> str:
         """Fetch URL text using lynx browser with user agent"""
         try:
             # Check if lynx exists
@@ -100,8 +107,7 @@ def create_plugin(ctx):
                 text=True,
                 timeout=30
             )
-            output_lines = result.stdout.split("\n")[:lines]
-            content = "\n".join(output_lines)
+            content = result.stdout
 
             # Detect if provider is blocking the request
             if detect_blocking(content):
@@ -128,24 +134,48 @@ def create_plugin(ctx):
                 "detailed": "Query cannot be empty",
             }
 
+        # Check cache first
+        if query in _cache:
+            content = _cache[query]
+            lines = content.split("\n")[:DEFAULT_LINES_PER_PAGE]
+            return {
+                "tool": "web_search",
+                "friendly": f"Web search for '{query}' (cached)",
+                "detailed": f"Web search results:\n\n" + "\n".join(lines),
+            }
+
+        # Reset to preferred provider if enough time has passed
+        nonlocal _provider_index, _last_search_time
+        now = time.time()
+        if now - _last_search_time > SEARCH_COOLDOWN:
+            _provider_index = 0
+        _last_search_time = now
+
         failed_providers = []
         encoded = urllib.parse.quote_plus(query)
+        num_providers = len(SEARCH_PROVIDERS)
 
-        for provider_name, base_url in SEARCH_PROVIDERS:
+        # Rotate through providers starting from last used index
+        for i in range(num_providers):
+            idx = (_provider_index + i) % num_providers
+            provider_name, base_url = SEARCH_PROVIDERS[idx]
             try:
                 search_url = base_url + encoded
-                content = fetch_url_text(search_url, DEFAULT_LINES_PER_PAGE)
+                content = fetch_url_text(search_url)
 
-                # Check if this provider blocked us
+                # Check if this provider blocked us - don't cache blocked results
                 if detect_blocking(content):
                     failed_providers.append((provider_name, "blocked"))
                     continue
 
-                # Success! Return results with provider info
+                # Update rotation index and cache successful result
+                _provider_index = (idx + 1) % num_providers
+                _cache[query] = content
+                lines = content.split("\n")[:DEFAULT_LINES_PER_PAGE]
                 return {
                     "tool": "web_search",
                     "friendly": f"Web search for '{query}' (via {provider_name})",
-                    "detailed": f"Web search results:\n\n{content}",
+                    "detailed": f"Web search results:\n\n" + "\n".join(lines),
                 }
 
             except Exception as e:
@@ -178,9 +208,22 @@ def create_plugin(ctx):
                 "detailed": "Invalid URL format",
             }
 
+        # Check cache first
+        if url in _cache:
+            content = _cache[url]
+            lines = content.split("\n")
+            start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
+            end_idx = page * DEFAULT_LINES_PER_PAGE
+            paginated = "\n".join(lines[start_idx:end_idx])
+            return {
+                "tool": "get_url_content",
+                "friendly": f"Fetched {url} (page {page}, cached)",
+                "detailed": paginated,
+            }
+
         try:
-            content = fetch_url_text(url, DEFAULT_LINES_PER_PAGE * page,
-                                        user_agent="Mozilla/5.0")
+            content = fetch_url_text(url, user_agent="Mozilla/5.0")
+            _cache[url] = content
             lines = content.split("\n")
             start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
             end_idx = page * DEFAULT_LINES_PER_PAGE
