@@ -78,7 +78,7 @@ class TestWaitForRetry:
         with patch('time.sleep') as mock_sleep, \
              patch.object(Config, 'effective_max_backoff', return_value=64):
             client._wait_for_retry(0)
-            mock_sleep.assert_called_once_with(1)
+            mock_sleep.assert_called_once_with(2)
 
     def test_wait_for_retry_with_backoff(self):
         """Test that wait_for_retry uses exponential backoff"""
@@ -86,7 +86,7 @@ class TestWaitForRetry:
         with patch('time.sleep') as mock_sleep, \
              patch.object(Config, 'effective_max_backoff', return_value=64):
             client._wait_for_retry(3)
-            mock_sleep.assert_called_once_with(8)
+            mock_sleep.assert_called_once_with(16)
 
 
 class TestRecoveryAttempted:
