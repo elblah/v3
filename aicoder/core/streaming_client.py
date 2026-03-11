@@ -31,9 +31,9 @@ class StreamingClient:
         self._plugin_system = plugin_system
 
     def _calculate_backoff(self, attempt_num: int) -> float:
-        """Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, max_backoff (capped)"""
+        """Calculate exponential backoff: 2s, 4s, 8s, 16s, 32s, max_backoff (capped)"""
         max_backoff = Config.effective_max_backoff()
-        return min(2 ** attempt_num, max_backoff)
+        return min(2 ** (attempt_num + 1), max_backoff)
 
     def _wait_for_retry(self, attempt_num: int) -> None:
         """Wait before retry with backoff and show message"""
