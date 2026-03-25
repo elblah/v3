@@ -179,5 +179,13 @@ search (grep), shell command execution, and more via API request."""
         else:
             options.override_prompt = cls.load_prompt_override()
 
-        # Build and return prompt
-        return cls.build_prompt(context, options)
+        # Build base prompt
+        prompt = cls.build_prompt(context, options)
+
+        # Append additional content from AICODER_SYSTEM_PROMPT_APPEND
+        append_content = Config.system_prompt_append()
+        if append_content:
+            LogUtils.info("Appending AICODER_SYSTEM_PROMPT_APPEND to system prompt")
+            prompt += "\n\n" + append_content
+
+        return prompt
