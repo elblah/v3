@@ -72,6 +72,7 @@ def create_plugin(ctx):
         "error-lite@duckduckgo.com",  # DDG specific error
         "Please complete the following challenge",  # CAPTCHA/challenge page
         "verify you are human",
+        "Please solve the challenge below to continue",
         "Access denied",
         "Too many requests",
         "Your request has been flagged",
