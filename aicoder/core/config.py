@@ -340,6 +340,15 @@ class Config:
         return os.environ.get("AICODER_SYSTEM_PROMPT") or ""
 
     @staticmethod
+    def system_prompt_append() -> str:
+        """
+        Get content to append to system prompt from environment variable.
+        Appended AFTER AICODER_SYSTEM_PROMPT or default prompt.
+
+        """
+        return os.environ.get("AICODER_SYSTEM_PROMPT_APPEND") or ""
+
+    @staticmethod
     def tools_allow() -> Optional[Set[str]]:
         """
         Get allowed tools from TOOLS_ALLOW environment variable.
@@ -711,6 +720,7 @@ class Config:
             LogUtils.print("  export MAX_TOKENS=4096")
             LogUtils.print("  export DEBUG=1")
             LogUtils.print('  export AICODER_SYSTEM_PROMPT="your-custom-prompt"')
+            LogUtils.print('  export AICODER_SYSTEM_PROMPT_APPEND="additional-instructions"')
             sys.exit(1)
 
     # Print configuration info at startup
@@ -746,6 +756,9 @@ class Config:
 
         if Config.system_prompt():
             LogUtils.success("  System prompt: overridden via AICODER_SYSTEM_PROMPT environment variable")
+
+        if Config.system_prompt_append():
+            LogUtils.success("  System prompt append: set via AICODER_SYSTEM_PROMPT_APPEND environment variable")
 
         if Config.auto_compact_enabled():
             LogUtils.success(
