@@ -2,22 +2,32 @@
 """AI Usage Statistics Reporter.
 
 Finds all .aicoder/stats.log files and aggregates usage statistics.
-Uses a persistent cache (no expiration). Run --update to refresh cache.
+Uses a persistent cache (no expiration). Run `update` to refresh cache.
 
 Usage:
-    python ai_usage.py [24h|week|month|year|hours <N>|days <N>|YYYY-MM-DD YYYY-MM-DD]
-    python ai_usage.py update      # Scan and refresh cache
-    python ai_usage.py clear-cache  # Delete cache
-    Default: last 24 hours (rolling, not calendar day)
+    python ai_usage.py [24h|week|month|year]                 # Preset periods
+    python ai_usage.py hours <N> | days <N> | minutes <N>    # Custom durations
+    python ai_usage.py YYYY-MM-DD YYYY-MM-DD                 # Date range
+    python ai_usage.py update                                # Scan & update cache
+    python ai_usage.py clear-cache                           # Delete cache
+    python ai_usage.py help                                  # Show this usage
+    ALL=1 python ai_usage.py ...                             # Global stats (ignore cwd)
+
+Notes:
+    - Cache persists indefinitely. Run 'update' to scan all dirs below PWD.
+    - Default period is 24h (rolling).
+    - Stats are loaded from <project_dir>/.aicoder/stats.log.
 
 Cache behavior:
     - Cache persists indefinitely (no automatic expiration)
     - --update scans all dirs below, adds new entries, removes invalid ones
-    - Normal runs filter cache to current $PWD and verify stats.log exists
+    - Normal runs filter cached dirs to current $PWD (must have stats.log).
+    - ALL=1 shows stats from ALL cached dirs regardless of cwd.
 """
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import os
 from pathlib import Path
 from typing import List
 
@@ -125,16 +135,18 @@ def find_stats_files() -> List[Path]:
             proj = p
         project_dirs.add(proj.resolve())
 
-    # Filter: only project dirs in/below current PWD
+    # Filter: only project dirs in/below current PWD, unless ALL=1
+    show_all = bool(os.environ.get("ALL"))
     files = []
     for d in project_dirs:
-        try:
-            d.relative_to(cwd)
-            stats_file = d / ".aicoder" / "stats.log"
-            if stats_file.exists():
-                files.append(stats_file)
-        except ValueError:
-            pass
+        if not show_all:
+            try:
+                d.relative_to(cwd)
+            except ValueError:
+                continue
+        stats_file = d / ".aicoder" / "stats.log"
+        if stats_file.exists():
+            files.append(stats_file)
 
     return files
 
@@ -182,6 +194,15 @@ def main():
     if "clear-cache" in args:
         clear_cache()
         print("Cache cleared.")
+        sys.exit(0)
+    elif "--help" in args or "-h" in args or "help" in args:
+        print("Usage:")
+        print("  ai_usage.py [24h|week|month|year]                        # Time period")
+        print("  ai_usage.py hours <N> | days <N> | minutes <N>           # Custom periods")
+        print("  ai_usage.py YYYY-MM-DD YYYY-MM-DD                        # Date range")
+        print("  ai_usage.py update         # Scan all dirs below, update cache")
+        print("  ai_usage.py clear-cache    # Delete cache")
+        print("  ALL=1 ai_usage.py ...      # All cached dirs (ignore cwd filter)")
         sys.exit(0)
     elif "update" in args:
         # Update cache: scan filesystem, add new dirs, remove invalid
