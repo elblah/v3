@@ -3,6 +3,45 @@ name: love2d
 description: Löve2d Game development essential tips (like how to create screenshots, run in xvfb, etc)
 ---
 
+# Mouse and Touch Events (CRITICAL - READ FIRST)
+
+**ABSOLUTE RULE: NEVER use touch events (`love.touchpressed`, `love.touchreleased`, `love.touchmoved`). Only use mouse events.**
+
+Love2d already maps touch input to mouse events automatically. If you implement both touch and mouse callbacks, you will get **duplicate events** - every tap will trigger both `touchpressed` AND `mousepressed`, causing double-actions, double-damage, double-everything.
+
+**What to do instead:**
+
+```lua
+-- Only use mouse callbacks - touch is automatically included
+function love.mousepressed(x, y, button, istouch, presses)
+    -- This fires for BOTH mouse clicks AND touch taps
+    if button == 1 then
+        -- Handle left click/tap
+    end
+end
+
+function love.mousereleased(x, y, button, istouch, presses)
+    -- Handle release
+end
+
+function love.mousemoved(x, y, dx, dy, istouch)
+    -- Handle drag/swipe
+end
+```
+
+**Why this works:**
+- On desktop: Mouse events come from the mouse
+- On mobile: Touch events are converted to mouse events automatically by LÖVE
+- The `istouch` parameter tells you the origin if you ever need it, but you almost never do
+
+**What NOT to do:**
+```lua
+-- WRONG - will cause duplicate events!
+function love.touchpressed(id, x, y, dx, dy, pressure)
+    -- Do NOT implement this
+end
+```
+
 # Screenshot
 
 Capture screenshots for visual debugging:
@@ -60,36 +99,6 @@ love .
 ```
 
 **Note:** Without X11, `love.graphics.captureScreenshot()` will fail. Use Option 1 if you need screenshot capability.
-
-# Mouse and Touch Events
-
-**Important:** Mouse events in Love2d already capture touch events as well. When developing cross-platform games that support both mouse and touch input, you only need to handle mouse events - touch input is automatically converted to mouse events.
-
-**Why this matters:**
-- If you handle both mouse and touch events separately, you'll get **duplicated events**
-- Touch on mobile devices will trigger both `touchpressed` and `mousepressed` callbacks
-- This can cause unintended double-actions in your game
-
-**Best practice:**
-```lua
--- Only handle mouse events - touch is automatically included
-function love.mousepressed(x, y, button, istouch, presses)
-    -- This is called for both mouse clicks and touch
-    if button == 1 then
-        -- Handle left click/tap
-    end
-end
-
-function love.mousereleased(x, y, button, istouch, presses)
-    -- Handle release
-end
-
-function love.mousemoved(x, y, dx, dy, istouch)
-    -- Handle drag
-end
-```
-
-**Note:** The `istouch` parameter tells you if the event originated from touch or mouse, but you usually don't need to differentiate unless you have touch-specific features.
 
 # Mobile-Specific Setup (Android/iOS)
 
