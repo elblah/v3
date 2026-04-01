@@ -118,6 +118,19 @@ def create_plugin(ctx):
             LogUtils.print(f"Session total: {fmt_duration(elapsed)}")
 
         elif action == "start":
+            # Auto-stop any running task before starting a new one
+            if current_task:
+                elapsed = get_task_elapsed()
+                task_api = get_task_api_time()
+                total = elapsed
+                rest_time = total - task_api
+                task_history.append({
+                    "name": task_name,
+                    "total": elapsed,
+                    "api": task_api,
+                    "rest": rest_time,
+                })
+                LogUtils.print(f"{Config.colors['yellow']}[!] Auto-stopped previous task:{Config.colors['reset']} {Config.colors['dim']}{task_name}{Config.colors['reset']} ({fmt_duration(elapsed)})")
             name = rest if rest else f"task-{task_count + 1}"
             current_task = name
             task_name = name
