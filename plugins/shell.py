@@ -97,5 +97,8 @@ Note: Commands have a 10-minute timeout (use Ctrl+C to cancel earlier).
     # Register the /shell command
     ctx.register_command("/shell", handle_shell_command, description="Execute shell commands")
 
+    # Register ! as shorthand
+    ctx.register_command("!", handle_shell_command, description="Shorthand for /shell")
+
     if Config.debug():
         LogUtils.print("  - /shell command")
