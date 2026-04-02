@@ -241,6 +241,7 @@ class TestPromptBuilderBuildSystemPrompt:
                 with patch.object(PromptBuilder, 'load_prompt_override', return_value=None):
                     with patch('aicoder.core.config.Config') as mock_config:
                         mock_config.system_prompt.return_value = None
+                        mock_config.system_prompt_append.return_value = None
                         prompt = PromptBuilder.build_system_prompt()
 
             assert isinstance(prompt, str)
@@ -258,6 +259,7 @@ class TestPromptBuilderBuildSystemPrompt:
                 with patch.object(PromptBuilder, 'load_prompt_override', return_value=None):
                     with patch('aicoder.core.config.Config') as mock_config:
                         mock_config.system_prompt.return_value = "Env prompt"
+                        mock_config.system_prompt_append.return_value = None
                         with patch('builtins.print'):
                             prompt = PromptBuilder.build_system_prompt()
 
