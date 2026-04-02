@@ -33,11 +33,11 @@ class TestStreamingClient:
 
         # Patch to use default max backoff (64) regardless of environment
         with patch.object(Config, 'effective_max_backoff', return_value=64):
-            # Test exponential growth (fast)
-            assert client._calculate_backoff(0) == 1
-            assert client._calculate_backoff(1) == 2
-            assert client._calculate_backoff(2) == 4
-            assert client._calculate_backoff(3) == 8
+            # Test exponential growth starting at 2s (2^1)
+            assert client._calculate_backoff(0) == 2
+            assert client._calculate_backoff(1) == 4
+            assert client._calculate_backoff(2) == 8
+            assert client._calculate_backoff(3) == 16
 
             # Test cap at default 64
             assert client._calculate_backoff(6) == 64
@@ -49,12 +49,11 @@ class TestStreamingClient:
         
         # Test with custom max backoff
         with patch.object(Config, 'effective_max_backoff', return_value=30):
-            assert client._calculate_backoff(0) == 1
-            assert client._calculate_backoff(1) == 2
-            assert client._calculate_backoff(2) == 4
-            assert client._calculate_backoff(3) == 8
-            assert client._calculate_backoff(4) == 16
-            assert client._calculate_backoff(5) == 30  # Capped at custom max
+            assert client._calculate_backoff(0) == 2
+            assert client._calculate_backoff(1) == 4
+            assert client._calculate_backoff(2) == 8
+            assert client._calculate_backoff(3) == 16
+            assert client._calculate_backoff(4) == 30  # Capped at custom max
             assert client._calculate_backoff(10) == 30  # Still capped
 
     def test_backoff_calculation_small_max(self):
@@ -62,10 +61,9 @@ class TestStreamingClient:
         client = StreamingClient()
         
         with patch.object(Config, 'effective_max_backoff', return_value=5):
-            assert client._calculate_backoff(0) == 1
-            assert client._calculate_backoff(1) == 2
-            assert client._calculate_backoff(2) == 4
-            assert client._calculate_backoff(3) == 5  # Capped at 5
+            assert client._calculate_backoff(0) == 2
+            assert client._calculate_backoff(1) == 4
+            assert client._calculate_backoff(2) == 5  # Capped at 5
             assert client._calculate_backoff(10) == 5  # Still capped
 
 
@@ -412,7 +410,8 @@ class TestCreateUsage:
         usage_data = {"prompt_tokens": 10}
         result = client._create_usage(usage_data)
         assert result["prompt_tokens"] == 10
-        assert result.get("completion_tokens") is None
+        assert result.get("completion_tokens") == 0  # Defaults to 0
+        assert result.get("total_tokens") == 0  # Defaults to 0
 
 
 class TestUpdateTokenStats:
@@ -1140,8 +1139,8 @@ class TestUsageStatsHandling:
         result = client._create_usage(usage_data)
 
         assert result["prompt_tokens"] == 100
-        assert result.get("completion_tokens") is None
-        assert result.get("total_tokens") is None
+        assert result.get("completion_tokens") == 0  # Defaults to 0
+        assert result.get("total_tokens") == 0  # Defaults to 0
 
     def test_create_usage_with_all_fields(self):
         """Test _create_usage with all fields"""
@@ -1166,8 +1165,7 @@ class TestUsageStatsHandling:
         usage = {"prompt_tokens": 100, "completion_tokens": 50}
         client._update_stats_from_usage(usage)
 
-        # Dict keys use get(), so we need to check add methods are not called
-        # when stats expects attribute access
-        mock_stats.add_prompt_tokens.assert_not_called()
-        mock_stats.add_completion_tokens.assert_not_called()
+        # Dict usage values are extracted and passed to stats methods
+        mock_stats.add_prompt_tokens.assert_called_once_with(100)
+        mock_stats.add_completion_tokens.assert_called_once_with(50)
 
