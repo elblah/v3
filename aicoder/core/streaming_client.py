@@ -422,6 +422,11 @@ class StreamingClient:
                             tool_calls = chunk.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
                             if tool_calls:
                                 log_debug(f"Tool call chunk: {len(tool_calls)} calls")
+                            # Log model/provider from first chunk
+                            if chunk_data.get("model"):
+                                log_debug(f"*** Model: {chunk_data.get('model')}")
+                            if chunk_data.get("provider"):
+                                log_debug(f"*** Provider: {chunk_data.get('provider')}")
                         yield chunk
                     except Exception as error:
                         log_error(f"SSE Parse Error: {error}")
@@ -458,6 +463,14 @@ class StreamingClient:
                 log_debug(f"*** Non-streaming response saved to {debug_file}")
             except Exception as e:
                 log_debug(f"*** Failed to save response: {e}")
+
+            # Log discovered model/provider info
+            model = data.get("model")
+            provider = data.get("provider")
+            if model:
+                log_debug(f"*** Model: {model}")
+            if provider:
+                log_debug(f"*** Provider: {provider}")
 
         # Convert non-streaming response to streaming format
         if data.get("choices") and len(data["choices"]) > 0:

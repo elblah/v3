@@ -127,10 +127,26 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 output = result.stderr
 
+        # Build detailed message with explicit timeout information for AI
+        if result.returncode == -1:
+            # Make timeout VERY clear to AI with actionable suggestion
+            detailed = f"COMMAND TIMED OUT after {timeout} seconds\n\n"
+            detailed += f"Command: {command}\n"
+            detailed += f"Exit code: {result.returncode} (timeout indicator)\n"
+            detailed += f"Working directory: {cwd or '.'}\n\n"
+            detailed += f"Output captured before timeout:\n{output if output else '(no output captured before timeout)'}\n\n"
+            detailed += f"GUIDANCE: If this task needs to complete, use a timeout appropriate for your environment:\n"
+            detailed += f"  - Quick commands (ls, cat, git status): 10-30s\n"
+            detailed += f"  - Package installs (npm, pip, cargo): 300-600s\n"
+            detailed += f"  - Compilation (go build, make, cargo build): 600-3600s on slow hardware\n"
+            detailed += f"If the timeout was intentional (e.g., testing if a server starts correctly), no action needed."
+        else:
+            detailed = f"Command: {command}\nExit code: {result.returncode}\nTimeout: {timeout}s\nWorking directory: {cwd or '.'}\n\nOutput:\n{output}"
+
         return {
             "tool": "run_shell_command",
             "friendly": friendly,
-            "detailed": f"Command: {command}\nExit code: {result.returncode}\nTimeout: {timeout}s\nWorking directory: {cwd or '.'}\n\nOutput:\n{output}"
+            "detailed": detailed
         }
 
     # Timeout is now handled in execute_with_process_group
@@ -161,7 +177,7 @@ TOOL_DEFINITION = {
             "command": {"type": "string", "description": "Shell command to execute"},
             "timeout": {
                 "type": "integer",
-                "description": f"Timeout in seconds (default: {DEFAULT_TIMEOUT})",
+                "description": f"Timeout in seconds (default: {DEFAULT_TIMEOUT}). IMPORTANT: For slow environments or compilation tasks (go build, cargo build, make, npm install, etc.), use much larger timeouts like 3600 (1 hour) to avoid wasting time on repeated timeout failures.",
                 "default": DEFAULT_TIMEOUT,
             },
             "cwd": {
