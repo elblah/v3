@@ -5,9 +5,14 @@ description: Löve2d Game development essential tips (like how to create screens
 
 # Mouse and Touch Events (CRITICAL - READ FIRST)
 
-**ABSOLUTE RULE: NEVER use touch events (`love.touchpressed`, `love.touchreleased`, `love.touchmoved`). Only use mouse events.**
+**ABSOLUTE RULE: NEVER implement touch events (`love.touchpressed`, `love.touchreleased`, `love.touchmoved`). Touch methods are NOT needed.**
 
-Love2d already maps touch input to mouse events automatically. If you implement both touch and mouse callbacks, you will get **duplicate events** - every tap will trigger both `touchpressed` AND `mousepressed`, causing double-actions, double-damage, double-everything.
+Love2d automatically maps all touch input to mouse events. Every tap on mobile becomes a `love.mousepressed` call. Implementing touch callbacks is **completely unnecessary** - you will only ever need mouse methods.
+
+Benefits of ignoring touch:
+- Simpler code - one callback type instead of two
+- No duplicate events - touch is handled automatically
+- Works everywhere - desktop and mobile both use mouse callbacks
 
 **What to do instead:**
 
@@ -122,6 +127,89 @@ end
 - `msaa = 8` provides anti-aliasing for smoother graphics (adjust as needed for performance)
 
 **Note:** This has been tested on Android. It likely applies to iOS as well, but hasn't been verified.
+
+## Building .love File
+
+A `.love` file is a renamed ZIP archive containing your game source code.
+
+**Use the actual game name** - not generic "game.love". Derive the name from your project:
+
+```bash
+# Get game name from current directory (kebab-case to snake-case conversion)
+GAME_NAME=$(basename "$PWD" | tr '-' '_')
+
+# Create .love file with specific name
+zip -9 -r "${GAME_NAME}.love" . \
+  -x ".git/*" ".aicoder/*" "tmp/*" "node_modules/*" \
+     "*.apk" "*.love" "build.sh" "*.md" "icon.svg"
+```
+
+**Important:** The entry point must be `main.lua` at the root of the archive.
+
+## Building APK for Android
+
+Use `build-love-apk.sh` to create a standalone Android APK. **If it doesn't exist in the project directory, copy it from the skill directory first:**
+
+```bash
+# Copy build script if missing
+[ ! -f build-love-apk.sh ] && cp ./examples/skills/love2d/build-love-apk.sh .
+```
+
+**CRITICAL: You must ask the user for these values before building:**
+
+- **`--app-name`** - The app display name shown on Android (e.g., "Space Invaders")
+- **`--package`** - The Android package identifier (e.g., `com.studio.spaceinvaders`)
+  - **Must be unique** - all apps on a device must have different packages
+  - Convention: `com.{developer}.{gamename}` or `io.{developer}.{gamename}`
+  - Lowercase only, numbers allowed, no spaces or special chars
+
+```bash
+# Get game name from current directory (for .love file)
+GAME_NAME=$(basename "$PWD" | tr '-' '_')
+
+# Build .love first
+zip -9 -r "${GAME_NAME}.love" . -x ".git/*" ".aicoder/*" "tmp/*" "*.apk" "*.love" "build.sh" "*.md"
+
+# Build APK with user-specified names
+./build-love-apk.sh "${GAME_NAME}.love" \
+    --app-name "App Display Name" \
+    --package "com.studio.gamename" \
+    --orientation portrait
+```
+
+**Important:** Include an `icon.svg` file in your project for the app launcher icon. If present, the build script automatically converts it to all required densities (mdpi through xxxhdpi).
+
+**Options:**
+- `--app-name "Name"` - App display name (REQUIRED - ask user)
+- `--package "com.example.gamename"` - Android package name (REQUIRED - ask user)
+- `--orientation portrait|landscape` - Screen orientation
+- `--icon icon.svg` - SVG icon (auto-generates all densities)
+
+## Recommended: build.sh Wrapper
+
+Create a `build.sh` in your project that handles all steps:
+
+```bash
+#!/bin/bash
+set -e
+
+# Copy build script if missing
+[ ! -f build-love-apk.sh ] && cp ./examples/skills/love2d/build-love-apk.sh .
+
+# Get game name from current directory (for .love file)
+GAME_NAME=$(basename "$PWD" | tr '-' '_')
+
+# 1. Create .love file (exclude dev files)
+zip -9 -r "${GAME_NAME}.love" . -x ".git/*" ".aicoder/*" "tmp/*" "*.apk" "*.love" "build.sh" "*.md"
+
+# 2. Build APK (pass your app name and package)
+./build-love-apk.sh "${GAME_NAME}.love" "$@"
+```
+
+This allows a single command for full builds:
+```bash
+./build.sh --app-name "My Game" --package "com.studio.mygame"
+```
 
 # Language Detection
 
@@ -496,7 +584,7 @@ end
 
 # Multi-Input System
 
-Unified handling of keyboard, mouse, joystick, and touch:
+Unified handling of keyboard, mouse, and joystick:
 
 ```lua
 -- Unified input state
@@ -506,16 +594,13 @@ local input = {
     joystick = nil
 }
 
--- Touch tracking with IDs
-local touch_aim_id = nil
-local touch_charge_id = nil
+-- Note: Touch input is handled automatically via mouse callbacks
+-- No touch-specific code needed - mobile taps become mouse events
 
-function love.touchpressed(id, x, y)
-    -- Track which finger does what
-end
-
-function love.mousepressed(x, y, button)
-    -- Same logic for mouse
+function love.mousepressed(x, y, button, istouch, presses)
+    if button == 1 then
+        -- Handle left click/tap (works on both desktop and mobile)
+    end
 end
 
 function love.joystickpressed(joystick, button)
@@ -526,7 +611,7 @@ end
 **Benefits:**
 - Single input system works across all platforms
 - Critical for cross-platform games
-- Touch IDs prevent gesture confusion
+- Touch is handled automatically via mouse callbacks
 
 # Font Caching
 
