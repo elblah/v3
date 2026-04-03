@@ -1,6 +1,6 @@
 ---
 name: love2d
-description: Löve2d Game development essential tips (like how to create screenshots, run in xvfb, etc)
+description: Löve2d game development tips for AI coding
 ---
 
 # Mouse and Touch Events (CRITICAL - READ FIRST)
@@ -49,6 +49,8 @@ end
 
 # Screenshot
 
+**Only if your model supports vision AND the `AICODER_FULL_VISION=1` environment variable is set.** If either condition is false, skip this section. For debugging without vision, use `print()` to output to console instead.
+
 Capture screenshots for visual debugging:
 
 ```lua
@@ -66,44 +68,32 @@ read_image(path="/path/to/save/filename.png")
 
 The `read_image` tool works for both model types.
 
-# X11 Display
+# If Love2d Won't Start (X11 Display)
 
-Love2d needs a display. Use one of these approaches:
-
-## Option 1: With Xvfb (Headless, Screenshot supported, simple run script):
-
-```bash
-xvfb-run bash -c 'love . & x=$!; sleep 5; xdotool key --repeat 25 a; scrot -u; kill $x'
-```
-
-## Option 2: With Xvfb (Headless, Screenshots Supported)
-
-Use this method only if xvfb-run is not ok
-
-```bash
-# Find a free display number
-DISPLAY_NUM=99
-while [ -e /tmp/.X$DISPLAY_NUM-lock ]; do
-    DISPLAY_NUM=$((DISPLAY_NUM + 1))
-done
-
-# Start Xvfb and run Love2d
-Xvfb :$DISPLAY_NUM -screen 0 1024x768x24 &
-xpid=$!
-sleep 5  # Wait for Xvfb startup
-DISPLAY=:$DISPLAY_NUM timeout -k 2s 10s love .
-kill -9 $xpid
-```
-
-## Option 3: just run love .
-
-Important depending on the environment the user might need to run `xhost +`. This usually happens when the aicoder is running inside a sandbox like bwrap.
+Usually just run:
 
 ```bash
 love .
 ```
 
-**Note:** Without X11, `love.graphics.captureScreenshot()` will fail. Use Option 1 if you need screenshot capability.
+If that fails (headless environment, sandbox restrictions), you may need Xvfb:
+
+```bash
+xvfb-run bash -c 'love . & x=$!; sleep 5; xdotool key --repeat 25 a; scrot -u; kill $x'
+```
+
+Or manually:
+
+```bash
+DISPLAY_NUM=99
+while [ -e /tmp/.X$DISPLAY_NUM-lock ]; do DISPLAY_NUM=$((DISPLAY_NUM + 1)); done
+Xvfb :$DISPLAY_NUM -screen 0 1024x768x24 &
+xpid=$!; sleep 5
+DISPLAY=:$DISPLAY_NUM timeout -k 2s 10s love .
+kill -9 $xpid
+```
+
+If you see "cannot open display" errors, ask the user to run `xhost +` from outside the sandbox.
 
 # Mobile-Specific Setup (Android/iOS)
 
