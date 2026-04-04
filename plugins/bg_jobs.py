@@ -260,7 +260,12 @@ def create_plugin(ctx):
     ctx.register_tool(
         name="bg_jobs",
         fn=bg_jobs_tool,
-        description="Manage background long-running processes (web servers, databases, etc.)",
+        description=(
+            "Manage background long-running processes (web servers, databases, etc.). "
+            "IMPORTANT: stdout and stderr are discarded (sent to /dev/null). "
+            "If you need to read the output, redirect it to files in the command, "
+            "e.g.: 'mycommand > output.log 2>&1', then read the file later."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -275,7 +280,11 @@ def create_plugin(ctx):
                 },
                 "command": {
                     "type": "string",
-                    "description": "Bash command to run (required for 'run' action)"
+                    "description": (
+                        "Bash command to run (required for 'run' action). "
+                        "NOTE: stdout/stderr are discarded. To capture output, "
+                        "redirect to files: 'cmd > out.log 2>&1'."
+                    )
                 },
                 "pid": {
                     "type": "integer",
