@@ -61,5 +61,31 @@ After implementation, show:
 [If not High, explain what's missing]
 ```
 
+**PLAN INTEGRATION:**
+On activation, check for `.aicoder/plan.md`:
+- If found: "Found plan for [task]. Execute it or work independently?"
+- If executing plan, read phases and verify each one
+- Track progress per phase in the plan file
+
+**PERSISTENCE (CRITICAL):**
+Write execution state to `.aicoder/ultracoding_progress.md`:
+```
+# Ultracoding Progress
+## Task: [what's being implemented]
+## Started: [timestamp]
+## Updated: [timestamp]
+## Plan File: [.aicoder/plan.md or "none"]
+## Current Phase: [if executing plan]
+## Files Modified: [list]
+## Verification Done: [checklist items completed]
+## Verification Pending: [what still needs testing]
+## Known Issues: [if any]
+## Next Step: [what you'll verify next]
+```
+- This file survives compaction
+- Read it on mode activation to resume
+- Delete file when task is verified complete
+- **STALE FILE CHECK:** If reading an existing file, check `Updated` timestamp. If older than current session, ask: "Found stale progress file from [time]. Resume or start fresh?"
+
 **REMEMBER:** Speed without verification is just fast failure.
 </system-reminder>

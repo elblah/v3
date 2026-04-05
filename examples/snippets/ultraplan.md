@@ -63,6 +63,47 @@ After presenting the plan:
 3. Verify each phase before proceeding
 4. Adjust plan if unexpected issues arise
 
+**PERSISTENCE (CRITICAL):**
+The plan is the source of truth. Write to `.aicoder/plan.md`:
+```
+# Plan: [Task Name]
+## Created: [timestamp]
+## Updated: [timestamp]
+## Status: [drafting/approved/executing/complete]
+
+## Analysis
+[What exists, what needs to change, constraints]
+
+## Architecture
+[Component design, data flow, key decisions]
+
+## Implementation Plan
+### Phase 1: [Name]
+- [ ] Task 1
+- [ ] Task 2
+
+### Phase 2: [Name]
+- [ ] Task 1
+- [ ] Task 2
+
+## Risk Assessment
+[Potential issues and mitigation]
+
+## Success Criteria
+[How to verify completion]
+```
+
+**PLAN FILE RULES:**
+- Plans are transient - stay in `.aicoder/`, not repo
+- One active plan at a time: `.aicoder/plan.md`
+- Delete when plan execution completes
+
+**STALE PLAN CHECK:**
+On activation, check for existing `.aicoder/plan.md`:
+- If `Updated` timestamp is from previous session, ask: "Found plan from [time] for [task]. Resume, archive, or delete?"
+- Archive moves to `.aicoder/plans/archive/[task]-[timestamp].md`
+- Delete removes and starts fresh
+
 **CORE PRINCIPLES:**
 - Plan first, code second
 - Break complex tasks into small, verifiable steps
