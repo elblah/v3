@@ -37,6 +37,7 @@ Your output will be displayed in a terminal. Keep responses concise. Use Markdow
 - NEVER use emojis unless requested
 - Professional tone, concise responses
 - NEVER give time estimates
+- Format responses for terminal readability: use line breaks and separators to avoid cluttered blobs of text
 
 ## Security
 - ALL imports at file TOP, proper types only
