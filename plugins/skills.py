@@ -13,8 +13,6 @@ Commands:
 """
 
 import os
-import re
-from pathlib import Path
 from typing import Optional
 
 from aicoder.core.config import Config
@@ -23,27 +21,45 @@ from aicoder.utils.log import LogUtils
 
 def _parse_yaml_frontmatter(text: str) -> dict:
     """
-    Parse YAML frontmatter from SKILL.md file
-    Format:
-    ---
-    name: skill-name
-    description: A description
-    ---
+    Parse YAML frontmatter from SKILL.md file.
+    Handles folded scalars (>) for multiline descriptions.
     """
     parts = text.split('---', 2)
-
     if len(parts) < 3:
         return {}
 
     frontmatter = {}
-    for line in parts[1].strip().split('\n'):
-        line = line.strip()
-        if not line or line.startswith('#'):
+    yaml_text = parts[1].strip()
+    
+    for line in yaml_text.split('\n'):
+        if line.strip().startswith('#'):
             continue
+        
+        if line.strip() == '---':
+            break
+        
         if ':' in line:
             key, value = line.split(':', 1)
-            frontmatter[key.strip()] = value.strip()
-
+            key = key.strip()
+            value = value.strip()
+            
+            if key == 'description' and value.startswith('>'):
+                # Folded scalar - collect indented lines
+                desc_lines = []
+                # Find index of this line, collect following indented lines
+                yaml_lines = yaml_text.split('\n')
+                line_idx = yaml_lines.index(line)
+                for next_line in yaml_lines[line_idx + 1:]:
+                    if next_line.startswith(' '):
+                        desc_lines.append(next_line.strip())
+                    elif next_line.strip() == '':
+                        continue  # skip blank
+                    else:
+                        break
+                frontmatter[key] = ' '.join(desc_lines)
+            else:
+                frontmatter[key] = value
+    
     return frontmatter
 
 
