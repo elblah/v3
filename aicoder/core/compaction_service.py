@@ -355,9 +355,11 @@ Prioritize:
                 throw_on_error=True,
                 send_tools=False
             ):
-                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                if content:
-                    full_response += content
+                choices = chunk.get("choices") or []
+                if choices:
+                    content = choices[0].get("delta", {}).get("content", "")
+                    if content:
+                        full_response += content
 
             if not self._validate_summary(full_response):
                 LogUtils.warn("[!] Generated summary too short - skipping compaction")
