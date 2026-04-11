@@ -66,9 +66,11 @@ class AIProcessor:
             )
 
             for chunk in response:
-                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
-                if content:
-                    full_response += content
+                choices = chunk.get("choices") or []
+                if choices:
+                    content = choices[0].get("delta", {}).get("content")
+                    if content:
+                        full_response += content
 
             return full_response.strip()
         except Exception as error:

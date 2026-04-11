@@ -2,7 +2,7 @@
 
 SCRIPT_FILE=$(readlink -f $0)
 
-AICODER_MODELS_FILE=/run/user/$UID/tmp/models
+AICODER_MODELS_FILE=/run/user/$UID/tmp/data/models
 AICODER_MODEL_CURRENT_FILE=/run/user/$UID/tmp/model.cur
 
 if [ ! -e "$AICODER_MODELS_FILE" ]; then
@@ -32,3 +32,4 @@ if [ "$ret" != 0 ]; then
     exit 1
 fi
 cat $AICODER_MODEL_CURRENT_FILE
+tmux run-shell -b "rm -f '$AICODER_MODEL_CURRENT_FILE'"
