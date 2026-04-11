@@ -419,9 +419,11 @@ class StreamingClient:
                         }
 
                         if Config.debug():
-                            tool_calls = chunk.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
-                            if tool_calls:
-                                log_debug(f"Tool call chunk: {len(tool_calls)} calls")
+                            choices = chunk.get("choices") or []
+                            if choices:
+                                tool_calls = choices[0].get("delta", {}).get("tool_calls")
+                                if tool_calls:
+                                    log_debug(f"Tool call chunk: {len(tool_calls)} calls")
                             # Log model/provider from first chunk
                             if chunk_data.get("model"):
                                 log_debug(f"*** Model: {chunk_data.get('model')}")
