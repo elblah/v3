@@ -21,6 +21,7 @@ def create_plugin(ctx):
         "buffer": "",
         "thinking_printed": False,
         "just_exited_think": False,
+        "enabled": True,
     }
 
     original_method = None
@@ -141,6 +142,8 @@ def create_plugin(ctx):
 
     def patched_method(self, content):
         """Patched version of print_with_colorization"""
+        if not state["enabled"]:
+            return original_method(self, content)
         filtered = filter_content(content)
         return original_method(self, filtered)
 
@@ -156,11 +159,26 @@ def create_plugin(ctx):
             from aicoder.core.markdown_colorizer import MarkdownColorizer
             MarkdownColorizer.print_with_colorization = original_method
 
+    def handle_toggle_command(args):
+        """Handle /filter_thinking command"""
+        if args.strip() == "on":
+            state["enabled"] = True
+            print(f"{Config.colors['green']}filter_thinking: enabled{Config.colors['reset']}")
+        elif args.strip() == "off":
+            state["enabled"] = False
+            reset_state()
+            print(f"{Config.colors['yellow']}filter_thinking: disabled{Config.colors['reset']}")
+        else:
+            status = f"{Config.colors['green']}enabled" if state["enabled"] else f"{Config.colors['yellow']}disabled"
+            print(f"filter_thinking: {status}{Config.colors['reset']}")
+            print("Usage: /filter_thinking [on|off]")
+
     apply_patch()
 
     ctx.register_hook("on_cleanup", remove_patch)
     ctx.register_hook("after_ai_processing", flush_buffer)
     ctx.register_hook("before_user_prompt", reset_state)
+    ctx.register_command("/filter_thinking", handle_toggle_command, description="Toggle think block filtering (on/off)")
 
     return {
         "name": "filter_thinking",
