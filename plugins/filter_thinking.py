@@ -20,6 +20,7 @@ def create_plugin(ctx):
         "think_count": 0,
         "buffer": "",
         "thinking_printed": False,
+        "just_exited_think": False,
     }
 
     original_method = None
@@ -45,6 +46,13 @@ def create_plugin(ctx):
         """Filter content, removing think blocks."""
         if not content:
             return content
+
+        # Strip leading whitespace from first chunk after exiting think block
+        if state["just_exited_think"]:
+            content = content.lstrip("\n\r\t ")
+            state["just_exited_think"] = False
+            if not content:
+                return ""
 
         state["buffer"] += content
         buf = state["buffer"]
@@ -78,6 +86,10 @@ def create_plugin(ctx):
                         sys.stdout.write("\r\x1b[K")
                         sys.stdout.flush()
                         state["thinking_printed"] = False
+                        state["just_exited_think"] = True
+                        # Skip leading whitespace after think block
+                        while i < len(buf) and buf[i] in "\n\r\t ":
+                            i += 1
                 else:
                     # Found nested opening tag
                     i = open_idx + len(OPEN_TAG)
@@ -125,6 +137,7 @@ def create_plugin(ctx):
         state["think_count"] = 0
         state["buffer"] = ""
         state["thinking_printed"] = False
+        state["just_exited_think"] = False
 
     def patched_method(self, content):
         """Patched version of print_with_colorization"""
