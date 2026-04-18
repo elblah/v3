@@ -13,6 +13,7 @@ REMOTE_SKILLS=(
     "caveman|JuliusBrussee/caveman|skills/caveman"
     "caveman-commit|JuliusBrussee/caveman|skills/caveman-commit"
     "caveman-review|JuliusBrussee/caveman|skills/caveman-review"
+    "karpathy-guidelines|forrestchang/andrej-karpathy-skills|skills/karpathy-guidelines"
 )
 
 # Build fzf list
