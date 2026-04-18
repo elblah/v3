@@ -164,7 +164,8 @@ def create_plugin(ctx):
                 return
             
             alias = args[1]
-            replacement = " ".join(args[2:])
+            # Strip quotes from replacement (user may quote it like "/yolo on")
+            replacement = " ".join(args[2:]).strip('"').strip("'")
             
             # Normalize alias (ensure / prefix)
             if not alias.startswith("/"):
