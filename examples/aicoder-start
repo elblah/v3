@@ -144,8 +144,7 @@ else
         echo "Allowing PIDs..."
         OPTS+=" --proc /proc "
     else
-        # OPTS+=" --unshare-pid "
-        OPTS+=" "
+        OPTS+=" --unshare-pid "
     fi
 
     if [[ "$ALLOW_TMP" != 1 ]]; then
