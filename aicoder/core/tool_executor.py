@@ -110,7 +110,7 @@ class ToolExecutor:
     def _handle_tool_not_found(self, tool_name: str, tool_call_id: str) -> Dict[str, Any]:
         """Handle case where tool is not found"""
         LogUtils.error(f"[x] Tool not found: {tool_name}")
-        self.message_history.add_system_message(
+        self.message_history.add_user_message(
             f"Error: Tool '{tool_name}' does not exist."
         )
         return {
