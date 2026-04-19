@@ -118,27 +118,15 @@ end
 
 **Note:** This has been tested on Android. It likely applies to iOS as well, but hasn't been verified.
 
-## Building .love File
+# Development Workflow (IMPORTANT)
 
-A `.love` file is a renamed ZIP archive containing your game source code.
+**Development phase:**
+- Test with `love .` command
+- NEVER build .love files during development - it's wasted time
 
-**Use the actual game name** - not generic "game.love". Derive the name from your project:
-
-```bash
-# Get game name from current directory (kebab-case to snake-case conversion)
-GAME_NAME=$(basename "$PWD" | tr '-' '_')
-
-# Create .love file with specific name
-zip -9 -r "${GAME_NAME}.love" . \
-  -x ".git/*" ".aicoder/*" "tmp/*" "node_modules/*" \
-     "*.apk" "*.love" "build.sh" "*.md" "icon.svg"
-```
-
-**Important:** The entry point must be `main.lua` at the root of the archive.
-
-## Building APK for Android
-
-Use `build-love-apk.sh` to create a standalone Android APK. **If it doesn't exist in the project directory, copy it from the skill directory first:**
+**APK build phase (ONLY when user asks):**
+- Build .love file + APK as final step
+- Ask user for app name and package
 
 ```bash
 # Copy build script if missing
@@ -196,7 +184,7 @@ zip -9 -r "${GAME_NAME}.love" . -x ".git/*" ".aicoder/*" "tmp/*" "*.apk" "*.love
 ./build-love-apk.sh "${GAME_NAME}.love" "$@"
 ```
 
-This allows a single command for full builds:
+This wrapper script is only needed when user asks for Android build:
 ```bash
 ./build.sh --app-name "My Game" --package "com.studio.mygame"
 ```
