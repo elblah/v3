@@ -33,6 +33,7 @@ choices=$(printf "%s\n%s" "$local_skills" "$remote_list" | fzf -m -e)
 install_local() {
     local name="$1"
     local src="$AICODER_DIR/examples/skills/$name"
+    rm -rf "$SKILLS_DIR/$name"
     [ -d "$src" ] && cp -vR "$src" "$SKILLS_DIR/$name"
 }
 
@@ -44,6 +45,8 @@ install_remote() {
     local path="${rest#*|}"
 
     echo -e "\e[32mInstalling remote: $name from $repo\e[0m"
+
+    rm -rf "$SKILLS_DIR/$name"
 
     local tmpdir
     tmpdir=$(mktemp -d)

@@ -32,4 +32,7 @@ if [ "$ret" != 0 ]; then
     exit 1
 fi
 cat $AICODER_MODEL_CURRENT_FILE
-tmux run-shell -b "rm -f '$AICODER_MODEL_CURRENT_FILE'"
+(
+    sleep 1
+    tmux run-shell -b "rm -f '$AICODER_MODEL_CURRENT_FILE'"
+) &

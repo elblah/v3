@@ -1,67 +1,25 @@
 #!/bin/bash
-
-# Basic Subagent Launcher - Runs 4 specialized agents in parallel
-# Each agent analyzes different aspects of the codebase
-
-# Check for AICODER_CMD
-if [ -z "$AICODER_CMD" ]; then
-    echo "Error: AICODER_CMD environment variable is not set."
-    echo "This should be provided by AI Coder wrapper script."
-    exit 1
-fi
-
-
+# Basic 4-agent parallel launcher
 set -e
-
-# Export global settings for all subagents
 export YOLO_MODE=1
 export MINI_SANDBOX=0
-export MAX_RETRIES=10
 
-# Create temp directory for outputs
+if [ -z "$AICODER_CMD" ]; then
+  echo "Error: AICODER_CMD not set (should be provided by aicoder wrapper)"
+  exit 1
+fi
+
 TEMP_DIR="/tmp/subagent_basic_$(date +%s)"
 mkdir -p "$TEMP_DIR"
 
-echo "🚀 Launching 4 subagents for basic analysis..."
+echo "Launching 4 agents..."
 
-# Subagent 1: File Explorer (using default system prompt)
-echo "Analyze this codebase and tell me what it is in 2-3 sentences." | $AICODER_CMD > "$TEMP_DIR/file_explorer.txt" &
-PID1=$!
+echo "What is this codebase? Be brief." | $AICODER_CMD > "$TEMP_DIR/explorer.txt" &
+echo "List top 5 features from README.md" | $AICODER_CMD > "$TEMP_DIR/features.txt" &
+echo "Analyze main modules and their purpose" | $AICODER_CMD > "$TEMP_DIR/structure.txt" &
+echo "Describe the plugin system" | $AICODER_CMD > "$TEMP_DIR/plugins.txt" &
 
-# Subagent 2: Documentation Analyzer (using default system prompt)  
-echo "Read the README.md file and list the top 5 key features in bullet points." | $AICODER_CMD > "$TEMP_DIR/doc_analysis.txt" &
-PID2=$!
+wait
 
-# Subagent 3: Code Structure Analyzer (custom prompt for demo)
-echo "Analyze the main.py file and the aicoder/core/ directory structure. What are the main components?" | \
-AICODER_SYSTEM_PROMPT="You are a CODE STRUCTURE ANALYZER. Your only job is to analyze Python code structure and identify architectural patterns. Be brief and technical." \
-$AICODER_CMD > "$TEMP_DIR/code_structure.txt" &
-PID3=$!
-
-# Subagent 4: Plugin System Analyzer (using default system prompt)
-echo "Analyze the plugins/ directory and the plugin system. How do plugins work in this codebase?" | $AICODER_CMD > "$TEMP_DIR/plugin_analysis.txt" &
-PID4=$!
-
-echo "📡 All subagents launched (PIDs: $PID1, $PID2, $PID3, $PID4)"
-echo "⏳ Waiting for all subagents to complete..."
-
-# Wait for all subagents to complete
-wait $PID1 $PID2 $PID3 $PID4
-
-echo "✅ All subagents completed!"
-echo ""
-echo "📊 Results:"
-echo "  - File Explorer: $TEMP_DIR/file_explorer.txt"
-echo "  - Documentation: $TEMP_DIR/doc_analysis.txt" 
-echo "  - Code Structure: $TEMP_DIR/code_structure.txt"
-echo "  - Plugin Analysis: $TEMP_DIR/plugin_analysis.txt"
-echo ""
-echo "🔍 Sample results:"
-echo "--- File Explorer ---"
-head -5 "$TEMP_DIR/file_explorer.txt"
-echo ""
-echo "--- Documentation ---"
-head -5 "$TEMP_DIR/doc_analysis.txt"
-
-# Return temp directory path for caller
-echo "$TEMP_DIR"
+echo "Done. Results in $TEMP_DIR"
+cat "$TEMP_DIR/explorer.txt"
