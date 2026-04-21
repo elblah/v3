@@ -1,649 +1,164 @@
 ---
 name: subagents
-description: Multi-agent parallel execution system for AI Coder that launches specialized subagents simultaneously to perform complex analyses, documentation generation, code reviews, and research tasks. Use when user requests parallel processing of multiple perspectives, comprehensive analysis from different expert viewpoints, or time-consuming tasks that can be parallelized.
-license: Complete terms in LICENSE.txt
+description: Launch multiple AI Coder agents in parallel for multi-perspective analysis, code review, research, and documentation. Use when user requests parallel processing or multiple expert viewpoints.
 ---
 
-# Subagents Parallel Execution System
+# Subagents: Parallel AI Execution
 
-This skill enables AI Coder to launch multiple specialized AI agents in parallel, each with specific tasks, system prompts, and output files. The main agent then synthesizes results from all subagents to provide comprehensive analysis.
+Launch multiple AI Coder agents simultaneously, each with specialized focus. Main agent synthesizes results when all complete.
 
-## When to Use This Skill
-
-Use this skill when user requests:
-- **Multi-perspective analysis**: Security, performance, code quality reviews simultaneously
-- **Parallel documentation**: API docs, architecture docs, setup docs at once  
-- **Comprehensive research**: Multiple aspects of a topic researched in parallel
-- **Time-consuming tasks**: Large codebases or multiple files analyzed simultaneously
-- **Specialized expertise**: Different agents with domain-specific system prompts
-- **Competitive analysis**: Multiple approaches to same problem compared
-- **Hierarchical workflows**: Initial data collection followed by analysis phases
-
-## Core Concepts
-
-### Agent Specialization
-Each subagent can have:
-- Custom system prompt via `AICODER_SYSTEM_PROMPT` environment variable
-- **Limited tool access** via `TOOLS_ALLOW` environment variable (e.g., `TOOLS_ALLOW=read_file,grep` for read-only analysis)
-- Specific task instructions
-- Isolated output file for results
-- Individual timeout and retry settings
-- **Optional**: Persistent session via `SESSION_FILE` (see Session Persistence below)
-
-### Parallel Execution
-- Launch multiple processes in background using `&`
-- Capture process IDs for coordination
-- Use `wait` for synchronization
-- Handle failures and partial results gracefully
-
-### ⚠️ CRITICAL: Orchestration Script Placement
-
-**IMPORTANT**: When AI creates subagent orchestration scripts, they must be **temporary objects** - never create scripts in the project root directory.
-
-**Why this matters:**
-
-Creating orchestration scripts in the project root creates:
-- **Clutter**: Random `.sh` files polluting the project
-- **Git pollution**: Scripts get accidentally committed
-- **Conflicts**: Multiple scripts with the same name overwrite each other
-- **Maintenance burden**: Scripts must be manually cleaned up
-
-**✅ CORRECT practice - Create temporary scripts:**
+## Quick Example
 
 ```bash
-# Create temp directory for orchestration script
-SCRIPT_DIR="/tmp/aicoder_subagents_$(date +%s%N)"
-mkdir -p "$SCRIPT_DIR"
-
-# Write orchestration script to temp location
-SCRIPT_FILE="$SCRIPT_DIR/run_subagents.sh"
-cat > "$SCRIPT_FILE" << 'SCRIPT_EOF'
-#!/bin/bash
-# Subagent orchestration script
-# This is a temporary script that will be deleted after execution
-
 export YOLO_MODE=1
 export MINI_SANDBOX=0
-export MAX_RETRIES=10
 
-# Phase 1: Launch subagents
-echo "Task 1" | $AICODER_CMD > /tmp/output1.txt &
-PID1=$!
-echo "Task 2" | $AICODER_CMD > /tmp/output2.txt &
-PID2=$!
-wait $PID1 $PID2
-SCRIPT_EOF
+# Launch 3 agents in parallel (env vars AFTER pipe!)
+echo "Review code for security issues" | \
+AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITER. Be brief, list specific findings." \
+$AICODER_CMD > /tmp/security.txt &
 
-chmod +x "$SCRIPT_FILE"
+echo "Review code for performance issues" | \
+AICODER_SYSTEM_PROMPT="You are a PERFORMANCE ANALYZER. Be brief, list specific findings." \
+$AICODER_CMD > /tmp/performance.txt &
 
-# Execute the temporary script
-"$SCRIPT_FILE"
+echo "Review code for maintainability" | \
+AICODER_SYSTEM_PROMPT="You are a CODE QUALITY REVIEWER. Be brief, list specific findings." \
+$AICODER_CMD > /tmp/quality.txt &
 
-# Clean up after execution
-rm -rf "$SCRIPT_DIR"
-echo "✅ Temporary orchestration script cleaned up"
+wait # Sync all agents
+
+# Synthesize results
+cat /tmp/security.txt /tmp/performance.txt /tmp/quality.txt
 ```
 
-**Alternative: Use `.aicoder/tmp` if `/tmp` is not writable:**
+## Critical: Env Var Placement
 
-```bash
-# Check if /tmp is writable
-if [ -w "/tmp" ]; then
-    SCRIPT_DIR="/tmp/aicoder_subagents_$(date +%s%N)"
-else
-    # Fall back to project-specific temp directory
-    SCRIPT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.aicoder/tmp/subagents_$(date +%s%N)"
-    mkdir -p "$SCRIPT_DIR"
-fi
+```
+✅ echo "task" | VAR=value $AICODER_CMD   # var affects aicoder
+❌ VAR=value echo "task" | $AICODER_CMD   # var affects echo only!
 ```
 
-**Best practices for AI when creating orchestration scripts:**
-
-1. **Always use temp directories**: Never write scripts to project root
-2. **Use unique names**: Include timestamp/counter to avoid collisions
-3. **Clean up automatically**: Delete scripts after execution
-4. **Inform user**: Show where the script is created and that it will be cleaned up
-5. **Use trap for cleanup**: Ensure cleanup even if script fails
-
-```bash
-# Example with trap for guaranteed cleanup
-SCRIPT_DIR="/tmp/aicoder_subagents_$(date +%s%N)"
-mkdir -p "$SCRIPT_DIR"
-SCRIPT_FILE="$SCRIPT_DIR/orchestrate.sh"
-
-# Ensure cleanup on exit (normal or error)
-trap 'rm -rf "$SCRIPT_DIR"' EXIT
-
-# Create and run script...
-```
-
-**❌ NEVER do this:**
-```bash
-# WRONG: Creates clutter in project root!
-cat > run_subagents.sh << EOF
-#!/bin/bash
-echo "This script pollutes your project!"
-EOF
-chmod +x run_subagents.sh
-./run_subagents.sh
-# Now run_subagents.sh is left in your project root forever
-```
-
-### ⚠️ CRITICAL: Environment Variable Placement
-
-**IMPORTANT**: Environment variables (`AICODER_SYSTEM_PROMPT`, `SESSION_FILE`) must be placed **AFTER** the pipe (`|`) to affect the `$AICODER_CMD` process.
-
-**Why this matters:**
-
-Environment variables set BEFORE the pipe apply only to the `echo` command, not to the `$AICODER_CMD` process that receives the piped input.
-
-**❌ INCORRECT pattern:**
-```bash
-# Variables affect ONLY the echo process, NOT $AICODER_CMD
-AICODER_SYSTEM_PROMPT="You are an expert" \
-echo "Analyze this" | $AICODER_CMD > output.txt &
-```
-
-**✅ CORRECT pattern:**
-```bash
-# Variables affect $AICODER_CMD (the intended target)
-echo "Analyze this" | \
-AICODER_SYSTEM_PROMPT="You are an expert" \
-$AICODER_CMD > output.txt &
-```
-
-**Alternative using export:**
-If you export the variable before launching, it works for both sides of the pipe:
+Alternative: export before launching (affects both sides of pipe):
 ```bash
 export AICODER_SYSTEM_PROMPT="You are an expert"
 echo "Analyze this" | $AICODER_CMD > output.txt &
 ```
 
-**Best practice:** For subagents, set environment variables immediately before `$AICODER_CMD` to ensure each agent gets its specific settings without polluting the global environment.
+## Orchestration Scripts
 
-### Result Synthesis
-- Main agent reads all result files
-- Combines, compares, or ranks results
-- Provides comprehensive summary
-- Handles missing or failed agents appropriately
-
-## Usage Patterns
-
-### Pattern 1: Multi-Expert Code Review
-Launch specialized reviewers simultaneously:
+Create scripts in `/tmp`, never in project root:
 
 ```bash
-# Security Reviewer
-echo "Review the codebase for security issues" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY REVIEWER. Focus only on security vulnerabilities, authentication issues, input validation, and potential attack vectors." \
-$AICODER_CMD > security_review.txt &
+SCRIPT_DIR="/tmp/subagent_$(date +%s%N)"
+mkdir -p "$SCRIPT_DIR"
 
-# Performance Reviewer
-echo "Review the codebase for performance issues" | \
-AICODER_SYSTEM_PROMPT="You are a PERFORMANCE REVIEWER. Focus only on performance issues, efficiency, resource usage, and scalability concerns." \
-$AICODER_CMD > performance_review.txt &
+cat > "$SCRIPT_DIR/run.sh" << 'EOF'
+#!/bin/bash
+set -e
+export YOLO_MODE=1
+export MINI_SANDBOX=0
 
-# Code Quality Reviewer
-echo "Review the codebase for code quality issues" | \
-AICODER_SYSTEM_PROMPT="You are a CODE QUALITY REVIEWER. Focus only on maintainability, design patterns, and best practices." \
-$AICODER_CMD > quality_review.txt &
-
-wait  # Wait for all reviews to complete
-
-```
-
-### Pattern 2: Read-Only Analysis Subagents
-Restrict subagents to read-only tools for safe analysis:
-
-```bash
-# Analysis subagent with read-only access
-echo "Analyze the codebase for patterns" | \
-TOOLS_ALLOW="read_file,grep,list_directory" \
-$AICODER_CMD > pattern_analysis.txt &
-
-# Review subagent with read-only access
-echo "Review code quality and structure" | \
-TOOLS_ALLOW="read_file,grep" \
-$AICODER_CMD > quality_review.txt &
-
-wait
-```
-
-**Use cases for restricted tool access:**
-- **Security analysis**: Read-only access prevents accidental code modifications
-- **Code review**: Reviewers should not be making changes
-- **Documentation generation**: Read tools are sufficient for reading code
-- **Research tasks**: Only need to inspect files, not modify them
-
-**Available tools to allow:**
-- `read_file` - Read file contents
-- `write_file` - Write/create files
-- `edit_file` - Edit files with exact text replacement
-- `run_shell_command` - Execute shell commands
-- `grep` - Search text in files
-- `list_directory` - List files and directories
-
-### Pattern 3: Parallel Documentation Generation
-Generate different documentation types simultaneously:
-
-```bash
-# API Documentation (read-only)
-echo "Extract and document all APIs" | \
-TOOLS_ALLOW="read_file,grep,list_directory" \
-$AICODER_CMD > api_docs.txt &
-
-# Architecture Documentation (read-only)
-echo "Document architecture patterns and design" | \
-TOOLS_ALLOW="read_file,grep" \
-$AICODER_CMD > arch_docs.txt &
-
-# Setup Documentation (read-only)
-echo "Document installation and configuration" | \
-TOOLS_ALLOW="read_file,grep" \
-$AICODER_CMD > setup_docs.txt &
-
-wait  # Wait for all documentation to complete
-```
-
-### Pattern 4: Research and Synthesis
-Multiple research angles with final synthesis:
-
-```bash
-# Phase 1: Parallel research
-echo "Research technical aspects of X" | $AICODER_CMD > technical_research.txt &
-echo "Research business aspects of X" | $AICODER_CMD > business_research.txt &
-echo "Research user experience aspects of X" | $AICODER_CMD > ux_research.txt &
-wait
-
-# Phase 2: Synthesize all research
-cat > synthesis_input.txt << EOF
-You are a SYNTHESIS EXPERT. Combine insights from three research perspectives:
-
-=== TECHNICAL RESEARCH ===
-$(cat technical_research.txt)
-
-=== BUSINESS RESEARCH ===
-$(cat business_research.txt)
-
-=== UX RESEARCH ===
-$(cat ux_research.txt)
-
-Create comprehensive synthesis covering all aspects.
-EOF
-
-cat synthesis_input.txt | $AICODER_CMD > final_synthesis.txt
-
-```
-
-## Configuration Requirements
-
-### Essential Environment Variables
-Always set these for reliable subagent execution:
-
-```bash
-export YOLO_MODE=1        # Auto-approve all tool actions
-export MINI_SANDBOX=0     # Full file access for agents
-export MAX_RETRIES=10     # Handle API issues gracefully
-
-```
-
-**Required**: `AICODER_CMD` must be set by AI Coder wrapper script. Never set this in subagent scripts - it is provided externally.
-
-Check if `AICODER_CMD` is set before launching subagents:
-```bash
 if [ -z "$AICODER_CMD" ]; then
-    echo "Error: AICODER_CMD environment variable is not set."
-    echo "This should be provided by AI Coder wrapper script."
-    exit 1
+  echo "Error: AICODER_CMD not set (should be provided by aicoder wrapper)"
+  exit 1
 fi
 
+echo "Analyze X" | $AICODER_CMD > /tmp/x.txt &
+echo "Analyze Y" | $AICODER_CMD > /tmp/y.txt &
+wait
+EOF
+
+chmod +x "$SCRIPT_DIR/run.sh"
+"$SCRIPT_DIR/run.sh"
+rm -rf "$SCRIPT_DIR" # cleanup
 ```
-
-Use `$AICODER_CMD` when launching subagents:
-```bash
-$AICODER_CMD ...
-
-```
-### Optional Performance Tuning
-```bash
-export CONTEXT_SIZE=32000          # Smaller context for faster processing
-export TOTAL_TIMEOUT=120           # Longer timeout for complex tasks
-
-```
-
-## Important Usage Guidelines
-
-### When Launching Subagents
-ALWAYS inform the user about:
-- Number of subagents being launched
-- Name and purpose of each agent
-- Estimated completion time
-- Where results will be stored
-
-**Example notification:**
-> "Launching 4 subagents in parallel:
-> - Security Agent: Analyzing vulnerabilities and attack vectors
-> - Performance Agent: Identifying bottlenecks and optimization opportunities  
-> - Documentation Agent: Generating API and architecture docs
-> - Testing Agent: Reviewing test coverage and strategies
-> 
-> This will take approximately 2-3 minutes. Results will be saved to /tmp/subagent_analysis/"
-
-### Timeout Management
-**IMPORTANT**: Use generous timeouts when running subagent scripts via `run_shell_command`:
-
-```bash
-# Recommended timeout settings
-run_shell_command "./launch_subagents.sh" timeout=300  # 5 minutes for basic parallel tasks
-run_shell_command "./subagent_orchestrator.sh" timeout=600  # 10 minutes for complex workflows
-run_shell_command "./comprehensive_analysis.sh" timeout=900  # 15 minutes for large codebases
-
-```
-
-**Timeout guidelines:**
-- **2-4 agents**: 180-300 seconds (3-5 minutes)
-- **5-10 agents**: 300-600 seconds (5-10 minutes)  
-- **Complex workflows**: 600-900 seconds (10-15 minutes)
-- **Large codebases**: 900-1800 seconds (15-30 minutes)
-
-### Error Handling
-Always handle scenarios where:
-- Some agents fail while others succeed
-- API rate limits cause intermittent failures
-- Memory constraints limit parallel execution
-- Output files are corrupted or incomplete
-
-**Recovery strategy:**
-1. Check which output files were created and contain valid results
-2. Re-launch only failed agents if needed
-3. Provide partial results with clear indication of what's missing
-4. Offer to retry full execution if user desires
 
 ## Available Scripts
 
-> **⚠️ IMPORTANT**: The scripts listed below are **examples and suggestions only**. They demonstrate the subagent patterns and workflows but are not mandatory. Feel free to modify them or create your own custom scripts based on your specific needs. The key is understanding the patterns (parallel execution, environment variable placement, session persistence) rather than copying these scripts exactly.
+| Script | Purpose |
+|--------|---------|
+| `scripts/launch_basic.sh` | 4-agent basic analysis |
+| `scripts/code_review.sh` | Security/performance/quality review |
+| `scripts/documentation_generator.sh` | API, arch, setup docs |
+| `scripts/parallel_runner.sh` | Dynamic N-agent launcher |
+| `scripts/comprehensive_analysis.sh` | Complex multi-phase workflow |
 
-### Core Scripts
-- `scripts/launch_subagents.sh` - Basic 4-agent parallel launcher
-- `scripts/subagent_orchestrator.sh` - Advanced 5-agent + synthesis workflow  
-- `scripts/subagent_runner.sh` - Dynamic utility for arbitrary parallel tasks
+## Session Persistence (Optional)
 
-### Reference Material
-- `references/README.md` - Complete technical documentation
-- `references/IMPLEMENTATION_GUIDE.md` - Technical deep dive and internals
-- `references/RECIPES.md` - 12+ ready-to-use patterns and workflows
-- `references/TROUBLESHOOTING.md` - Debugging, recovery, and prevention
-
-## Common Workflows
-
-> **⚠️ REMINDER**: When AI creates orchestration scripts for these workflows, they must be saved in temporary directories (see "Orchestration Script Placement" section above) - never in project root.
-
-### Quick Code Review
-```bash
-# 3-perspective review (security, performance, quality)
-echo "Perform comprehensive code review with security, performance, and quality perspectives" | 
-cat > /tmp/review_request.txt << EOF
-Launch parallel code review:
-- Security agent: Check for vulnerabilities and security issues
-- Performance agent: Identify bottlenecks and optimization opportunities
-- Code quality agent: Review maintainability and best practices
-EOF
-
-./scripts/subagent_runner.sh "Security-focused code review" "Performance-focused code review" "Code quality and maintainability review"
-
-```
-
-### Documentation Generation
-```bash
-# Complete documentation package
-echo "Generate comprehensive documentation package" | 
-./scripts/subagent_orchestrator.sh
-
-```
-
-### Security Audit
-```bash
-# Specialized security analysis
-export AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Focus exclusively on security vulnerabilities, authentication flaws, input validation issues, and potential attack vectors. Provide specific, actionable findings."
-
-echo "Conduct comprehensive security audit of this codebase" | 
-./scripts/subagent_runner.sh "Authentication and authorization review" "Input validation and injection vulnerabilities" "File system and permission security" "API security analysis"
-
-```
-
-## Best Practices
-
-### Resource Management
-- Limit concurrent agents to available memory (200MB per agent estimate)
-- Stagger agent launches by 1-2 seconds to avoid API rate limits
-- Use appropriate timeouts based on task complexity
-
-### Quality Assurance
-- Validate each output file before synthesis
-- Check for "AI:" response markers indicating successful completion
-- Handle empty or corrupted files gracefully
-
-### User Experience
-- Always provide clear progress indicators
-- Show agent names and purposes
-- Give realistic time estimates
-- Explain what each agent is doing
-
-## Advanced Features
-
-### Hierarchical Agent Execution
-Multi-phase workflows where later agents depend on earlier results:
+For multi-phase workflows where later phases need earlier context:
 
 ```bash
-# Phase 1: Data collection
-echo "Extract all API endpoints" | $AICODER_CMD > endpoints.txt &
-echo "List all database queries" | $AICODER_CMD > queries.txt &
+# Phase 1: Save session
+echo "Task 1" | SESSION_FILE=/tmp/session.jsonl $AICODER_CMD > /tmp/phase1.txt &
+
+# Phase 2: Load session, continue
+echo "Task 2" | SESSION_FILE=/tmp/session.jsonl $AICODER_CMD > /tmp/phase2.txt &
 wait
-
-# Phase 2: Analysis of collected data
-echo "Analyze these endpoints for security: $(cat endpoints.txt)" | $AICODER_CMD > endpoint_security.txt &
-echo "Analyze these queries for performance: $(cat queries.txt)" | $AICODER_CMD > query_performance.txt &
-wait
-
-# Phase 3: Final synthesis
-echo "Create security report from: endpoint_security.txt + query_performance.txt" | $AICODER_CMD > final_security_report.txt
-
 ```
 
-### Competitive Analysis
-Multiple approaches to same problem for comparison:
+Requires `session-autosaver` plugin (auto-activates when SESSION_FILE is set).
+
+## Hierarchical Workflows
+
+```
+Phase 1: Parallel data collection
+→ echo "Extract X" | $AICODER_CMD > /tmp/x.txt &
+→ echo "Extract Y" | $AICODER_CMD > /tmp/y.txt &
+→ wait
+
+Phase 2: Parallel analysis on collected data
+→ echo "Analyze: $(cat /tmp/x.txt)" | $AICODER_CMD > /tmp/analyze_x.txt &
+→ echo "Analyze: $(cat /tmp/y.txt)" | $AICODER_CMD > /tmp/analyze_y.txt &
+→ wait
+
+Phase 3: Synthesis
+→ echo "Create report from: $(cat /tmp/analyze_x.txt /tmp/analyze_y.txt)" | $AICODER_CMD > /tmp/report.txt
+```
+
+## Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `AICODER_CMD` | Path to aicoder binary (**provided by wrapper, do NOT set**) | - |
+| `YOLO_MODE=1` | Auto-approve all actions | - |
+| `MINI_SANDBOX=0` | Full file access | 1 |
+| `MAX_RETRIES=10` | API retry attempts | 3 |
+| `AICODER_SYSTEM_PROMPT` | Custom system prompt per agent | - |
+| `SESSION_FILE` | Persist session (requires plugin) | - |
+| `TOOLS_ALLOW` | Comma-separated tool whitelist | all |
+| `CONTEXT_SIZE` | Smaller context for faster processing | default |
+| `TOTAL_TIMEOUT` | Total timeout in seconds | default |
+
+## TOOLS_ALLOW
+
+Restrict subagent tool access for safe analysis:
 
 ```bash
-# Different architectures for same task
-echo "Design authentication system" | \
-AICODER_SYSTEM_PROMPT="You are an ENTERPRISE ARCHITECT. Focus on scalability, maintainability, and enterprise patterns." \
-$AICODER_CMD > enterprise_design.txt &
+# Read-only analysis (safe, no modifications)
+echo "Analyze patterns" | TOOLS_ALLOW="read_file,grep,list_directory" $AICODER_CMD > /tmp/analysis.txt &
 
-echo "Design authentication system" | \
-AICODER_SYSTEM_PROMPT="You are a STARTUP ARCHITECT. Focus on speed, simplicity, and rapid development." \
-$AICODER_CMD > startup_design.txt &
-
-echo "Design authentication system" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY ARCHITECT. Focus on zero-trust, encryption, and defense in depth." \
-$AICODER_CMD > security_design.txt &
-
-wait
-
-# Compare and recommend
-echo "Compare these three authentication designs and recommend best approach: enterprise_design.txt + startup_design.txt + security_design.txt" | $AICODER_CMD > design_comparison.txt
-
+# Review only (no write access)
+echo "Review code quality" | TOOLS_ALLOW="read_file,grep" $AICODER_CMD > /tmp/review.txt &
 ```
 
-## Session Persistence (Advanced Feature)
+Available tools: `read_file`, `write_file`, `edit_file`, `run_shell_command`, `grep`, `list_directory`
 
-### Overview
+## Timeout Guidelines
 
-The `session-autosaver` plugin enables subagents to maintain persistent conversation history via the `SESSION_FILE` environment variable. This is an **optional advanced feature** - use it only when it provides clear value.
+| Agents | Complexity | Timeout |
+|--------|------------|---------|
+| 2-4 | Simple | 180-300s |
+| 5-10 | Medium | 300-600s |
+| Complex | Multi-phase | 600-900s |
 
-### Session Autosaver Plugin
+## Error Handling
 
-**Location**: `plugins/session-autosaver.py`
-
-**What it does**:
-- Automatically loads and saves session to `SESSION_FILE` in JSONL format
-- Auto-loads existing session on startup
-- Auto-appends messages (user, assistant, tool) during execution
-- Supports both `.json` and `.jsonl` formats (detected from file extension)
-
-**Activation**: The plugin activates automatically when `SESSION_FILE` is set. No other configuration needed.
-
-**⚠️ AI Requirements**: When using SESSION_FILE, the AI must inform the user:
-> "⚠️ Using session persistence feature. This requires the `session-autosaver` plugin (auto-activates when SESSION_FILE is set)."
-
-### Minimal Session Persistence Example
-
-This is the simplest possible test of session persistence - setting a value in one call and recalling it in another:
-
-```bash
-#!/bin/bash
-# Minimal session persistence test
-
-export YOLO_MODE=1
-export MINI_SANDBOX=0
-export MAX_RETRIES=10
-export SESSION_FILE="/tmp/simple_test.jsonl"
-
-if [ -z "$AICODER_CMD" ]; then
-    echo "Error: AICODER_CMD not set"
-    exit 1
-fi
-
-# Phase 1: Store information
-echo "My name is Alex. Remember this." | \
-SESSION_FILE="$SESSION_FILE" \
-$AICODER_CMD
-
-# Phase 2: Recall information
-echo "What is my name?" | \
-SESSION_FILE="$SESSION_FILE" \
-$AICODER_CMD
-
-# Verify session file exists
-cat "$SESSION_FILE"
-```
-
-**Expected behavior:**
-- Phase 1: AI responds and creates `simple_test.jsonl` with the conversation
-- Phase 2: AI loads the session and correctly recalls "Alex"
-- Both phases use the same session file, so memory persists
-
-**Note the critical placement:** `SESSION_FILE` is set AFTER the pipe, before `$AICODER_CMD`.
-
-### When to Use Session Persistence
-
-**✅ Use when**:
-- Multi-phase workflows where later phases build on earlier work
-- Agent will be called multiple times with related tasks
-- Need to resume analysis later or debug agent behavior
-- Progressive deep-dive analysis (initial scan → detailed analysis → final report)
-
-**❌ Don't use when**:
-- Single-shot, one-time analysis
-- Independent parallel tasks that don't share context
-- Simple workflows where session overhead isn't justified
-- Performance-critical scenarios where extra I/O is problematic
-
-### Usage Pattern
-
-```bash
-# Phase 1: Initial analysis - session will be saved
-echo "Phase 1: Conduct broad security scan" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track findings systematically." \
-SESSION_FILE="/tmp/security_session.jsonl" \
-$AICODER_CMD > phase1.txt &
-PID1=$!
-wait $PID1
-
-# Phase 2: Deep dive - session loaded, can reference Phase 1 findings
-echo "Phase 2: Deep dive analysis based on Phase 1 findings" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track findings systematically." \
-SESSION_FILE="/tmp/security_session.jsonl" \
-$AICODER_CMD > phase2.txt &
-PID2=$!
-wait $PID2
-
-```
-
-### Session File Format
-
-**JSONL format** (recommended - one JSON per line):
-```jsonl
-{"role": "system", "content": "You are a SECURITY AUDITOR..."}
-{"role": "user", "content": "Phase 1: Conduct broad security scan"}
-{"role": "assistant", "content": "Found 3 vulnerabilities..."}
-{"role": "user", "content": "Phase 2: Deep dive analysis..."}
-
-```
-
-**JSON format** (backward compatible - array):
-```json
-[
-  {"role": "system", "content": "You are a SECURITY AUDITOR..."},
-  {"role": "user", "content": "Phase 1: Conduct broad security scan"}
-]
-
-```
-
-Format is automatically detected from file extension (`.jsonl` vs `.json`).
-
-### AI Decision Flow
-
-
-```
-Is the agent being called multiple times with related tasks?
-  ├─ YES → Will later calls need context from earlier calls?
-  │         ├─ YES → Use SESSION_FILE
-  │         └─ NO  → Don't use SESSION_FILE
-  └─ NO  → Don't use SESSION_FILE
-
-```
-
-### Example: Multi-Phase Security Audit
-
-```bash
-#!/bin/bash
-export YOLO_MODE=1
-export MINI_SANDBOX=0
-export MAX_RETRIES=10
-
-AUDIT_DIR="/tmp/security_audit_$(date +%s)"
-mkdir -p "$AUDIT_DIR"
-
-# Phase 1: Initial scan with persistent session
-echo "Conduct initial security scan focusing on authentication and authorization" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track all findings systematically." \
-SESSION_FILE="$AUDIT_DIR/audit_session.jsonl" \
-$AICODER_CMD > "$AUDIT_DIR/phase1_initial.txt" &
-PID1=$!
-wait $PID1
-
-# Phase 2: Deep dive using previous context
-echo "Based on initial findings, conduct deep dive on input validation and SQL injection" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track all findings systematically." \
-SESSION_FILE="$AUDIT_DIR/audit_session.jsonl" \
-$AICODER_CMD > "$AUDIT_DIR/phase2_deepdive.txt" &
-PID2=$!
-wait $PID2
-
-# Phase 3: Final synthesis
-echo "Create comprehensive security report with severity levels and remediation steps" | \
-AICODER_SYSTEM_PROMPT="You are a SECURITY AUDITOR. Track all findings systematically." \
-SESSION_FILE="$AUDIT_DIR/audit_session.jsonl" \
-$AICODER_CMD > "$AUDIT_DIR/phase3_final_report.txt" &
-PID3=$!
-wait $PID3
-
-echo "✅ Multi-phase audit complete!"
-echo "📁 Results: $AUDIT_DIR"
-echo "💾 Session history: $AUDIT_DIR/audit_session.jsonl"
-
-```
+- Check output files exist before reading
+- Re-launch failed agents if needed
+- Provide partial results if some agents fail
+- Use `tail` to verify output quality
 
 ## Keywords
 
-subagents, parallel agents, multi-agent, concurrent processing, parallel execution, simultaneous analysis, multi-perspective review, code review, security audit, performance analysis, documentation generation, research synthesis, competitive analysis, hierarchical workflow, session persistence, SESSION_FILE, session autosaver, multi-phase workflow
+subagents, parallel, multi-agent, code review, security audit, research, documentation, concurrent
