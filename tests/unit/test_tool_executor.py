@@ -134,7 +134,8 @@ class TestToolExecutorHandleToolNotFound:
 
         assert result["tool_call_id"] == "call_123"
         assert "unknown_tool" in result["content"]
-        mock_message_history.add_system_message.assert_called_once()
+        # Adds user message (not system message) for tool not found error
+        mock_message_history.add_user_message.assert_called_once()
 
 
 class TestToolExecutorShouldShowPreview:
