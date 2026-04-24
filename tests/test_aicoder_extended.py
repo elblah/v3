@@ -24,10 +24,9 @@ class TestAICoderExtended:
         assert messages[-1]["content"] == "Hello, AI!"
 
     def test_add_user_input_with_plugin_transformation(self):
-        """Test user input with plugin hook transformation"""
+        """Test user input goes through normally (hooks applied at input loop level)"""
         app = AICoder()
 
-        # Mock plugin system to return transformed input
         mock_plugin_system = MagicMock()
         mock_plugin_system.call_hooks_with_return.return_value = "Transformed: Hello!"
 
@@ -35,12 +34,13 @@ class TestAICoderExtended:
 
         app.add_user_input("Hello!")
 
-        # Verify plugin hook was called
-        mock_plugin_system.call_hooks_with_return.assert_called_once()
+        # add_user_input does NOT call plugin hooks - hooks are applied in input loop
+        # The method expects already-transformed input (see docstring)
+        mock_plugin_system.call_hooks_with_return.assert_not_called()
 
         messages = app.message_history.get_messages()
-        # Content should be transformed
-        assert messages[-1]["content"] == "Transformed: Hello!"
+        # Content should be original (not transformed by add_user_input)
+        assert messages[-1]["content"] == "Hello!"
 
     def test_add_user_input_plugin_returns_none(self):
         """Test user input when plugin hook returns None"""
