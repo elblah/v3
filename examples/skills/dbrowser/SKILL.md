@@ -5,6 +5,8 @@ description: >
   Use ONLY when simpler tools (curl, lynx, wget, grep, etc.) cannot do the job.
   Examples needed: JavaScript execution, screenshots, interactive web apps, cookies/sessions.
   If socket not responding, ask user to start dbrowser.
+
+**Important:** Only request screenshots if the model supports vision (vision-capable models) OR if a vision service like mmx is available. Do not take screenshots unless they can be analyzed.
 ---
 
 # dbrowser (Browser via Unix Socket)

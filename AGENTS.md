@@ -11,7 +11,7 @@ AI Coder is a fast, lightweight AI-assisted development tool. Built using only P
 
 ## Key Constraints
 1. **Prefer system tools** - Use diff, ripgrep, find when available
-2. **Sandbox aware** - File operations restricted to current directory by default
+2. **File write sandbox** - Only the current working directory and /tmp are writable. `~/.config/` and all directories outside cwd are READ-ONLY. Any write attempts outside cwd will fail. Files in /tmp are temporary (memory-backed, cleared on reboot).
 3. **Structured tool returns** - All tools must return `tool`, `friendly`, `detailed` dict
 4. **DO NOT** write to ~/.config/* or local .aicoder/* directories
 5. **DO NOT** try to install global plugins or snippets
