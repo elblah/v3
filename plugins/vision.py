@@ -295,26 +295,28 @@ def create_plugin(ctx) -> Dict[str, Any]:
                     "detailed": str(e)
                 }
 
-    ctx.register_tool(
-        "read_image",
-        read_image_tool,
-        "Read and analyze an image. Uses full vision if AICODER_FULL_VISION=1, otherwise converts to ASCII via chafa.",
-        {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the image file"
+    # Only register read_image tool if VISION_ENABLE_TOOL=1
+    if os.environ.get("VISION_ENABLE_TOOL", "0") == "1":
+        ctx.register_tool(
+            "read_image",
+            read_image_tool,
+            "Read and analyze an image. Uses full vision if AICODER_FULL_VISION=1, otherwise converts to ASCII via chafa.",
+            {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the image file"
+                    },
+                    "force_ascii": {
+                        "type": "boolean",
+                        "description": "Force ASCII output even if full vision is available",
+                        "default": False
+                    }
                 },
-                "force_ascii": {
-                    "type": "boolean",
-                    "description": "Force ASCII output even if full vision is available",
-                    "default": False
-                }
+                "required": ["path"]
             },
-            "required": ["path"]
-        },
-        format_arguments=format_read_image_args
-    )
+            format_arguments=format_read_image_args
+        )
 
     return {}
