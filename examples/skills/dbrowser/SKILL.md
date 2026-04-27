@@ -2,8 +2,13 @@
 name: dbrowser
 description: >
   Browser automation via dbrowser Unix socket (/run/user/1000/tmp/dbrowser.sock).
-  Use ONLY when simpler tools (curl, lynx, wget, grep, etc.) cannot do the job.
-  Examples needed: JavaScript execution, screenshots, interactive web apps, cookies/sessions.
+  Use for AI browsing/exploration when sites need JavaScript rendering, interactive
+  features, or simple tools (curl, wget, lynx) can't access the content.
+
+  **Scripts for users**: Use `curl`, `wget`, `lynx`, or Python `urllib` instead.
+  Only use dbrowser in user scripts if explicitly requested.
+
+  Examples needed: JavaScript execution, screenshots, cookies/sessions, interactive web apps.
   If socket not responding, ask user to start dbrowser.
 
 **Important:** Only request screenshots if the model supports vision (vision-capable models) OR if a vision service like mmx is available. Do not take screenshots unless they can be analyzed.
