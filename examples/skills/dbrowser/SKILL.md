@@ -1,71 +1,79 @@
 ---
 name: dbrowser
 description: >
-  Browser automation via dbrowser Unix socket (/run/user/1000/tmp/dbrowser.sock).
-  Use for AI browsing/exploration when sites need JavaScript rendering, interactive
-  features, or simple tools (curl, wget, lynx) can't access the content.
+  Headless WebKit browser via Unix socket IPC. Use for sites requiring JavaScript.
 
-  **Scripts for users**: Use `curl`, `wget`, `lynx`, or Python `urllib` instead.
-  Only use dbrowser in user scripts if explicitly requested.
-
-  Examples needed: JavaScript execution, screenshots, cookies/sessions, interactive web apps.
-  If socket not responding, ask user to start dbrowser.
-
-**Important:** Only request screenshots if the model supports vision (vision-capable models) OR if a vision service like mmx is available. Do not take screenshots unless they can be analyzed.
+  **This is a learning/investigation tool. User scripts should use curl/lynx.**
 ---
 
-# dbrowser (Browser via Unix Socket)
+# dbrowser - Headless WebKit Browser
 
-**Fallback tool** - try `curl`, `lynx -dump`, `wget` first.
+## Overview
 
-Unix socket at `/run/user/1000/tmp/dbrowser.sock`. All commands:
+- **Browser runs externally** via Unix socket at `/run/user/1000/tmp/dbrowser.sock`
+- **Single page only** - no tabs, no parallel loads
+- **JavaScript** - renders SPAs, dynamic content
+
+## Important: Investigation Tool Only
+
+dbrowser helps you **learn how a site works**:
+- Discover data structure and selectors
+- Understand lazy-loaded content patterns
+- Test JavaScript interactions
+
+**User scripts must use curl/lynx.** Only use dbrowser as a dependency if the site is impossible to scrape any other way.
+
+## How to Use
+
+1. **Check if running** - try `status`. If socket fails, ask user to start
+2. **Load URL** - `load-url <url>`
+3. **Wait for load** - poll `status` until `"loading":false`
+4. **Investigate** - use eval-js to explore, discover selectors, understand structure
+
+## Investigation Example
+
 ```bash
-echo '{"command": [<args>...]}' | nc -U /run/user/1000/tmp/dbrowser.sock
+# Load page
+echo '{"command": ["load-url", "https://example.com"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
+
+# Wait (adapt to hardware)
+for i in {1..60}; do sleep 2; result=$(echo '{"command": ["status"]}' | nc -U /run/user/1000/tmp/dbrowser.sock); 
+  echo "$result" | grep -q '"loading":false' && break; 
+done
+
+# Explore page structure
+echo '{"command": ["eval-js", "document.body.innerText"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
+echo '{"command": ["eval-js", "document.querySelectorAll('a').length"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
+
+# Check network requests for API endpoints
+echo '{"command": ["list-network-requests", "20"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
 ```
 
-## Refresh Command Reference
+## Adapt and Experiment
 
-To update knowledge of dbrowser commands:
-```bash
-echo '{"command": ["help"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
-```
+- **Slow hardware?** Wait longer
+- **Lazy content?** Try `window.scrollBy(0, 500)` via eval-js
+- **Unclear structure?** Test eval-js, check network requests
+- **Format unknown?** Read actual responses
 
-## IPC Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
-| `help` | Show this help |
-| `load-url <url>` | Load URL |
-| `eval-js <code>` | Execute JavaScript |
-| `screenshot` | Return PNG as base64 |
-| `back` / `forward` | Navigation |
-| `status` | Current URL, title, loading state |
-| `get-console-output [lines]` | Console output |
-| `list-network-requests [max]` | Network requests |
-| `get-network-request <id>` | Request details |
-| `resize <width> <height>` | Resize window |
-| `maximize` / `unmaximize` | Window state |
-| `fullscreen` / `unfullscreen` | Fullscreen toggle |
-| `rotate` | Swap width/height |
-| `device [profile]` | Device profile |
-| `set-user-agent <ua>` | Set user agent string |
-| `get-user-agent` | Get current user agent |
+| `status` | URL, title, loading state |
+| `load-url <url>` | Navigate |
+| `eval-js <code>` | Execute JS, return result |
+| `back` / `forward` | History |
+| `list-network-requests [max]` | Network debugging |
+| `device [profile]` | Device emulation |
+| `set-user-agent <ua>` | Custom UA |
+| `screenshot` | PNG (vision only) |
+| `help` | All commands |
 
-## Examples
+## When to Use
 
-```bash
-# Load URL
-echo '{"command": ["load-url", "https://example.com"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
-
-# Take screenshot
-echo '{"command": ["screenshot"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
-
-# Execute JavaScript
-echo '{"command": ["eval-js", "document.title"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
-
-# Get status
-echo '{"command": ["status"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
-
-# Set device profile
-echo '{"command": ["device", "iPhone 12"]}' | nc -U /run/user/1000/tmp/dbrowser.sock
-```
+| Use curl/lynx | Use dbrowser |
+|---------------|--------------|
+| Static pages | JavaScript-rendered only |
+| User scripts | AI investigation |
+| Production code | When no alternative |
