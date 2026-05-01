@@ -4,8 +4,8 @@ Clean version with clear structure
 """
 
 import sys
-import time
 import os
+import time
 import json
 import atexit
 from typing import Dict, Any
@@ -14,19 +14,27 @@ from aicoder.core.config import Config
 from aicoder.core.stats import Stats
 from aicoder.core.message_history import MessageHistory
 from aicoder.core.tool_manager import ToolManager
-from aicoder.core.streaming_client import StreamingClient
-from aicoder.core.input_handler import InputHandler
-from aicoder.core.context_bar import ContextBar
-from aicoder.core.compaction_service import CompactionService
-from aicoder.core.command_handler import CommandHandler
-from aicoder.core.tool_executor import ToolExecutor
-from aicoder.core.stream_processor import StreamProcessor
-from aicoder.core.session_manager import SessionManager
-from aicoder.core.prompt_builder import PromptBuilder
-from aicoder.core.socket_server import SocketServer
-from aicoder.core.plugin_system import PluginSystem
-from aicoder.utils.log import LogUtils, LogOptions
-from aicoder.utils.stdin_utils import read_stdin_as_string
+
+# Provider selection
+_api_provider = os.environ.get("API_PROVIDER", "").lower()
+print(f"[DEBUG] API_PROVIDER='{_api_provider}'", flush=True)
+if _api_provider == "anthropic":
+    from aicoder.core.anthropic_client import AnthropicClient as ApiClient
+else:
+    from aicoder.core.streaming_client import StreamingClient as ApiClient
+
+from aicoder.core.input_handler import InputHandler  # noqa: E402
+from aicoder.core.context_bar import ContextBar  # noqa: E402
+from aicoder.core.compaction_service import CompactionService  # noqa: E402
+from aicoder.core.command_handler import CommandHandler  # noqa: E402
+from aicoder.core.tool_executor import ToolExecutor  # noqa: E402
+from aicoder.core.stream_processor import StreamProcessor  # noqa: E402
+from aicoder.core.session_manager import SessionManager  # noqa: E402
+from aicoder.core.prompt_builder import PromptBuilder  # noqa: E402
+from aicoder.core.socket_server import SocketServer  # noqa: E402
+from aicoder.core.plugin_system import PluginSystem  # noqa: E402
+from aicoder.utils.log import LogUtils, LogOptions  # noqa: E402
+from aicoder.utils.stdin_utils import read_stdin_as_string  # noqa: E402
 
 
 class AICoder:
@@ -42,7 +50,7 @@ class AICoder:
         self.stats = Stats()
         self.message_history = MessageHistory(self.stats)
         self.tool_manager = ToolManager(self.stats)
-        self.streaming_client = StreamingClient(self.stats, self.tool_manager)
+        self.streaming_client = ApiClient(self.stats, self.tool_manager)
         self.context_bar = ContextBar()
         self.input_handler = InputHandler(
             self.context_bar, self.stats, self.message_history

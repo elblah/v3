@@ -75,7 +75,7 @@ class StreamingClient:
                 request_data = self._prepare_request_data(
                     messages, config["model"], stream, send_tools
                 )
-                endpoint = f"{config['base_url']}/chat/completions"
+                endpoint = Config.api_endpoint()
 
                 self._log_request_details(endpoint, config, request_data, attempt_num)
                 headers = self._build_headers()
