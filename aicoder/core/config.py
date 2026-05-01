@@ -752,6 +752,12 @@ class Config:
         """
         # Original behavior: use green for configuration messages
         LogUtils.success("Configuration:")
+
+        # API Provider (show only if explicitly set)
+        api_provider = os.environ.get("API_PROVIDER", "")
+        if api_provider:
+            LogUtils.success(f"  API Provider: {api_provider}")
+
         LogUtils.success(f"  API Endpoint: {Config.api_endpoint()}")
         LogUtils.success(f"  Model: {Config.model()}")
 
