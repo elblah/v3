@@ -17,7 +17,6 @@ from aicoder.core.tool_manager import ToolManager
 
 # Provider selection
 _api_provider = os.environ.get("API_PROVIDER", "").lower()
-print(f"[DEBUG] API_PROVIDER='{_api_provider}'", flush=True)
 if _api_provider == "anthropic":
     from aicoder.core.anthropic_client import AnthropicClient as ApiClient
 else:
