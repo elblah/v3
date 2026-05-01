@@ -8,7 +8,7 @@ import time
 from typing import Dict, Any, List
 
 from aicoder.core.config import Config
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 
 
 class StreamProcessor:
@@ -102,6 +102,9 @@ class StreamProcessor:
 
                     content = delta.get("content")
                     if content:
+                        # Strip leading whitespace for cleaner output
+                        if full_response == "":
+                            content = content.lstrip()
                         full_response += content
                         colored_content = self.streaming_client.process_with_colorization(content)
                         builtins.print(colored_content, end="", flush=True)
