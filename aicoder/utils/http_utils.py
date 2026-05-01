@@ -59,8 +59,9 @@ class Response:
         if remaining <= 0:
             raise socket.timeout("Total timeout exceeded")
         
-        if hasattr(self.response, "fileno"):
-            sock = socket.fromfd(self.response.fileno(), socket.AF_INET, socket.SOCK_STREAM)
+        if hasattr(self.response, "fileno") and hasattr(self.response, "fp") and self.response.fp is not None:
+            fn = self.response.fileno()
+            sock = socket.fromfd(fn, socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(remaining)
 
     def ok(self) -> bool:
@@ -123,6 +124,14 @@ class Response:
                 return line + b"\n"
             else:
                 return content
+
+    def close(self) -> None:
+        """Close the underlying response if possible"""
+        if hasattr(self.response, "close"):
+            try:
+                self.response.close()
+            except:
+                pass
 
 
 def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
