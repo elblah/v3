@@ -38,6 +38,17 @@ export API_MODEL="your-model"
 python main.py
 ```
 
+### Alternative API Message Formats
+
+Some providers use a different API message format (e.g., MiniMax). To use these:
+
+```bash
+export API_PROVIDER=anthropic
+export API_ENDPOINT=https://api.minimax.io/anthropic/v1/messages
+export API_KEY=your-key
+export API_MODEL=MiniMax-M2.7
+```
+
 ## Script Integration (Stdin Message Passing)
 
 Pass messages to AI Coder via stdin using pipes. Combined with `YOLO_MODE=1`, the AI will execute the request and exit automatically after completing the task.
