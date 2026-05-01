@@ -316,9 +316,12 @@ class Config:
     @staticmethod
     def api_endpoint() -> str:
         """
-        Get API endpoint
+        Get API endpoint - supports full override via API_ENDPOINT env var
         
         """
+        override = os.environ.get("API_ENDPOINT")
+        if override:
+            return override
         base = Config.base_url()
         return f"{base}/chat/completions" if base else ""
 
