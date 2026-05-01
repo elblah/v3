@@ -709,7 +709,24 @@ class Config:
         Validate required configuration
         
         """
-        if not Config.base_url():
+        api_provider = os.environ.get("API_PROVIDER", "").lower()
+        
+        if api_provider == "anthropic":
+            # Anthropic uses API_ENDPOINT directly
+            if not os.environ.get("API_ENDPOINT"):
+                LogUtils.error("Error: Missing required environment variable:")
+                LogUtils.error("  - API_ENDPOINT")
+                LogUtils.print("")
+                LogUtils.success("Example configuration:")
+                LogUtils.success('  export API_PROVIDER=anthropic')
+                LogUtils.success('  export API_ENDPOINT="https://api.minimax.io/anthropic/v1/messages"')
+                LogUtils.print("")
+                LogUtils.print("Optional variables:")
+                LogUtils.print('  export API_KEY="your-api-key-here"')
+                LogUtils.print('  export API_MODEL="your-model-name"')
+                LogUtils.print("  export DEBUG=1")
+                sys.exit(1)
+        elif not Config.base_url():
             LogUtils.error("Error: Missing required environment variable:")
             LogUtils.error("  - API_BASE_URL or OPENAI_BASE_URL")
             LogUtils.print("")
