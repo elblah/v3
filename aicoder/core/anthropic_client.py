@@ -202,7 +202,6 @@ class AnthropicClient:
         current_tool_id = None
         current_tool_name = None
         current_tool_input = ""
-        skip_leading = True
         
         # Read incrementally and process per event
         event_data = ""
@@ -255,11 +254,6 @@ class AnthropicClient:
                                     
                                 elif delta_type == "text_delta":
                                     text = delta.get("text", "")
-                                    # Skip leading whitespace
-                                    if skip_leading and text.isspace():
-                                        continue
-                                    skip_leading = False
-                                    
                                     full_content += text
                                     yield {
                                         "choices": [{"delta": {"content": text}}],
