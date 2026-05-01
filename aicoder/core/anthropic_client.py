@@ -202,115 +202,114 @@ class AnthropicClient:
         current_tool_id = None
         current_tool_name = None
         current_tool_input = ""
-
-        # Read all content first
-        content_bytes = response.read()
-        if not content_bytes:
-            yield {"error": "Empty response", "done": True, "content": "", "accumulated_tool_calls": {}}
-            return
+        skip_leading = True
         
-        content_str = content_bytes.decode("utf-8")
+        # Read incrementally and process per event
+        event_data = ""
         
-        # Parse SSE format: "event: type\ndata: {...}"
-        # Events are separated by blank lines
-        event_blocks = content_str.strip().split("\n\n")
-        
-        for block in event_blocks:
-            block = block.strip()
-            if not block:
-                continue
+        while True:
+            line_bytes = response.readline()
+            if not line_bytes:
+                break
             
-            # Parse event line and data line
-            lines = block.split("\n")
-            data_str = None
+            line = line_bytes.decode("utf-8")
             
-            for line in lines:
-                line = line.strip()
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    break
-            
-            if not data_str:
-                continue
-            
-            try:
-                data = json.loads(data_str)
-                dtype = data.get("type", "")
-                
-                if dtype == "content_block_start":
-                    content_block = data.get("content_block", {})
-                    current_block_type = content_block.get("type")
-                    # For tool_use, id and name are at data level, not inside content_block
-                    current_tool_id = data.get("id") or content_block.get("id")
-                    current_tool_name = data.get("name") or content_block.get("name")
-                    current_tool_input = ""
-                    if current_block_type == "tool_use":
-                        # Initial input might be in content_block
-                        init_input = content_block.get("input", {})
-                        if init_input:
-                            current_tool_input = json.dumps(init_input)
+            # Blank line = end of event block
+            if line.strip() == "":
+                if event_data.strip():
+                    # Parse event data
+                    data_str = None
+                    for ln in event_data.split("\n"):
+                        ln = ln.strip()
+                        if ln.startswith("data: "):
+                            data_str = ln[6:]
+                            break
                     
-                elif dtype == "content_block_delta":
-                    delta = data.get("delta", {})
-                    delta_type = delta.get("type")
-                    
-                    if delta_type == "thinking_delta":
-                        thinking = delta.get("thinking", "")
-                        accumulated_reasoning += thinking
-                        yield {
-                            "choices": [{"delta": {"reasoning_content": thinking}}],
-                            "done": False
-                        }
-                        
-                    elif delta_type == "text_delta":
-                        text = delta.get("text", "")
-                        full_content += text
-                        yield {
-                            "choices": [{"delta": {"content": text}}],
-                            "done": False
-                        }
-                        
-                    elif delta_type == "input_json_delta":
-                        # Accumulate tool input JSON (partial_json in Anthropic format)
-                        partial = delta.get("partial_json", "")
-                        if partial:
-                            current_tool_input += partial
-                
-                elif dtype == "message_delta":
-                    # Final accumulation of tool call
-                    if current_block_type == "tool_use" and current_tool_id:
-                        accumulated_tool_calls[current_tool_id] = {
-                            'id': current_tool_id,
-                            'type': 'function',
-                            'function': {
-                                'name': current_tool_name,
-                                'arguments': current_tool_input
-                            }
-                        }
-                        idx = len(accumulated_tool_calls) - 1
-                        yield {
-                            "choices": [{
-                                "delta": {
-                                    "tool_calls": [{
-                                        "index": idx,
-                                        "id": current_tool_id,
-                                        "type": "function",
-                                        "function": {
-                                            "name": current_tool_name,
-                                            "arguments": current_tool_input
-                                        }
-                                    }]
-                                }
-                            }],
-                            "done": False
-                        }
+                    if data_str:
+                        try:
+                            data = json.loads(data_str)
+                            dtype = data.get("type", "")
                             
-                elif dtype == "message_stop":
-                    pass
+                            if dtype == "content_block_start":
+                                content_block = data.get("content_block", {})
+                                current_block_type = content_block.get("type")
+                                current_tool_id = data.get("id") or content_block.get("id")
+                                current_tool_name = data.get("name") or content_block.get("name")
+                                current_tool_input = ""
+                                if current_block_type == "tool_use":
+                                    init_input = content_block.get("input", {})
+                                    if init_input:
+                                        current_tool_input = json.dumps(init_input)
+                            
+                            elif dtype == "content_block_delta":
+                                delta = data.get("delta", {})
+                                delta_type = delta.get("type")
+                                
+                                if delta_type == "thinking_delta":
+                                    thinking = delta.get("thinking", "")
+                                    accumulated_reasoning += thinking
+                                    yield {
+                                        "choices": [{"delta": {"reasoning_content": thinking}}],
+                                        "done": False
+                                    }
+                                    
+                                elif delta_type == "text_delta":
+                                    text = delta.get("text", "")
+                                    # Skip leading whitespace
+                                    if skip_leading and text.isspace():
+                                        continue
+                                    skip_leading = False
+                                    
+                                    full_content += text
+                                    yield {
+                                        "choices": [{"delta": {"content": text}}],
+                                        "done": False
+                                    }
+                                    
+                                elif delta_type == "input_json_delta":
+                                    partial = delta.get("partial_json", "")
+                                    if partial:
+                                        current_tool_input += partial
+                            
+                            elif dtype == "message_delta":
+                                if current_block_type == "tool_use" and current_tool_id:
+                                    accumulated_tool_calls[current_tool_id] = {
+                                        'id': current_tool_id,
+                                        'type': 'function',
+                                        'function': {
+                                            'name': current_tool_name,
+                                            'arguments': current_tool_input
+                                        }
+                                    }
+                                    idx = len(accumulated_tool_calls) - 1
+                                    yield {
+                                        "choices": [{
+                                            "delta": {
+                                                "tool_calls": [{
+                                                    "index": idx,
+                                                    "id": current_tool_id,
+                                                    "type": "function",
+                                                    "function": {
+                                                        "name": current_tool_name,
+                                                        "arguments": current_tool_input
+                                                    }
+                                                }]
+                                            }
+                                        }],
+                                        "done": False
+                                    }
+                                    
+                            elif dtype == "message_stop":
+                                pass
+                                    
+                        except json.JSONDecodeError:
+                            pass
                     
-            except json.JSONDecodeError:
+                    event_data = ""
                 continue
-
+            
+            event_data += line
+        
         if self.stats:
             self.stats.increment_api_requests()
 
