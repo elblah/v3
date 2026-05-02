@@ -1,5 +1,8 @@
 """Anthropic API client - uses Anthropic-compatible endpoint"""
 
+# Duplicated from streaming_client.py intentionally - core must stay stable.
+# Only import when PROVIDER=anthropic is set.
+
 import json
 import os
 import time
