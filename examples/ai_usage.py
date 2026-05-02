@@ -12,11 +12,13 @@ Usage:
     python ai_usage.py clear-cache                           # Delete cache
     python ai_usage.py help                                  # Show this usage
     ALL=1 python ai_usage.py ...                             # Global stats (ignore cwd)
+    CENTRAL=1 python ai_usage.py ...                         # Use central log
 
 Notes:
     - Cache persists indefinitely. Run 'update' to scan all dirs below PWD.
     - Default period is 24h (rolling).
-    - Stats are loaded from <project_dir>/.aicoder/stats.log.
+    - Stats are loaded from central log (~/.aicoder/central_stats.log) by default.
+    - LOCAL=1 uses per-project .aicoder/stats.log instead.
 
 Cache behavior:
     - Cache persists indefinitely (no automatic expiration)
@@ -186,6 +188,39 @@ def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
     return entries
 
 
+def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | None):
+    """Parse central_stats.log, return entries within time range."""
+    entries = []
+    # Format: project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
+    if not filepath.exists():
+        return entries
+    for line in filepath.read_text().splitlines():
+        if not line:
+            continue
+        pipe_count = line.count("|")
+        if pipe_count == 6:
+            # project|timestamp|url|model|prompt|completion|elapsed
+            parts = line.split("|")
+            ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
+        elif pipe_count == 5:
+            # old migrated format: timestamp|url|model|prompt|completion|elapsed
+            ts, url, model, p_tok, c_tok, elapsed = line.split("|")
+        else:
+            continue
+        try:
+            ts = ts.replace("_", "T")
+            dt = datetime.fromisoformat(ts)
+            if start and (dt < start or dt > end):
+                continue
+            entries.append({
+                "url": url, "model": model,
+                "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
+            })
+        except ValueError:
+            continue
+    return entries
+
+
 def main():
     import sys
     args = sys.argv[1:]
@@ -246,15 +281,22 @@ def main():
         label = period
 
     # Find and parse stats files
-    files = find_stats_files()
-    if not files:
-        print("No .aicoder/stats.log files found.")
-        sys.exit(0)
-
-    entries = [e for f in files for e in parse_stats(f, start, end)]
-    if not entries:
-        print(f"No requests found for: {label}")
-        sys.exit(0)
+    if os.environ.get("LOCAL"):
+        files = find_stats_files()
+        if not files:
+            print("No .aicoder/stats.log files found.")
+            sys.exit(0)
+        entries = [e for f in files for e in parse_stats(f, start, end)]
+        if not entries:
+            print(f"No requests found for: {label}")
+            sys.exit(0)
+    else:
+        central_path = Path.home() / ".aicoder" / "central_stats.log"
+        print(f"Using central log: {central_path}")
+        entries = parse_central_stats(central_path, start, end)
+        if not entries:
+            print(f"No requests found in central log for: {label}")
+            sys.exit(0)
 
     # Aggregate: url -> model -> stats
     agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0}))
