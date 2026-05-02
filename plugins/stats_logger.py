@@ -1,14 +1,33 @@
 """
 Stats Logger Plugin
 
-Logs each AI API request to .aicoder/stats.log for later analysis.
-Format: <timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>
+Logs each AI API request to:
+- .aicoder/stats.log (local, per-project)
+- $TMP/stats_logger.fifo (optional, for central aggregation)
+
+Format: <project_path>|<timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>
 """
 
 import os
+import sys
 from datetime import datetime, UTC
 from aicoder.core.config import Config
 from aicoder.core.token_estimator import _estimate_weighted_tokens
+
+# Central FIFO path (optional external listener)
+FIFO_PATH = os.path.join(os.environ.get("TMP", "/tmp"), "stats_logger.fifo")
+
+
+def _write_to_fifo(line):
+    """Write to FIFO non-blocking. Log failure if write fails."""
+    if not os.path.exists(FIFO_PATH):
+        return
+    try:
+        fd = os.open(FIFO_PATH, os.O_WRONLY | os.O_NONBLOCK)
+        os.write(fd, line.encode())
+        os.close(fd)
+    except Exception as e:
+        print(f"[stats_logger] fifo write failed: {e} | line={line.strip()}", file=sys.stderr)
 
 
 def create_plugin(ctx):
@@ -64,7 +83,7 @@ def create_plugin(ctx):
 
         # Get model and endpoint from config
         model = Config.model()
-        base_url = Config.base_url()
+        base_url = Config.base_url() or Config.api_endpoint()
 
         # Get elapsed time from stats
         elapsed = stats.last_api_time
@@ -83,6 +102,10 @@ def create_plugin(ctx):
         log_path = os.path.join(aicoder_dir, "stats.log")
         with open(log_path, "a") as f:
             f.write(log_line)
+
+        # Also write to central FIFO if present
+        fifo_line = f"{os.getcwd()}|{log_line}"
+        _write_to_fifo(fifo_line)
 
     # Register hook when assistant message is added (to estimate completion tokens)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message)
