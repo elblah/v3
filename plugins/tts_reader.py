@@ -50,17 +50,26 @@ def create_plugin(ctx):
     # Track current TTS process for interruption
     current_process: Optional[subprocess.Popen] = None
 
-    # Exclude phrases - filter out common filler phrases
-    # Format: pipe-separated list, one phrase per line
+    # Exclude phrases - filter out common filler phrases (lazy parse)
     exclude_phrases_str = os.environ.get("TTS_EXCLUDE", "")
-    exclude_phrases = []
-    if exclude_phrases_str:
-        # Split by pipe or newlines
-        exclude_phrases = [p.strip() for p in re.split(r'[|\n]', exclude_phrases_str) if p.strip()]
+    _parsed_exclude = None
+
+    def _parse_exclude():
+        """Lazy parse exclude phrases"""
+        nonlocal _parsed_exclude
+        if _parsed_exclude is None:
+            import re
+            if exclude_phrases_str:
+                _parsed_exclude = [p.strip() for p in re.split(r'[|\n]', exclude_phrases_str) if p.strip()]
+            else:
+                _parsed_exclude = []
+        return _parsed_exclude
 
     def detect_audio_sink():
         """Detect audio sink (HDMI preferred, fallback to pipewire)"""
         nonlocal current_sink
+        if current_sink != "pipewire/combined":  # Already detected
+            return
         try:
             result = subprocess.run(
                 ["pactl", "list", "sinks", "short"],
@@ -135,16 +144,15 @@ def create_plugin(ctx):
 
     def apply_exclude_filter(text: str) -> str:
         """Remove excluded phrases from text (case-insensitive)"""
-        if not exclude_phrases:
+        phrases = _parse_exclude()
+        if not phrases:
             return text
 
         result = text
-        for phrase in exclude_phrases:
-            # Case-insensitive replacement
+        for phrase in phrases:
             pattern = re.compile(re.escape(phrase), re.IGNORECASE)
             result = pattern.sub('', result)
 
-        # Clean up extra whitespace left after removal
         result = re.sub(r'\s+', ' ', result).strip()
         return result
 
@@ -447,24 +455,7 @@ Use a single <tts>...</tts> block for questions, important warnings, or key summ
                     "  /tts skip-code on|off - Skip code blocks (default: on)\n"
                     "  /tts engine <name> - Switch engine (espeak/flite)")
 
-    # Initialize
-    detect_audio_sink()
-
-    # Validate engine
-    available = get_available_engines()
-    if engine not in available:
-        if available:
-            engine = available[0]
-            default = DEFAULT_VOICE if engine == "espeak" else DEFAULT_VOICE_FLITE
-            voice = default
-            if Config.debug():
-                LogUtils.print(f"TTS: Engine '{os.environ.get('TTS_ENGINE', DEFAULT_ENGINE)}' not available, using {engine}")
-        else:
-            if Config.debug():
-                LogUtils.error("TTS: No TTS engine available (install espeak or flite)")
-            return
-
-    # Register hooks and commands
+    # Register hooks and commands (detect_audio_sink deferred to first real use)
     ctx.register_hook("before_user_prompt", before_user_prompt)
     ctx.register_hook("after_assistant_message_added", on_after_assistant_message)
     ctx.register_command("/tts", handle_tts_command, description="Text-to-speech settings")
