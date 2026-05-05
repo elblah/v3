@@ -14,6 +14,7 @@ Design principles:
 
 import os
 import sys
+import time
 import importlib.util
 import threading
 import subprocess
@@ -235,8 +236,15 @@ class PluginSystem:
             plugin_files = filtered_files
 
         # Load each plugin
-        for filename in plugin_files:
-            self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
+        if Config.debug():
+            for filename in plugin_files:
+                t0 = time.perf_counter()
+                self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
+                dt = time.perf_counter() - t0
+                print(f"[+] Loaded plugin: {Path(filename).stem} ({dt:.3f}s)")
+        else:
+            for filename in plugin_files:
+                self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
 
     def _load_single_plugin(self, plugin_path: str) -> None:
         """Load a single plugin file"""
@@ -261,9 +269,6 @@ class PluginSystem:
                 # Handle cleanup if returned
                 if result and isinstance(result, dict) and "cleanup" in result:
                     self.cleanup_handlers.append(result["cleanup"])
-
-                if Config.debug():
-                    print(f"[+] Loaded plugin: {plugin_name}")
 
         except Exception as e:
             LogUtils.error(f"[!] Failed to load plugin {plugin_path}: {e}")
