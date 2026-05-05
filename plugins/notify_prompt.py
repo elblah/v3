@@ -25,6 +25,8 @@ def create_plugin(ctx):
     def detect_audio_sink():
         """Detect audio sink (HDMI preferred, fallback to pipewire)"""
         nonlocal current_sink
+        if current_sink != "pipewire/combined":  # Already detected
+            return
         try:
             # Try to detect HDMI sink first
             result = subprocess.run(
@@ -41,11 +43,7 @@ def create_plugin(ctx):
                         return
         except:
             pass
-        # Fallback to default
-        current_sink = "pipewire/combined"
-
-    # Detect audio sink on load
-    detect_audio_sink()
+        # Fallback to default (already set)
 
     def should_notify() -> bool:
         """Check if .notify-prompt file exists"""
