@@ -6,6 +6,10 @@
 FIFO="$TMP/stats_logger.fifo"
 LOG="$HOME/.aicoder/central_stats.log"
 
+if [[ ! -e "$FIFO" ]]; then
+    mkfifo "$FIFO"
+fi
+
 mkdir -p "$(dirname "$LOG")"
 echo "[stats_listener] Listening on $FIFO" >&2
 echo "[stats_listener] Writing to $LOG" >&2
