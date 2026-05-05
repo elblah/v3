@@ -82,6 +82,8 @@ def create_plugin(ctx):
     def detect_audio_sink():
         """Detect audio sink (HDMI preferred, fallback to pipewire)"""
         nonlocal current_sink
+        if current_sink != "pipewire/combined":  # Already detected
+            return
         try:
             result = subprocess.run(
                 ["pactl", "list", "sinks", "short"],
@@ -469,23 +471,7 @@ def create_plugin(ctx):
                     "  /a11y detailed on|off     - Read full tool output (vs friendly)\n"
                     "  /a11y engine <name>   - Switch engine")
 
-    # Initialize
-    detect_audio_sink()
-
-    # Validate engine
-    available = get_available_engines()
-    if engine not in available:
-        if available:
-            engine = available[0]
-            voice = os.environ.get("A11Y_VOICE", DEFAULT_VOICE)
-            if Config.debug():
-                LogUtils.print(f"A11Y: Engine '{os.environ.get('A11Y_ENGINE', DEFAULT_ENGINE)}' not available, using {engine}")
-        else:
-            if Config.debug():
-                LogUtils.error("A11Y: No TTS engine available (install espeak or flite)")
-            return
-
-    # Register hooks and commands
+    # Register hooks and commands (detect_audio_sink deferred to first real use)
     ctx.register_hook("after_assistant_message_added", on_after_assistant_message)
     ctx.register_hook("after_user_message_added", on_after_user_message_added)
     ctx.register_hook("after_tool_results", on_after_tool_results)
