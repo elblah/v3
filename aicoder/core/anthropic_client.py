@@ -349,10 +349,14 @@ class AnthropicClient:
         if self.stats:
             self.stats.increment_api_requests()
 
+        # Yield same format as streaming content chunks (with choices wrapper)
         yield {
-            "content": full_content,
-            "reasoning_content": accumulated_reasoning,
-            "accumulated_tool_calls": accumulated_tool_calls,
+            "choices": [{
+                "delta": {
+                    "content": full_content,
+                    "reasoning_content": accumulated_reasoning
+                }
+            }],
             "done": True
         }
 
