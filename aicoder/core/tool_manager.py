@@ -43,7 +43,7 @@ class ToolManager:
         edit_file_set_plugin_system(plugin_system)
 
     def _register_internal_tools(self):
-        """Register all internal tools (filtered by TOOLS_ALLOW if set)"""
+        """Register all internal tools (filtered by TOOLS_ALLOW and TOOLS_DENY)"""
         all_tools = {
             "read_file": READ_FILE_DEF,
             "write_file": WRITE_FILE_DEF,
@@ -62,6 +62,11 @@ class ToolManager:
         else:
             # Register all tools
             self.tools.update(all_tools)
+
+        # Filter by TOOLS_DENY (deny wins)
+        denied = Config.tools_deny()
+        for name in denied:
+            self.tools.pop(name, None)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         """Get all tool definitions for API request"""

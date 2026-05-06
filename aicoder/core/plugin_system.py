@@ -150,10 +150,14 @@ class PluginSystem:
         format_arguments: Optional[Callable] = None,
         generate_preview: Optional[Callable] = None,
     ) -> None:
-        """Internal: register a tool (filtered by TOOLS_ALLOW if set)"""
+        """Internal: register a tool (filtered by TOOLS_ALLOW and TOOLS_DENY)"""
         allowed = Config.tools_allow()
         if allowed is not None and name not in allowed:
             return  # Skip this tool - not in allowed list
+
+        denied = Config.tools_deny()
+        if name in denied:
+            return  # Skip this tool - in deny list
 
         self.tools[name] = {
             "fn": fn,
@@ -228,12 +232,12 @@ class PluginSystem:
         # Filter by PLUGINS_ALLOW if set
         allowed_plugins = Config.plugins_allow()
         if allowed_plugins is not None:
-            filtered_files = []
-            for filename in plugin_files:
-                plugin_name = Path(filename).stem
-                if plugin_name in allowed_plugins:
-                    filtered_files.append(filename)
-            plugin_files = filtered_files
+            plugin_files = [f for f in plugin_files if Path(f).stem in allowed_plugins]
+
+        # Filter by PLUGINS_DENY (deny wins)
+        denied_plugins = Config.plugins_deny()
+        if denied_plugins:
+            plugin_files = [f for f in plugin_files if Path(f).stem not in denied_plugins]
 
         # Load each plugin
         if Config.debug():
