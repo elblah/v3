@@ -4,6 +4,7 @@ Edit command - Create new message in $EDITOR
 """
 
 import os
+import shutil
 import subprocess
 import secrets
 from aicoder.core.commands.base import BaseCommand, CommandResult, CommandContext
@@ -37,7 +38,13 @@ class EditCommand(BaseCommand):
                 return CommandResult(should_quit=False, run_api_call=False)
 
             # Get editor from environment or default to nano
-            editor = os.environ.get("EDITOR", "nano")
+            if args and args[0] != "last":
+                editor = args[0]
+                if not shutil.which(editor):
+                    LogUtils.error(f"Editor '{editor}' not found.")
+                    return CommandResult(should_quit=False, run_api_call=False)
+            else:
+                editor = os.environ.get("EDITOR", "nano")
 
             # Create temporary file
             random_suffix = secrets.token_hex(4)
