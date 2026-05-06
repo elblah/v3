@@ -307,6 +307,11 @@ class CompactionService:
 
         prompt = f"""Generate a self-contained session summary. This will be the ONLY context retained.
 
+**CRITICAL: Output must be at minimum 100 characters.**
+If the conversation contains only routine tool calls with no significant decisions or changes, 
+output: "Routine session - {len(messages_to_summarize)} messages processed. No significant decisions, file modifications, or user decisions occurred. All interactions were routine tool invocations."
+Otherwise, include all important details.
+
 Conversation:
 {self._format_messages_for_summary(messages_to_summarize)}
 
@@ -361,8 +366,17 @@ Prioritize:
                     if content:
                         full_response += content
 
+            if Config.debug():
+                LogUtils.warn(f"[!] Compaction: got summary response ({len(full_response)} chars)")
+                if full_response:
+                    LogUtils.warn(f"[!] Summary preview: {full_response[:300]}")
+
             if not self._validate_summary(full_response):
-                LogUtils.warn("[!] Generated summary too short - skipping compaction")
+                LogUtils.warn(f"[!] Generated summary too short ({len(full_response)} chars) - skipping compaction")
+                if full_response:
+                    LogUtils.warn(f"[!] Summary was: {full_response[:200]}...")
+                else:
+                    LogUtils.warn(f"[!] Summary was EMPTY")
                 return None  # Signal to skip compaction
 
             return full_response or "Conversation summarized"
