@@ -271,7 +271,7 @@ def create_plugin(ctx):
     ctx.register_tool(
         name="get_url_content",
         fn=get_url_content,
-        description="Fetch to full text content of a URL (https only)",
+        description="Fetch static URL content (no JavaScript). Empty response means site requires JS and won't work with this tool",
         parameters={
             "type": "object",
             "properties": {
