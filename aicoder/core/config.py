@@ -377,6 +377,23 @@ class Config:
         return None
 
     @staticmethod
+    def tools_deny() -> Set[str]:
+        """
+        Get denied tools from TOOLS_DENY environment variable.
+        Format: comma-separated list of tool names.
+        If set, these tools will NOT be available.
+
+        Example: TOOLS_DENY="write_file,run_shell_command" (block write/shell access)
+
+        Returns:
+            Set of denied tool names, or empty set if not set
+        """
+        env_val = os.environ.get("TOOLS_DENY", "").strip()
+        if env_val:
+            return set(name.strip() for name in env_val.split(",") if name.strip())
+        return set()
+
+    @staticmethod
     def plugins_allow() -> Optional[Set[str]]:
         """
         Get allowed plugins from PLUGINS_ALLOW environment variable.
@@ -392,6 +409,23 @@ class Config:
         if env_val:
             return set(name.strip() for name in env_val.split(",") if name.strip())
         return None
+
+    @staticmethod
+    def plugins_deny() -> Set[str]:
+        """
+        Get denied plugins from PLUGINS_DENY environment variable.
+        Format: comma-separated list of plugin names (without .py extension).
+        If set, these plugins will NOT be loaded.
+
+        Example: PLUGINS_DENY="web,github" (block these plugins from loading)
+
+        Returns:
+            Set of denied plugin names, or empty set if not set
+        """
+        env_val = os.environ.get("PLUGINS_DENY", "").strip()
+        if env_val:
+            return set(name.strip() for name in env_val.split(",") if name.strip())
+        return set()
 
     @staticmethod
     def http_headers() -> Dict[str, str]:
