@@ -70,6 +70,29 @@ class SkillsManager:
     def __init__(self):
         self.skills_dirs: list = []  # list of dirs that were scanned
         self.skills: dict = {}
+        self._dir_mtimes: dict = {}  # dir_path -> mtime cache
+        self._skill_mtimes: dict = {}  # skill_md_path -> mtime cache
+
+    def _needs_rediscovery(self) -> bool:
+        """Check if any skills directory or SKILL.md has changed since last scan"""
+        # New dirs appeared or existing dirs changed
+        current_dirs = self._get_dirs()
+        if [(s, d) for s, d in current_dirs] != [(s, d) for s, d in self.skills_dirs]:
+            return True
+        for _, d in self.skills_dirs:
+            try:
+                if self._dir_mtimes.get(d) != os.path.getmtime(d):
+                    return True
+            except Exception:
+                return True
+        # Check individual SKILL.md files (catches edits to existing skills + deletions)
+        for skill_info in self.skills.values():
+            try:
+                if self._skill_mtimes.get(skill_info['path']) != os.path.getmtime(skill_info['path']):
+                    return True
+            except Exception:
+                return True  # file deleted
+        return False
 
     @staticmethod
     def _get_dirs() -> list:
@@ -87,9 +110,17 @@ class SkillsManager:
         """Discover all skills from global then local dirs (local overrides on collision)"""
         self.skills_dirs = self._get_dirs()
         self.skills.clear()
+        self._dir_mtimes.clear()
+        self._skill_mtimes.clear()
 
         if not self.skills_dirs:
             return 0
+
+        for _, d in self.skills_dirs:
+            try:
+                self._dir_mtimes[d] = os.path.getmtime(d)
+            except Exception:
+                pass
 
         count = 0
         for source, skills_dir in self.skills_dirs:
@@ -112,12 +143,17 @@ class SkillsManager:
                     description = frontmatter.get("description")
 
                     if name and description:
+                        skill_md_path = os.path.join(skill_path, "SKILL.md")
                         self.skills[name] = {
                             "name": name,
-                            "path": os.path.join(skill_path, "SKILL.md"),
+                            "path": skill_md_path,
                             "description": description,
                             "source": source,
                         }
+                        try:
+                            self._skill_mtimes[skill_md_path] = os.path.getmtime(skill_md_path)
+                        except Exception:
+                            pass
                         count += 1
                 except Exception:
                     continue
@@ -203,7 +239,15 @@ def create_plugin(ctx):
     count = manager.discover_skills()
 
     def before_user_prompt():
-        """Hook: ensure [SKILLS] message exists before each user prompt"""
+        """Hook: check for skill changes and ensure [SKILLS] message exists"""
+        if manager._needs_rediscovery():
+            old_count = len(manager.skills)
+            manager.discover_skills()
+            new_count = len(manager.skills)
+            if new_count != old_count:
+                LogUtils.print(f"[i] Skills updated ({old_count} → {new_count})")
+            else:
+                LogUtils.print("[i] Skills updated")
         manager.ensure_skills_message(ctx.app.message_history)
 
     # Command: /skills reload
