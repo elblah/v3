@@ -2,7 +2,8 @@
 Snippets Plugin - Reusable prompt snippets
 
 Features:
-- Load snippets from .aicoder/snippets (project) or ~/.config/aicoder-v3/snippets (global)
+- Load snippets from .aicoder/snippets (project) and ~/.config/aicoder-v3/snippets (global)
+- Local snippets override global on name collision
 - Tab completion with @@ prefix
 - Automatic snippet replacement in prompts
 - /snippets command to list available snippets
@@ -24,58 +25,68 @@ def create_plugin(ctx):
     - ctx.app.input_handler: Register completers
     - ctx.app.message_history: Add messages
     """
-    # Snippet directories
     project_snippets_dir = ".aicoder/snippets"
     global_snippets_dir = os.path.expanduser("~/.config/aicoder-v3/snippets")
 
-    # Cache for snippet files
+    # Cache for snippet files: {filename: (source, dir_path)}
     _cache = {
-        "snippets": [],
-        "mtime": 0,
-        "source_dir": None
+        "snippets": {},   # filename -> (source, dir_path)
+        "mtimes": {},     # dir_path -> mtime
     }
 
-    def _get_snippets_dir() -> Optional[str]:
-        """Get the snippets directory (project takes precedence)"""
+    def _get_dirs() -> list:
+        """Get snippet directories in scan order (global first, local second for override)"""
+        dirs = []
+        if os.path.exists(global_snippets_dir):
+            dirs.append(("global", global_snippets_dir))
         if os.path.exists(project_snippets_dir):
-            return project_snippets_dir
-        elif os.path.exists(global_snippets_dir):
-            return global_snippets_dir
-        return None
+            dirs.append(("local", project_snippets_dir))
+        return dirs
 
     def _refresh_cache() -> None:
-        """Refresh snippet cache if directory mtime changed"""
-        snippets_dir = _get_snippets_dir()
-        if not snippets_dir:
+        """Refresh snippet cache if any directory mtime changed"""
+        dirs = _get_dirs()
+        if not dirs:
             return
 
-        try:
-            mtime = os.path.getmtime(snippets_dir)
-            if mtime != _cache["mtime"] or snippets_dir != _cache["source_dir"]:
-                # Reload snippet files
-                _cache["snippets"] = [
-                    f.name for f in os.scandir(snippets_dir)
-                    if f.is_file() and not f.name.startswith(".")
-                ]
-                _cache["mtime"] = mtime
-                _cache["source_dir"] = snippets_dir
-        except Exception:
-            pass
+        need_reload = False
+        for _, d in dirs:
+            try:
+                mtime = os.path.getmtime(d)
+                if _cache["mtimes"].get(d) != mtime:
+                    need_reload = True
+                    break
+            except Exception:
+                pass
+
+        if not need_reload and _cache["snippets"]:
+            return
+
+        # Reload from all dirs (global first, local overrides)
+        _cache["snippets"] = {}
+        for source, d in dirs:
+            try:
+                current_mtime = os.path.getmtime(d)
+                _cache["mtimes"][d] = current_mtime
+                for f in os.scandir(d):
+                    if f.is_file() and not f.name.startswith("."):
+                        _cache["snippets"][f.name] = (source, d)
+            except Exception:
+                pass
 
     def _get_snippets() -> list:
-        """Get list of snippet files"""
+        """Get list of snippet filenames"""
         _refresh_cache()
-        return _cache["snippets"]
+        return list(_cache["snippets"].keys())
 
     def _load_snippet(name: str) -> Optional[str]:
         """Load snippet content by name (with or without extension)"""
-        snippets_dir = _get_snippets_dir()
-        if not snippets_dir:
-            return None
+        _refresh_cache()
 
-        # Try exact match first (with extension)
-        path = os.path.join(snippets_dir, name)
-        if os.path.exists(path):
+        # Try exact match first
+        if name in _cache["snippets"]:
+            _, d = _cache["snippets"][name]
+            path = os.path.join(d, name)
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     return f.read()
@@ -84,9 +95,9 @@ def create_plugin(ctx):
 
         # Try without extension (find first matching file)
         name_without_ext = Path(name).stem
-        for snippet_file in _get_snippets():
-            if Path(snippet_file).stem == name_without_ext:
-                path = os.path.join(snippets_dir, snippet_file)
+        for filename, (source, d) in _cache["snippets"].items():
+            if Path(filename).stem == name_without_ext:
+                path = os.path.join(d, filename)
                 try:
                     with open(path, 'r', encoding='utf-8') as f:
                         return f.read()
@@ -171,22 +182,27 @@ def create_plugin(ctx):
 
     def handle_snippets_command(args: list = None) -> None:
         """Handle /snippets command - list available snippets"""
-        snippets_dir = _get_snippets_dir()
-        if not snippets_dir:
+        dirs = _get_dirs()
+        if not dirs:
             warn("No snippets directory found.")
             dim("  Create .aicoder/snippets/ (project) or ~/.config/aicoder-v3/snippets/ (global)")
             return
 
         snippets = _get_snippets()
         if not snippets:
-            warn("No snippets found in directory.")
+            warn("No snippets found.")
             return
 
-        # Display snippets
-        source_name = "project" if snippets_dir == project_snippets_dir else "global"
-        info(f"Available snippets ({source_name}):")
+        # Display snippets grouped by source
+        dirs_display = " + ".join(
+            ("project" if s == "local" else "global") for s, _ in dirs
+        )
+        info(f"Available snippets ({dirs_display}):")
+
         for snippet in snippets:
-            print(f"  - {snippet}")
+            source, _ = _cache["snippets"][snippet]
+            tag = "local" if source == "local" else "global"
+            print(f"  - {snippet} [{tag}]")
 
         # Show usage
         dim("\nUsage: Include @@snippet_name in your prompt.")
