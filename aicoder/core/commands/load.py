@@ -38,8 +38,8 @@ class LoadCommand(BaseCommand):
 
         filename = args[0] if args else "session.json"
         
-        # Handle special case: /load last
-        if filename == "last":
+        # Handle special case: /load last or /load l (load most recent session)
+        if filename in ("last", "l"):
             if file_exists("last"):
                 filename = "last"
             elif file_exists(".aicoder/last-session.json"):
