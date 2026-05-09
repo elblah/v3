@@ -18,4 +18,4 @@
 
 *IMPORTANT: by 'parts' I don't mean characteristics like "repetitive"... by 'parts' I mean moments, subjects, themes, etc*
 
-Also if the video talks about subjects you are not aware about or not updated enough feel free to search the web if needed. Like if you want to fact check something that you find interesting or confusing. DO NOT lie about facts for example don't claim you fact checked something if you did not really search the web and checked for real.
+**fact check suggestions (optional):** if something feels off, list what you'd like to verify. user can approve specific ones. prefer not to auto-search.
