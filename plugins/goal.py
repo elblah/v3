@@ -3,7 +3,7 @@ Goal Plugin - Session goal that persists through compaction and load
 
 Design:
 - Single session goal stored in memory
-- [GOAL] message injected at conversation start
+- [GOAL] message injected ONLY when goal is set
 - Auto-restored after load/compaction via hooks
 - No file persistence - relies on session save/load
 
@@ -25,11 +25,9 @@ def _extract_goal_from_message(content: str) -> str | None:
     return None
 
 
-def _generate_goal_message(goal: str | None) -> str:
+def _generate_goal_message(goal: str) -> str:
     """Generate [GOAL] message content"""
-    if goal:
-        return f"[GOAL] Session goal: {goal}"
-    return "[GOAL] No goal set. Use /goal <text> to set one."
+    return f"[GOAL] Session goal: {goal}"
 
 
 def _find_goal_index(messages: list) -> int | None:
@@ -62,9 +60,12 @@ def create_plugin(ctx):
     def _ensure_goal_message(message_history):
         """Ensure [GOAL] message exists, recreate if needed or missing"""
         messages = message_history.messages
-        
-        # Check if [GOAL] message exists
         idx = _find_goal_index(messages)
+        
+        if not current_goal:
+            if idx is not None:
+                messages.pop(idx)  # Remove old message if goal cleared
+            return
         
         if idx is not None:
             # Already exists, ensure it has current goal text
