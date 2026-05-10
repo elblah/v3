@@ -171,19 +171,9 @@ class SkillsManager:
 
         skills_list = []
         for skill_name, skill_info in sorted(self.skills.items()):
-            display_path = skill_info['path']
-            source = skill_info.get("source", "unknown")
-            if source == "global":
-                prefix = os.path.expanduser("~/.config/aicoder-v3/skills/")
-                if display_path.startswith(prefix):
-                    display_path = display_path[len(prefix):]
-            elif source == "local":
-                prefix = os.path.join(os.getcwd(), ".aicoder/skills/")
-                if display_path.startswith(prefix):
-                    display_path = display_path[len(prefix):]
-
+            skill_path = skill_info['path']
             skills_list.append(
-                f"- {skill_name} ({source}/{display_path}): {skill_info['description']}"
+                f"- {skill_name} ({skill_path}): {skill_info['description']}"
             )
 
         source_info = ""
