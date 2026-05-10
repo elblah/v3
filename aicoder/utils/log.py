@@ -26,7 +26,9 @@ Usage:
 """
 
 import os
+import sys
 import builtins
+from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
 
@@ -43,6 +45,23 @@ def _is_debug() -> bool:
     """Check if debug mode is enabled"""
     from aicoder.core.config import Config
     return Config.debug()
+
+
+def _get_error_log_path() -> str:
+    """Get path to error log file"""
+    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(base, ".aicoder", "errors.log")
+
+
+def _append_error_log(message: str, traceback_str: str) -> None:
+    """Append error to log file"""
+    log_path = _get_error_log_path()
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    timestamp = datetime.now().isoformat()
+    with open(log_path, "a") as f:
+        f.write(f"[{timestamp}] {message}\n")
+        f.write(traceback_str)
+        f.write("\n")
 
 
 @dataclass
@@ -137,8 +156,13 @@ class LogUtils:
 
     @staticmethod
     def error(message: str) -> None:
-        """Print error message (red)"""
+        """Print error message (red). Auto-detects exception context and prints/logs stack."""
         LogUtils.printc(message, color="red")
+        if sys.exc_info()[0] is not None:
+            import traceback
+            tb = traceback.format_exc()
+            LogUtils.printc(tb, color="red")
+            _append_error_log(message, tb)
 
     @staticmethod
     def success(message: str) -> None:
@@ -201,7 +225,7 @@ def warn(message: str) -> None:
 
 
 def error(message: str) -> None:
-    """Print error message (red)"""
+    """Print error message (red). Auto-detects exception context and prints/logs stack."""
     LogUtils.error(message)
 
 
