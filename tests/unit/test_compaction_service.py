@@ -198,10 +198,7 @@ class TestCompactionServiceUnit:
             {"role": "assistant", "content": "Old response"},
             {"role": "user", "content": "Old message 2"},
         ]
-        to_replace = [
-            {"role": "user", "content": "Old message 1"},
-            {"role": "assistant", "content": "Old response"},
-        ]
+        to_replace = [messages[0], messages[1]]
         summary = {"role": "user", "content": "[SUMMARY] Compacted"}
         result = service._replace_messages_with_summary(messages, to_replace, summary)
         assert len(result) == 2  # Summary + remaining message
