@@ -115,7 +115,7 @@ class AnthropicClient:
                 import traceback
                 print(f"[ERROR] Exception: {e}", flush=True)
                 traceback.print_exc()
-                if attempt_num >= max_retries if max_retries > 0 else False:
+                if max_retries > 0 and attempt_num >= max_retries:
                     if throw_on_error:
                         raise
                     yield {"error": str(e), "done": True}
