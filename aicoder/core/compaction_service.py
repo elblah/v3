@@ -464,26 +464,26 @@ Prioritize:
         if len(to_replace) == 0:
             return messages
 
-        # Find indices by matching content and role (more reliable than object reference)
+        # Match by object identity (handles duplicate content correctly)
         first_index = -1
+        last_index = -1
+        
+        # Find start by matching first object in to_replace
         for i, msg in enumerate(messages):
-            if msg.get("role") == to_replace[0].get("role") and msg.get("content") == to_replace[0].get("content"):
+            if msg is to_replace[0]:
                 first_index = i
                 break
-
+        
         if first_index == -1:
             return messages
-
-        # Find last index by matching last message in to_replace
-        last_message_to_replace = to_replace[-1]
-        last_index = -1
+        
+        # Find end by matching last object in to_replace
         for i, msg in enumerate(messages):
-            if (i >= first_index and
-                    msg.get("role") == last_message_to_replace.get("role") and
-                    msg.get("content") == last_message_to_replace.get("content")):
+            if msg is to_replace[-1]:
                 last_index = i
                 break
+        
+        if last_index == -1 or last_index < first_index:
+            return messages
 
-        actual_last_index = last_index if last_index != -1 else first_index + len(to_replace) - 1
-
-        return messages[:first_index] + [summary] + messages[actual_last_index + 1:]
+        return messages[:first_index] + [summary] + messages[last_index + 1:]
