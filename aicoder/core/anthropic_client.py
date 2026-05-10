@@ -11,7 +11,7 @@ from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
-from aicoder.utils.log import warn as log_warn, debug as log_debug
+from aicoder.utils.log import warn as log_warn, debug as log_debug, LogUtils
 from aicoder.utils.http_utils import fetch, Response
 
 
@@ -112,9 +112,7 @@ class AnthropicClient:
                 return
 
             except Exception as e:
-                import traceback
-                print(f"[ERROR] Exception: {e}", flush=True)
-                traceback.print_exc()
+                LogUtils.error(f"Exception: {e}")
                 if max_retries > 0 and attempt_num >= max_retries:
                     if throw_on_error:
                         raise
