@@ -126,7 +126,7 @@ class StreamProcessor:
                 LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}{effort_text}{field_text}")
 
         except Exception as e:
-            LogUtils.error(f"\n[Streaming error: {e}]")
+            LogUtils.error(f"[Streaming error: {e}]")
             return {
                 "should_continue": False,
                 "full_response": "",
