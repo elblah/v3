@@ -97,7 +97,10 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute shell command with timeout"""
     command = args.get("command")
-    timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
+    try:
+        timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
+    except ValueError:
+        raise Exception("timeout must be an integer, got: " + str(args.get("timeout")))
     cwd = args.get("cwd")
 
     if not command:
@@ -194,7 +197,10 @@ TOOL_DEFINITION = {
 def format_arguments(args):
     """Format arguments for display ()"""
     command = args.get("command")
-    timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
+    try:
+        timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
+    except ValueError:
+        raise Exception("timeout must be an integer, got: " + str(args.get("timeout")))
     reason = args.get("reason")
 
     lines = []
