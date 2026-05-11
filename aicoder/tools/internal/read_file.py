@@ -39,8 +39,8 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Read file with pagination"""
     path = args.get("path")
-    offset = args.get("offset", 0)
-    limit = args.get("limit", DEFAULT_READ_LIMIT)
+    offset = int(args.get("offset", 0))
+    limit = int(args.get("limit", DEFAULT_READ_LIMIT))
 
     if not path:
         raise Exception("Path is required")
