@@ -49,7 +49,7 @@ def _is_debug() -> bool:
 
 def _get_error_log_path() -> str:
     """Get path to error log file"""
-    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    base = os.getcwd()
     return os.path.join(base, ".aicoder", "errors.log")
 
 
@@ -158,7 +158,8 @@ class LogUtils:
     def error(message: str) -> None:
         """Print error message (red). Auto-detects exception context and prints/logs stack."""
         LogUtils.printc(message, color="red")
-        if sys.exc_info()[0] is not None:
+        exc_info = sys.exc_info()[0]
+        if exc_info is not None and exc_info is not KeyboardInterrupt:
             import traceback
             tb = traceback.format_exc()
             LogUtils.printc(tb, color="red")
