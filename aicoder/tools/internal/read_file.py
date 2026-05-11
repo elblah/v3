@@ -39,8 +39,15 @@ def _check_sandbox(path: str, print_message: bool = True) -> bool:
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Read file with pagination"""
     path = args.get("path")
-    offset = int(args.get("offset", 0))
-    limit = int(args.get("limit", DEFAULT_READ_LIMIT))
+    try:
+        offset = int(args.get("offset", 0))
+    except ValueError:
+        raise Exception("offset must be an integer, got: " + str(args.get("offset")))
+    
+    try:
+        limit = int(args.get("limit", DEFAULT_READ_LIMIT))
+    except ValueError:
+        raise Exception("limit must be an integer, got: " + str(args.get("limit")))
 
     if not path:
         raise Exception("Path is required")
