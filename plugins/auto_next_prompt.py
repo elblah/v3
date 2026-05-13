@@ -29,14 +29,10 @@ Format your response as:
 <prompt>Your next action here</prompt>
 
 Guidelines:
-- Focus on CONCRETE ACTIONS the AI can take NOW (write code, run tests, create files, etc.)
-- DO NOT suggest waiting for user input - if the task requires user input, suggest something else the AI can do
-- If implementation is done, suggest testing, documentation, or review
-- Consider dependencies: tests after code, docs after features
+- Focus on CONCRETE ACTIONS the AI can take NOW
+- DO NOT suggest waiting for user input - suggest something else instead
 - Keep it to one clear, actionable step
-- Suggest something that advances the work, not something passive
-- Evolve the project with good taste - tests, types, docs, git are normal progression
-- Don't add features just to show off or one-up the previous solution
+- Use good taste when choosing the next action
 """
 )
 
