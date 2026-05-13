@@ -17,7 +17,7 @@ GITHUB_REPO="https://api.github.com/repos/elblah/v3"
 
 # List files from local dir or GitHub API
 _list_files() {
-    local local_dir=$1 github_path=$2 pattern=${3:-}
+    local local_dir=$1 github_path=$2 suffix=$3
     if [ -d "$local_dir" ]; then
         for f in "$local_dir"/*; do
             [ -f "$f" ] || continue
@@ -25,7 +25,13 @@ _list_files() {
         done
     else
         curl -fsSL "$GITHUB_REPO/contents/$github_path" 2>/dev/null \
-            | sed -n 's/.*"name": *"\([^"]*'"$pattern"'\)".*/\1/p'
+            | python3 -c "
+import sys,json
+for item in json.load(sys.stdin):
+    name = item.get('name', '')
+    if name.endswith('$suffix'):
+        print(name)
+" 2>/dev/null
     fi
 }
 
@@ -384,8 +390,12 @@ cmd_skills() {
                     done
                 else
                     curl -fsSL "$GITHUB_REPO/contents/examples/skills" 2>/dev/null \
-                        | sed -n 's/.*"name": *"\([^"]*\)".*"type": *"dir".*/\1/p' \
-                        | sort
+                        | python3 -c "
+import sys,json
+for item in json.load(sys.stdin):
+    if item.get('type') == 'dir':
+        print(item.get('name', ''))
+" 2>/dev/null | sort
                 fi
                 echo ""
                 _read -p "Install: " sn
@@ -422,14 +432,18 @@ cmd_snippets() {
             count=$((count + 1))
         done
     else
-        local tmp
-        tmp=$(curl -fsSL "$GITHUB_REPO/contents/examples/snippets" 2>/dev/null)
-        while IFS= read -r line; do
-            local fname=$(echo "$line" | sed -n 's/.*"name": *"\([^"]*\.md\)".*/\1/p')
+        curl -fsSL "$GITHUB_REPO/contents/examples/snippets" 2>/dev/null \
+            | python3 -c "
+import sys,json
+for item in json.load(sys.stdin):
+    name = item.get('name', '')
+    if name.endswith('.md'):
+        print(name)
+" 2>/dev/null | while IFS= read -r fname; do
             [ -z "$fname" ] && continue
             curl -fsSL "$GITHUB_RAW/examples/snippets/$fname" -o "$dst/$fname" 2>/dev/null
             [ -f "$dst/$fname" ] && count=$((count + 1))
-        done <<< "$tmp"
+        done
     fi
     echo -e "${G}Installed $count snippets${R} to $dst"
     sleep 1
