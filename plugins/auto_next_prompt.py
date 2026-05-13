@@ -35,6 +35,9 @@ Guidelines:
 - Consider dependencies: tests after code, docs after features
 - Keep it to one clear, actionable step
 - Suggest something that advances the work, not something passive
+- Avoid overengineering - prefer simple solutions over elaborate ones
+- Skip features that feel like overkill for the task at hand
+- A minimal working solution beats a comprehensive one
 """
 )
 
