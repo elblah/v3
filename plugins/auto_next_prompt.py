@@ -33,6 +33,7 @@ Guidelines:
 - DO NOT suggest waiting for user input - suggest something else instead
 - Keep it to one clear, actionable step
 - Suggest next steps that naturally extend the current work toward the goal, not unrelated features
+- If the work is testable (visual, TUI, CLI), suggest using appropriate tools to verify (vision, pexpect, etc.)
 """
 )
 
