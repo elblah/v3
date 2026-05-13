@@ -42,6 +42,7 @@ show_menu() {
     echo -e "  ${G}p${R}  Plugin management"
     echo -e "  ${G}s${R}  Skills management"
     echo -e "  ${G}n${R}  Install all snippets"
+    echo -e "  ${G}u${R}  Update aicoder via uv"
     echo -e "  ${G}q${R}  Quit"
     echo ""
 }
@@ -359,6 +360,15 @@ cmd_snippets() {
     sleep 1
 }
 
+cmd_update_aicoder() {
+    echo ""
+    echo -e "${DIM}Running: uv tool upgrade ${AICODER_BIN}${R}"
+    echo ""
+    uv tool upgrade "$AICODER_BIN" 2>&1 || true
+    echo ""
+    read -p "Press Enter"
+}
+
 # ---- Self-install ----
 if [ "$1" = "--install" ] || [ "$1" = "-i" ]; then
     local_dir=$(INSTALL_DIR)
@@ -376,7 +386,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         read -p "Command: " cmd
         case "$cmd" in
             c) cmd_create ;; n) cmd_snippets ;; p) cmd_plugins ;; s) cmd_skills ;;
-            q) clear; exit 0 ;;
+            u) cmd_update_aicoder ;; q) clear; exit 0 ;;
             *) echo "Unknown"; sleep 1 ;;
         esac
     done
