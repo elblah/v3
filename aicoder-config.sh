@@ -362,6 +362,53 @@ cmd_plugins() {
     done
 }
 
+# Download a skill directory recursively from GitHub
+_install_skill_remote() {
+    local sn=$1 base_path="examples/skills/$sn" local_dir="$SKILLS_DIR/$sn"
+    local json files name type
+    json=$(curl -fsSL "$GITHUB_REPO/contents/$base_path" 2>/dev/null)
+    [ -z "$json" ] && { echo -e "${Y}Skill '$sn' not found${R}"; return; }
+    mkdir -p "$local_dir"
+    files=$(echo "$json" | python3 -c "
+import sys,json
+for item in json.load(sys.stdin):
+    print(item.get('name',''), item.get('type',''), sep='|')
+" 2>/dev/null)
+    local installed=0
+    while IFS='|' read -r fname ftype; do
+        [ -z "$fname" ] && continue
+        if [ "$ftype" = "file" ]; then
+            curl -fsSL "$GITHUB_RAW/$base_path/$fname" -o "$local_dir/$fname" 2>/dev/null
+            [ -f "$local_dir/$fname" ] && installed=$((installed + 1))
+        elif [ "$ftype" = "dir" ]; then
+            # Recurse: fetch directory contents, download files
+            ( _install_skill_subdir "$base_path/$fname" "$local_dir/$fname" )
+            installed=$((installed + 1))
+        fi
+    done <<< "$files"
+    echo -e "${G}Installed:${R} $sn ($installed files)"
+}
+
+_install_skill_subdir() {
+    local base_path=$1 local_dir=$2 json fname ftype
+    json=$(curl -fsSL "$GITHUB_REPO/contents/$base_path" 2>/dev/null)
+    [ -z "$json" ] && return
+    mkdir -p "$local_dir"
+    files=$(echo "$json" | python3 -c "
+import sys,json
+for item in json.load(sys.stdin):
+    print(item.get('name',''), item.get('type',''), sep='|')
+" 2>/dev/null)
+    while IFS='|' read -r fname ftype; do
+        [ -z "$fname" ] && continue
+        if [ "$ftype" = "file" ]; then
+            curl -fsSL "$GITHUB_RAW/$base_path/$fname" -o "$local_dir/$fname" 2>/dev/null
+        elif [ "$ftype" = "dir" ]; then
+            _install_skill_subdir "$base_path/$fname" "$local_dir/$fname"
+        fi
+    done <<< "$files"
+}
+
 cmd_skills() {
     while true; do
         clear; echo -e "${B}Skills management${R}"; echo ""
@@ -410,7 +457,7 @@ for item in json.load(sys.stdin):
                     cp -r "$ex/$sn" "$SKILLS_DIR/"
                     echo -e "${G}Installed:${R} $sn"
                 elif [ -z "$ex" ] && [ -n "$sn" ]; then
-                    echo -e "${Y}Remote skill install not yet supported${R}"
+                    _install_skill_remote "$sn"
                 else
                     echo -e "${Y}Not found:${R} $sn"
                 fi
@@ -438,18 +485,22 @@ cmd_snippets() {
             count=$((count + 1))
         done
     else
-        curl -fsSL "$GITHUB_REPO/contents/examples/snippets" 2>/dev/null \
-            | python3 -c "
+        local snippet_json
+        snippet_json=$(curl -fsSL "$GITHUB_REPO/contents/examples/snippets" 2>/dev/null)
+        [ -z "$snippet_json" ] && { echo "Failed to fetch snippets"; sleep 1; return; }
+        local names
+        names=$(echo "$snippet_json" | python3 -c "
 import sys,json
 for item in json.load(sys.stdin):
     name = item.get('name', '')
     if name.endswith('.md'):
         print(name)
-" 2>/dev/null | while IFS= read -r fname; do
+" 2>/dev/null)
+        while IFS= read -r fname; do
             [ -z "$fname" ] && continue
             curl -fsSL "$GITHUB_RAW/examples/snippets/$fname" -o "$dst/$fname" 2>/dev/null
             [ -f "$dst/$fname" ] && count=$((count + 1))
-        done
+        done <<< "$names"
     fi
     echo -e "${G}Installed $count snippets${R} to $dst"
     sleep 1
