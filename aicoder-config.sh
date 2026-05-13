@@ -309,6 +309,7 @@ cmd_plugins() {
         done <<< "$plugin_list"
         echo ""
         echo -e "  ${G}e <name>${R}  Enable (copy to ~/.config/aicoder-v3/plugins/)"
+        echo -e "  ${G}a${R}         Install all plugins"
         echo -e "  ${G}d <name>${R}  Disable (remove from ~/.config/aicoder-v3/plugins/)"
         echo -e "  ${G}u${R}         Update all installed plugins"
         echo -e "  ${G}m${R}         Main menu"
@@ -316,6 +317,20 @@ cmd_plugins() {
         _read -p "Command: " cmd args
         case "$cmd" in
             m|q) return ;;
+            a)
+                mkdir -p "$PLUGINS_DIR"
+                local installed=0
+                while IFS= read -r f; do
+                    [ -z "$f" ] || [[ "$f" != *.py ]] && continue
+                    local n=$(basename "$f" .py)
+                    _get_file "$avail_dir" "$github_path" "${n}.py" "$PLUGINS_DIR/${n}.py" 2>/dev/null
+                    [ -f "$PLUGINS_DIR/${n}.py" ] && {
+                        echo -e "  ${G}✓${R} $n"
+                        installed=$((installed + 1))
+                    }
+                done <<< "$plugin_list"
+                echo -e "${G}Installed $installed plugins${R}"
+                sleep 1 ;;
             e)
                 [ -z "$args" ] && { echo -n "Plugin: "; _read args; }
                 mkdir -p "$PLUGINS_DIR"
