@@ -300,7 +300,7 @@ cmd_plugins() {
             else
                 printf "  ${DIM}[ ]${R} %s\n" "$n"
             fi
-        done < <(_list_files "$avail_dir" "$github_path" "\\.py$")
+        done < <(_list_files "$avail_dir" "$github_path" ".py")
         echo ""
         echo -e "  ${G}e <name>${R}  Enable (copy to ~/.config/aicoder-v3/plugins/)"
         echo -e "  ${G}d <name>${R}  Disable (remove from ~/.config/aicoder-v3/plugins/)"
