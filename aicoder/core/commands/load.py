@@ -36,10 +36,22 @@ class LoadCommand(BaseCommand):
         if args is None:
             args = []
 
-        filename = args[0] if args else "session.json"
-        
-        # Handle special case: /load last or /load l (load most recent session)
-        if filename in ("last", "l"):
+        filename = args[0] if args else None
+
+        # Handle no args: prefer session.json if exists, else load last
+        if filename is None:
+            if file_exists("session.json"):
+                filename = "session.json"
+            elif file_exists("last"):
+                filename = "last"
+            elif file_exists(".aicoder/last-session.json"):
+                filename = ".aicoder/last-session.json"
+            else:
+                LogUtils.error("No session file found (session.json or last-session.json)")
+                return CommandResult(should_quit=False, run_api_call=False)
+
+        # Handle /load last or /load l (load most recent session)
+        elif filename in ("last", "l"):
             if file_exists("last"):
                 filename = "last"
             elif file_exists(".aicoder/last-session.json"):
