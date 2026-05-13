@@ -11,11 +11,40 @@ PLUGINS_DIR="$HOME/.config/aicoder-v3/plugins"
 LOCAL_SKILLS_DIR=".aicoder/skills"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# GitHub fallback for when running piped (not from repo)
+GITHUB_RAW="https://raw.githubusercontent.com/elblah/v3/master"
+GITHUB_REPO="https://api.github.com/repos/elblah/v3"
+
+# List files from local dir or GitHub API
+_list_files() {
+    local local_dir=$1 github_path=$2 pattern=${3:-}
+    if [ -d "$local_dir" ]; then
+        for f in "$local_dir"/*; do
+            [ -f "$f" ] || continue
+            basename "$f"
+        done
+    else
+        curl -fsSL "$GITHUB_REPO/contents/$github_path" 2>/dev/null \
+            | sed -n 's/.*"name": *"\([^"]*'"$pattern"'\)".*/\1/p'
+    fi
+}
+
+# Download a file from local dir or GitHub
+_get_file() {
+    local src_dir=$1 github_path=$2 filename=$3 dest=$4
+    local local_file="$src_dir/$filename"
+    if [ -f "$local_file" ]; then
+        cp "$local_file" "$dest"
+    else
+        curl -fsSL "$GITHUB_RAW/$github_path/$filename" -o "$dest"
+    fi
+}
+
 # Read from terminal even when piped (stdin is script content)
 _read() {
     if [ -t 0 ]; then
         read "$@"
-    elif [ -e /dev/tty ]; then
+    elif ( : </dev/tty ) 2>/dev/null; then
         read "$@" </dev/tty
     fi
 }
@@ -50,6 +79,8 @@ if ! command -v "$AICODER_BIN" &>/dev/null; then
     fi
     echo ""
 fi
+
+sleep 1
 
 show_menu() {
     clear
@@ -244,24 +275,26 @@ cmd_create() {
 
 cmd_plugins() {
     local avail_dir="$PROJECT_ROOT/plugins"
+    local github_path="plugins"
     while true; do
         clear; echo -e "${B}Plugin management${R}"; echo ""
         echo -e "${DIM}Plugins:${R}"
         local avail=()
-        for f in "$avail_dir"/*.py; do
-            [ -f "$f" ] || continue
+        while IFS= read -r f; do
+            [ -z "$f" ] || [[ "$f" != *.py ]] && continue
             local n=$(basename "$f" .py)
             avail+=("$n")
             if [ -f "$PLUGINS_DIR/$n.py" ]; then
-                if cmp -s "$avail_dir/$n.py" "$PLUGINS_DIR/$n.py"; then
-                    printf "  ${G}[X]${R} %s\n" "$n"
-                else
+                if [ -d "$avail_dir" ] && [ -f "$avail_dir/$n.py" ] \
+                    && ! cmp -s "$avail_dir/$n.py" "$PLUGINS_DIR/$n.py"; then
                     printf "  ${Y}[U]${R} %s\n" "$n"
+                else
+                    printf "  ${G}[X]${R} %s\n" "$n"
                 fi
             else
                 printf "  ${DIM}[ ]${R} %s\n" "$n"
             fi
-        done
+        done < <(_list_files "$avail_dir" "$github_path" "\\.py$")
         echo ""
         echo -e "  ${G}e <name>${R}  Enable (copy to ~/.config/aicoder-v3/plugins/)"
         echo -e "  ${G}d <name>${R}  Disable (remove from ~/.config/aicoder-v3/plugins/)"
@@ -274,8 +307,8 @@ cmd_plugins() {
             e)
                 [ -z "$args" ] && { echo -n "Plugin: "; _read args; }
                 mkdir -p "$PLUGINS_DIR"
-                if [ -f "$avail_dir/$args.py" ]; then
-                    cp "$avail_dir/$args.py" "$PLUGINS_DIR/"
+                _get_file "$avail_dir" "$github_path" "${args}.py" "$PLUGINS_DIR/${args}.py" 2>/dev/null
+                if [ -f "$PLUGINS_DIR/${args}.py" ]; then
                     echo -e "${G}Enabled:${R} $args"
                 else
                     echo -e "${Y}Not found:${R} $args"
@@ -295,12 +328,20 @@ cmd_plugins() {
                 for f in "$PLUGINS_DIR"/*.py; do
                     [ -f "$f" ] || continue
                     local name=$(basename "$f")
-                    local src="$avail_dir/$name"
-                    [ -f "$src" ] || continue
-                    if ! cmp -s "$f" "$src"; then
-                        cp "$src" "$f"
-                        echo -e "  ${G}✓${R} $name"
-                        updated=$((updated + 1))
+                    if [ -d "$avail_dir" ]; then
+                        local src="$avail_dir/$name"
+                        [ -f "$src" ] || continue
+                        if ! cmp -s "$f" "$src"; then
+                            cp "$src" "$f"
+                            echo -e "  ${G}✓${R} $name"
+                            updated=$((updated + 1))
+                        fi
+                    else
+                        curl -fsSL "$GITHUB_RAW/$github_path/$name" -o "$f.tmp" 2>/dev/null \
+                            && mv "$f.tmp" "$f" \
+                            && echo -e "  ${G}✓${R} $name" \
+                            && updated=$((updated + 1)) \
+                            || rm -f "$f.tmp"
                     fi
                 done
                 echo -e "${G}Updated $updated plugins${R}"
@@ -335,17 +376,25 @@ cmd_skills() {
             m|q) return ;;
             i)
                 local ex="$PROJECT_ROOT/examples/skills"
-                [ ! -d "$ex" ] && { echo -e "${Y}No examples/skills/${R}"; sleep 1; continue; }
-                echo ""; echo "Available:"; local skills=()
-                for d in "$ex"/*/; do
-                    [ -d "$d" ] || continue
-                    local n=$(basename "$d"); skills+=("$n"); echo "  $n"
-                done
-                echo ""; _read -p "Install: " sn
+                echo ""; echo "Available:"
+                if [ -d "$ex" ]; then
+                    for d in "$ex"/*/; do
+                        [ -d "$d" ] || continue
+                        local n=$(basename "$d"); echo "  $n"
+                    done
+                else
+                    curl -fsSL "$GITHUB_REPO/contents/examples/skills" 2>/dev/null \
+                        | sed -n 's/.*"name": *"\([^"]*\)".*"type": *"dir".*/\1/p' \
+                        | sort
+                fi
+                echo ""
+                _read -p "Install: " sn
                 if [ -d "$ex/$sn" ]; then
                     mkdir -p "$SKILLS_DIR"; rm -rf "$SKILLS_DIR/$sn"
                     cp -r "$ex/$sn" "$SKILLS_DIR/"
                     echo -e "${G}Installed:${R} $sn"
+                elif [ -z "$ex" ] && [ -n "$sn" ]; then
+                    echo -e "${Y}Remote skill install not yet supported${R}"
                 else
                     echo -e "${Y}Not found:${R} $sn"
                 fi
@@ -364,17 +413,24 @@ cmd_skills() {
 cmd_snippets() {
     local src="$PROJECT_ROOT/examples/snippets"
     local dst="$HOME/.config/aicoder-v3/snippets"
-    if [ ! -d "$src" ]; then
-        echo -e "${Y}No examples/snippets/ directory${R}"
-        sleep 1; return
-    fi
-    mkdir -p "$dst"
     local count=0
-    for f in "$src"/*; do
-        [ -f "$f" ] || continue
-        cp "$f" "$dst/"
-        count=$((count + 1))
-    done
+    mkdir -p "$dst"
+    if [ -d "$src" ]; then
+        for f in "$src"/*; do
+            [ -f "$f" ] || continue
+            cp "$f" "$dst/"
+            count=$((count + 1))
+        done
+    else
+        local tmp
+        tmp=$(curl -fsSL "$GITHUB_REPO/contents/examples/snippets" 2>/dev/null)
+        while IFS= read -r line; do
+            local fname=$(echo "$line" | sed -n 's/.*"name": *"\([^"]*\.md\)".*/\1/p')
+            [ -z "$fname" ] && continue
+            curl -fsSL "$GITHUB_RAW/examples/snippets/$fname" -o "$dst/$fname" 2>/dev/null
+            [ -f "$dst/$fname" ] && count=$((count + 1))
+        done <<< "$tmp"
+    fi
     echo -e "${G}Installed $count snippets${R} to $dst"
     sleep 1
 }
@@ -418,7 +474,7 @@ if [ "$1" = "--install" ] || [ "$1" = "-i" ]; then
 fi
 
 # ---- Main entry point (only runs when executed, not sourced) ----
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+if [ -z "${BASH_SOURCE[0]}" ] || [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     while true; do
         show_menu
         _read -p "Command: " cmd
