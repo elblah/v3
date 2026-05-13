@@ -22,11 +22,21 @@ if ! command -v "$AICODER_BIN" &>/dev/null; then
     echo ""
     read -p "Install now? [y/N]: " ans
     if [[ "$ans" =~ [yY] ]]; then
-        uv tool install git+https://github.com/elblah/v3
-        if command -v "$AICODER_BIN" &>/dev/null; then
-            echo -e "${G}Installed:${R} $AICODER_BIN"
+        if ! command -v uv &>/dev/null; then
+            echo -e "${Y}uv not found. Installing...${R}"
+            curl -fsSL https://astral.sh/uv/install.sh | sh
+        fi
+        if command -v uv &>/dev/null; then
+            uv tool install git+https://github.com/elblah/v3
+            if command -v "$AICODER_BIN" &>/dev/null; then
+                echo -e "${G}Installed:${R} $AICODER_BIN"
+            else
+                echo -e "${Y}Install may have failed. Set AICODER_BIN env if binary name differs.${R}"
+            fi
         else
-            echo -e "${Y}Install may have failed. Set AICODER_BIN env if binary name differs.${R}"
+            echo "uv not available. Install manually:"
+            echo "  curl -fsSL https://astral.sh/uv/install.sh | sh"
+            echo "  uv tool install git+https://github.com/elblah/v3"
         fi
     fi
     echo ""
@@ -361,10 +371,22 @@ cmd_snippets() {
 }
 
 cmd_update_aicoder() {
-    echo ""
-    echo -e "${DIM}Running: uv tool upgrade ${AICODER_BIN}${R}"
-    echo ""
-    uv tool upgrade "$AICODER_BIN" 2>&1 || true
+    if ! command -v uv &>/dev/null; then
+        echo -e "${Y}uv not found${R}"
+        read -p "Install uv via https://astral.sh/uv/install.sh? [y/N]: " ans
+        if [[ "$ans" =~ [yY] ]]; then
+            curl -fsSL https://astral.sh/uv/install.sh | sh
+        fi
+    fi
+    if command -v uv &>/dev/null; then
+        echo ""
+        echo -e "${DIM}Running: uv tool upgrade ${AICODER_BIN}${R}"
+        echo ""
+        uv tool upgrade "$AICODER_BIN" 2>&1 || true
+    else
+        echo "uv not available. Install manually:"
+        echo "  curl -fsSL https://astral.sh/uv/install.sh | sh"
+    fi
     echo ""
     read -p "Press Enter"
 }
