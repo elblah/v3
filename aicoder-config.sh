@@ -285,7 +285,8 @@ cmd_plugins() {
     while true; do
         clear; echo -e "${B}Plugin management${R}"; echo ""
         echo -e "${DIM}Plugins:${R}"
-        local avail=()
+        local plugin_list
+        plugin_list=$(_list_files "$avail_dir" "$github_path" ".py")
         while IFS= read -r f; do
             [ -z "$f" ] || [[ "$f" != *.py ]] && continue
             local n=$(basename "$f" .py)
@@ -300,7 +301,7 @@ cmd_plugins() {
             else
                 printf "  ${DIM}[ ]${R} %s\n" "$n"
             fi
-        done < <(_list_files "$avail_dir" "$github_path" ".py")
+        done <<< "$plugin_list"
         echo ""
         echo -e "  ${G}e <name>${R}  Enable (copy to ~/.config/aicoder-v3/plugins/)"
         echo -e "  ${G}d <name>${R}  Disable (remove from ~/.config/aicoder-v3/plugins/)"
