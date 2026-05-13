@@ -36,8 +36,10 @@ Guidelines:
 - Keep it to one clear, actionable step
 - Suggest something that advances the work, not something passive
 - Avoid overengineering - prefer simple solutions over elaborate ones
-- Skip features that feel like overkill for the task at hand
-- A minimal working solution beats a comprehensive one
+- Don't add features unrelated to the core task
+- But do improve code quality: tests, types, docs, linting when reasonable
+- Skip features that exist just to show off
+- A simple task done well beats a complex task done poorly
 """
 )
 
