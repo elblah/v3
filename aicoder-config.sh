@@ -456,7 +456,7 @@ for item in json.load(sys.stdin):
                     mkdir -p "$SKILLS_DIR"; rm -rf "$SKILLS_DIR/$sn"
                     cp -r "$ex/$sn" "$SKILLS_DIR/"
                     echo -e "${G}Installed:${R} $sn"
-                elif [ -z "$ex" ] && [ -n "$sn" ]; then
+                elif [ ! -d "$ex" ] && [ -n "$sn" ]; then
                     _install_skill_remote "$sn"
                 else
                     echo -e "${Y}Not found:${R} $sn"
