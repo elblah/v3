@@ -32,9 +32,7 @@ Guidelines:
 - Focus on CONCRETE ACTIONS the AI can take NOW
 - DO NOT suggest waiting for user input - suggest something else instead
 - Keep it to one clear, actionable step
-- Use good taste when choosing the next action
-
-You may analyze the current project state if needed to determine the natural next step that keeps the project evolving in its current direction.
+- Suggest next steps that naturally extend the current work toward the goal, not unrelated features
 """
 )
 
