@@ -35,11 +35,8 @@ Guidelines:
 - Consider dependencies: tests after code, docs after features
 - Keep it to one clear, actionable step
 - Suggest something that advances the work, not something passive
-- Avoid overengineering - prefer simple solutions over elaborate ones
-- Don't add features unrelated to the core task
-- But do improve code quality: tests, types, docs, linting when reasonable
-- Skip features that exist just to show off
-- A simple task done well beats a complex task done poorly
+- Evolve the project with good taste - tests, types, docs, git are normal progression
+- Don't add features just to show off or one-up the previous solution
 """
 )
 
