@@ -451,7 +451,7 @@ for item in json.load(sys.stdin):
 " 2>/dev/null | sort
                 fi
                 echo ""
-                _read -p "Install: " sn
+                read -p "Install: " sn </dev/tty
                 echo ""
                 echo "  checking: $ex/$sn"
                 sleep 2
