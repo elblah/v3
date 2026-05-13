@@ -18,6 +18,26 @@ cd v3
 python main.py
 ```
 
+### Interactive Config Tool
+
+One-shot setup via curl:
+
+```bash
+curl -s https://raw.githubusercontent.com/elblah/v3/master/aicoder-config.sh | bash
+```
+
+Menu:
+```
+c  Create launch script  - wizard for provider config scripts
+p  Plugin management     - enable/disable/update plugins
+s  Skills management     - install/remove skills
+n  Install all snippets  - copy all snippets to ~/.config/aicoder-v3/snippets/
+u  Update aicoder        - uv tool upgrade aicoder-v3
+q  Quit
+```
+
+Commands like `i <name>` accept args on the same line (e.g., `i subagents` at skills prompt).
+
 ## Features
 
 - Built with Python standard library only (no external dependencies)
