@@ -452,6 +452,9 @@ for item in json.load(sys.stdin):
                 fi
                 echo ""
                 _read -p "Install: " sn
+                echo ""
+                echo "  checking: $ex/$sn"
+                sleep 2
                 if [ -d "$ex/$sn" ]; then
                     mkdir -p "$SKILLS_DIR"; rm -rf "$SKILLS_DIR/$sn"
                     cp -r "$ex/$sn" "$SKILLS_DIR/"
