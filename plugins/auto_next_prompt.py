@@ -1,8 +1,8 @@
 """
-Auto-Next-Prompt Plugin - Automatically suggest and execute next actions
+Auto-Next-Prompt Plugin - Automatically suggest next actions
 
-Monitors AI completion and generates continuation prompts based on goal.
-Requires goal to be set (via /goal or [GOAL] message).
+Monitors AI completion and generates continuation prompts.
+Works with or without goal plugin - goal is considered via conversation context.
 
 Commands:
 - /auto-next-prompt on    - Enable auto-continuation
@@ -20,7 +20,7 @@ from aicoder.core.config import Config
 
 
 # Injection message template
-INJECT_MESSAGE = """Based on the goal and the work we just completed, generate the next logical action to continue progress.
+INJECT_MESSAGE = """Based on the work we just completed, generate the next logical action to continue progress.
 
 Format your response as:
 <prompt>Your next action here</prompt>
@@ -31,22 +31,8 @@ Guidelines:
 - If implementation is done, suggest testing, documentation, or review
 - Consider dependencies: tests after code, docs after features
 - Keep it to one clear, actionable step
-- Suggest something that advances the goal, not something passive
-
-Current goal: {goal}
+- Suggest something that advances the work, not something passive
 """
-
-
-def _get_goal_from_messages(messages: list) -> Optional[str]:
-    """Extract goal from [GOAL] message in conversation"""
-    for msg in messages:
-        if msg.get("role") == "user":
-            content = msg.get("content", "")
-            if isinstance(content, str) and content.startswith("[GOAL]"):
-                prefix = "[GOAL] Session goal: "
-                if content.startswith(prefix):
-                    return content[len(prefix):].strip()
-    return None
 
 
 def _extract_prompt_tag(text: str) -> Optional[str]:
@@ -96,14 +82,10 @@ def create_plugin(ctx):
         args = args_str.strip().lower()
 
         if args == "on":
-            goal = _get_goal_from_messages(_get_messages())
-            if not goal:
-                return "No goal set. Use /goal <text> first, then enable auto-next-prompt."
-
             _enabled = True
             _awaiting_tag = False
             _attempts = 0
-            return f"Auto-next-prompt enabled. Goal: {goal}"
+            return "Auto-next-prompt enabled."
 
         if args == "off":
             _enabled = False
@@ -112,14 +94,11 @@ def create_plugin(ctx):
             return "Auto-next-prompt disabled."
 
         # Show status
-        goal = _get_goal_from_messages(_get_messages())
-        if not goal:
-            return "Auto-next-prompt: disabled (no goal set)"
         if _enabled:
             if _awaiting_tag:
-                return f"Auto-next-prompt: enabled (waiting for <prompt> tag, {_attempts}/{_max_attempts}). Goal: {goal}"
-            return f"Auto-next-prompt: enabled. Goal: {goal}"
-        return f"Auto-next-prompt: disabled. Goal: {goal}"
+                return f"Auto-next-prompt: enabled (waiting for <prompt> tag, {_attempts}/{_max_attempts})"
+            return "Auto-next-prompt: enabled"
+        return "Auto-next-prompt: disabled"
 
     def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
         global _enabled, _awaiting_tag, _attempts
@@ -144,13 +123,7 @@ def create_plugin(ctx):
             LogUtils.print(f"[auto-next-prompt] Next action: {prompt[:60]}{'...' if len(prompt) > 60 else ''}")
             return prompt
 
-        # No tag found
-        goal = _get_goal_from_messages(messages)
-        if not goal:
-            _enabled = False
-            LogUtils.warn("[!] Auto-next-prompt: no goal found, disabling")
-            return None
-
+        # No tag found - inject continuation request
         if _awaiting_tag:
             # Already asked, AI didn't give tag
             _attempts += 1
@@ -163,13 +136,13 @@ def create_plugin(ctx):
 
             # Ask again
             LogUtils.print("[auto-next-prompt] AI didn't provide <prompt> tag, asking again...")
-            return INJECT_MESSAGE.format(goal=goal)
+            return INJECT_MESSAGE
 
         # First completion - inject continuation request
         _awaiting_tag = True
         _attempts = 1
         LogUtils.print("[auto-next-prompt] Asking AI for next action...")
-        return INJECT_MESSAGE.format(goal=goal)
+        return INJECT_MESSAGE
 
     # Register hooks
     ctx.register_hook("after_ai_processing", _on_after_ai_processing)
