@@ -18,14 +18,19 @@ GITHUB_REPO="https://api.github.com/repos/elblah/v3"
 # List files from local dir or GitHub API
 _list_files() {
     local local_dir=$1 github_path=$2 suffix=$3
-    if [ -d "$local_dir" ]; then
+    if [ -t 0 ] && [ -d "$local_dir" ]; then
         for f in "$local_dir"/*; do
             [ -f "$f" ] || continue
             basename "$f"
         done
     else
-        curl -fsSL "$GITHUB_REPO/contents/$github_path" 2>/dev/null \
-            | python3 -c "
+        local json
+        json=$(curl -fsSL "$GITHUB_REPO/contents/$github_path" 2>/dev/null)
+        if [ -z "$json" ]; then
+            echo >&2 "Failed to fetch $GITHUB_REPO/contents/$github_path"
+            return
+        fi
+        echo "$json" | python3 -c "
 import sys,json
 for item in json.load(sys.stdin):
     name = item.get('name', '')
