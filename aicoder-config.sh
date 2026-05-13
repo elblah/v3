@@ -450,11 +450,8 @@ for item in json.load(sys.stdin):
         print(item.get('name', ''))
 " 2>/dev/null | sort
                 fi
-                echo ""
-                read -p "Install: " sn </dev/tty
-                echo ""
-                echo "  checking: $ex/$sn"
-                sleep 2
+                local sn=$args
+                [ -z "$sn" ] && _read -p "Install: " sn
                 if [ -d "$ex/$sn" ]; then
                     mkdir -p "$SKILLS_DIR"; rm -rf "$SKILLS_DIR/$sn"
                     cp -r "$ex/$sn" "$SKILLS_DIR/"
