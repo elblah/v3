@@ -11,6 +11,15 @@ PLUGINS_DIR="$HOME/.config/aicoder-v3/plugins"
 LOCAL_SKILLS_DIR=".aicoder/skills"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# Read from terminal even when piped (stdin is script content)
+_read() {
+    if [ -t 0 ]; then
+        read "$@"
+    elif [ -e /dev/tty ]; then
+        read "$@" </dev/tty
+    fi
+}
+
 R="\033[0m"; G="\033[32m"; Y="\033[33m"; C="\033[36m"; B="\033[1m"; DIM="\033[2m"
 
 # Check if aicoder binary exists, offer install if not
@@ -20,7 +29,7 @@ if ! command -v "$AICODER_BIN" &>/dev/null; then
     echo "Install it with:"
     echo -e "  ${C}uv tool install git+https://github.com/elblah/v3${R}"
     echo ""
-    read -p "Install now? [y/N]: " ans
+    _read -p "Install now? [y/N]: " ans
     if [[ "$ans" =~ [yY] ]]; then
         if ! command -v uv &>/dev/null; then
             echo -e "${Y}uv not found. Installing...${R}"
@@ -85,9 +94,9 @@ PRESETS[5,model]="gpt-4o-mini"; PRESETS[5,ctx]="128000"; PRESETS[5,prov]=""
 read_edit() {
     local label=$1 default=$2 input
     if [ -n "$default" ]; then
-        read -e -p "${label}: " -i "$default" input || return $?
+        _read -e -p "${label}: " -i "$default" input || return $?
     else
-        read -e -p "${label}: " input || return $?
+        _read -e -p "${label}: " input || return $?
     fi
     EDIT_RESULT="$input"
 }
@@ -171,7 +180,7 @@ name_and_gen() {
     local default_path="$(INSTALL_DIR)/$default_name"
     read_edit "Script path" "$default_path" || return; local spath=${EDIT_RESULT:-$default_path}
 
-    echo ""; read -p "Test connection? [y/N]: " do_test
+    echo ""; _read -p "Test connection? [y/N]: " do_test
     [[ "$do_test" =~ [yY] ]] && test_connection "$api" "$ep" "$key" "$mod"
 
     generate_script "$spath" "$api" "$ep" "$key" "$mod" "$ctx" "$temp" "$top_p" "$top_k" "$prov"
@@ -224,7 +233,7 @@ cmd_create() {
         done
         echo -e "  ${G}m${R}  Main menu"
         echo ""
-        read -p "Select (1-6, m=menu): " sel
+        _read -p "Select (1-6, m=menu): " sel
         case "$sel" in
             1|2|3|4|5) use_preset "$sel" ;;
             6) custom_provider ;;
@@ -259,11 +268,11 @@ cmd_plugins() {
         echo -e "  ${G}u${R}         Update all installed plugins"
         echo -e "  ${G}m${R}         Main menu"
         echo ""
-        read -p "Command: " cmd args
+        _read -p "Command: " cmd args
         case "$cmd" in
             m|q) return ;;
             e)
-                [ -z "$args" ] && { echo -n "Plugin: "; read args; }
+                [ -z "$args" ] && { echo -n "Plugin: "; _read args; }
                 mkdir -p "$PLUGINS_DIR"
                 if [ -f "$avail_dir/$args.py" ]; then
                     cp "$avail_dir/$args.py" "$PLUGINS_DIR/"
@@ -273,7 +282,7 @@ cmd_plugins() {
                 fi
                 sleep 1 ;;
             d)
-                [ -z "$args" ] && { echo -n "Plugin: "; read args; }
+                [ -z "$args" ] && { echo -n "Plugin: "; _read args; }
                 if [ -f "$PLUGINS_DIR/$args.py" ]; then
                     rm "$PLUGINS_DIR/$args.py"
                     echo "Disabled: $args"
@@ -321,7 +330,7 @@ cmd_skills() {
         echo -e "  ${G}r <name>${R}  Remove"
         echo -e "  ${G}m${R}  Main menu"
         echo ""
-        read -p "Command: " cmd args
+        _read -p "Command: " cmd args
         case "$cmd" in
             m|q) return ;;
             i)
@@ -332,7 +341,7 @@ cmd_skills() {
                     [ -d "$d" ] || continue
                     local n=$(basename "$d"); skills+=("$n"); echo "  $n"
                 done
-                echo ""; read -p "Install: " sn
+                echo ""; _read -p "Install: " sn
                 if [ -d "$ex/$sn" ]; then
                     mkdir -p "$SKILLS_DIR"; rm -rf "$SKILLS_DIR/$sn"
                     cp -r "$ex/$sn" "$SKILLS_DIR/"
@@ -342,7 +351,7 @@ cmd_skills() {
                 fi
                 sleep 1 ;;
             r)
-                [ -z "$args" ] && { echo -n "Skill: "; read args; }
+                [ -z "$args" ] && { echo -n "Skill: "; _read args; }
                 if [ -d "$SKILLS_DIR/$args" ]; then rm -rf "$SKILLS_DIR/$args"; echo "Removed: $args"
                 elif [ -d "$LOCAL_SKILLS_DIR/$args" ]; then rm -rf "$LOCAL_SKILLS_DIR/$args"; echo "Removed: $args"
                 else echo -e "${Y}Not found:${R} $args"
@@ -373,7 +382,7 @@ cmd_snippets() {
 cmd_update_aicoder() {
     if ! command -v uv &>/dev/null; then
         echo -e "${Y}uv not found${R}"
-        read -p "Install uv via https://astral.sh/uv/install.sh? [y/N]: " ans
+        _read -p "Install uv via https://astral.sh/uv/install.sh? [y/N]: " ans
         if [[ "$ans" =~ [yY] ]]; then
             curl -fsSL https://astral.sh/uv/install.sh | sh
         fi
@@ -388,14 +397,21 @@ cmd_update_aicoder() {
         echo "  curl -fsSL https://astral.sh/uv/install.sh | sh"
     fi
     echo ""
-    read -p "Press Enter"
+    _read -p "Press Enter"
 }
 
 # ---- Self-install ----
 if [ "$1" = "--install" ] || [ "$1" = "-i" ]; then
     local_dir=$(INSTALL_DIR)
     mkdir -p "$local_dir"
-    cp "$0" "$local_dir/aicoder-config"
+    # If running from a real file, copy it; otherwise download from GitHub
+    if [ -f "$0" ] && [ "$0" != "bash" ]; then
+        cp "$0" "$local_dir/aicoder-config"
+    else
+        echo "Downloading aicoder-config..."
+        curl -fsSL "https://raw.githubusercontent.com/elblah/v3/master/aicoder-config.sh" \
+            -o "$local_dir/aicoder-config"
+    fi
     chmod +x "$local_dir/aicoder-config"
     echo -e "${G}Installed:${R} $local_dir/aicoder-config"
     exit 0
@@ -405,7 +421,7 @@ fi
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     while true; do
         show_menu
-        read -p "Command: " cmd
+        _read -p "Command: " cmd
         case "$cmd" in
             c) cmd_create ;; n) cmd_snippets ;; p) cmd_plugins ;; s) cmd_skills ;;
             u) cmd_update_aicoder ;; q) clear; exit 0 ;;
