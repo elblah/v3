@@ -13,6 +13,25 @@ PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 R="\033[0m"; G="\033[32m"; Y="\033[33m"; C="\033[36m"; B="\033[1m"; DIM="\033[2m"
 
+# Check if aicoder binary exists, offer install if not
+if ! command -v "$AICODER_BIN" &>/dev/null; then
+    echo -e "${Y}Warning:${R} '$AICODER_BIN' not found in PATH"
+    echo ""
+    echo "Install it with:"
+    echo -e "  ${C}uv tool install git+https://github.com/elblah/v3${R}"
+    echo ""
+    read -p "Install now? [y/N]: " ans
+    if [[ "$ans" =~ [yY] ]]; then
+        uv tool install git+https://github.com/elblah/v3
+        if command -v "$AICODER_BIN" &>/dev/null; then
+            echo -e "${G}Installed:${R} $AICODER_BIN"
+        else
+            echo -e "${Y}Install may have failed. Set AICODER_BIN env if binary name differs.${R}"
+        fi
+    fi
+    echo ""
+fi
+
 show_menu() {
     clear
     echo -e "${B}AI Coder Configuration Tool${R}  v0.1"
