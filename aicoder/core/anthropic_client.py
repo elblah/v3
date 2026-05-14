@@ -305,8 +305,10 @@ class AnthropicClient:
             
             event_data += line
         
+        # Update stats on success
         if self.stats:
-            self.stats.increment_api_requests()
+            self.stats.increment_api_success()
+            self.stats.add_api_time(time.time() - start_time)
 
         yield {
             "content": full_content,
@@ -344,8 +346,10 @@ class AnthropicClient:
                         }
                     }
 
+        # Update stats on success
         if self.stats:
-            self.stats.increment_api_requests()
+            self.stats.increment_api_success()
+            self.stats.add_api_time(time.time() - start_time)
 
         # Yield same format as streaming content chunks (with choices wrapper)
         yield {
