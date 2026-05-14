@@ -329,6 +329,7 @@ def create_plugin(ctx):
 
         if cmd == "on":
             enabled = True
+            speak("Accessibility enabled")
             return "Accessibility enabled"
         elif cmd == "off":
             enabled = False
