@@ -315,11 +315,14 @@ def main():
         for model in sorted(agg[url]):
             d = agg[url][model]
             avg = d["t"] / d["n"]
+            toks = d["c"]  # output tokens only for generation speed
+            tps = toks / d["t"] if d["t"] > 0 else 0
             print(f"    Model: {model}")
             print(f"        Requests:       {d['n']:,}")
             print(f"        Input Tokens:   {d['p']:,}")
             print(f"        Output Tokens:  {d['c']:,}")
-            print(f"        Avg Req Time:   {avg:.2f}s\n")
+            print(f"        Avg Req Time:   {avg:.2f}s")
+            print(f"        Output tok/s:   {tps:.1f}\n")
             total["n"] += d["n"]
             total["p"] += d["p"]
             total["c"] += d["c"]
@@ -331,7 +334,9 @@ def main():
     print(f"    Total Input Tokens:  {total['p']:,}")
     print(f"    Total Output Tokens: {total['c']:,}")
     print(f"    Total Time:          {total['t']:.2f}s")
-    print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s\n")
+    print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s")
+    total_toks = total["c"]  # output tokens only
+    print(f"    Total Output tok/s:  {total_toks / total['t']:.1f}\n")
 
 
 if __name__ == "__main__":
