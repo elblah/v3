@@ -5,13 +5,14 @@
 
 import json
 import os
+import sys
 import time
 import itertools
 from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
-from aicoder.utils.log import warn as log_warn, debug as log_debug, LogUtils
+from aicoder.utils.log import warn as log_warn, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
 
 
@@ -203,6 +204,7 @@ class AnthropicClient:
         current_tool_id = None
         current_tool_name = None
         current_tool_input = ""
+        thinking_printed = False
         
         # Read incrementally and process per event
         event_data = ""
@@ -248,12 +250,20 @@ class AnthropicClient:
                                 if delta_type == "thinking_delta":
                                     thinking = delta.get("thinking", "")
                                     accumulated_reasoning += thinking
+                                    if not thinking_printed:
+                                        sys.stdout.write(f"{Config.colors['dim']}thinking...{Config.colors['reset']}")
+                                        sys.stdout.flush()
+                                        thinking_printed = True
                                     yield {
                                         "choices": [{"delta": {"reasoning_content": thinking}}],
                                         "done": False
                                     }
                                     
                                 elif delta_type == "text_delta":
+                                    if thinking_printed:
+                                        sys.stdout.write("\r\x1b[K")
+                                        sys.stdout.flush()
+                                        thinking_printed = False
                                     text = delta.get("text", "")
                                     full_content += text
                                     yield {
