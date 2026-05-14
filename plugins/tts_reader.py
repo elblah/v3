@@ -386,9 +386,11 @@ Use a single <tts>...</tts> block for questions, important warnings, or key summ
 
         if cmd == "on":
             enabled = True
+            speak("TTS enabled")
             return "TTS enabled"
         elif cmd == "off":
             enabled = False
+            speak("TTS disabled")
             return "TTS disabled"
         elif cmd == "status":
             status = "enabled" if enabled else "disabled"
