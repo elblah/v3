@@ -205,6 +205,20 @@ class AnthropicClient:
         current_tool_name = None
         current_tool_input = ""
         thinking_printed = False
+
+        def _show_thinking():
+            nonlocal thinking_printed
+            if not thinking_printed:
+                sys.stdout.write(f"{Config.colors['dim']}thinking...{Config.colors['reset']}")
+                sys.stdout.flush()
+                thinking_printed = True
+
+        def _clear_thinking():
+            nonlocal thinking_printed
+            if thinking_printed:
+                sys.stdout.write("\r\x1b[K")
+                sys.stdout.flush()
+                thinking_printed = False
         
         # Read incrementally and process per event
         event_data = ""
@@ -251,19 +265,14 @@ class AnthropicClient:
                                     thinking = delta.get("thinking", "")
                                     accumulated_reasoning += thinking
                                     if not thinking_printed:
-                                        sys.stdout.write(f"{Config.colors['dim']}thinking...{Config.colors['reset']}")
-                                        sys.stdout.flush()
-                                        thinking_printed = True
+                                        _show_thinking()
                                     yield {
                                         "choices": [{"delta": {"reasoning_content": thinking}}],
                                         "done": False
                                     }
                                     
                                 elif delta_type == "text_delta":
-                                    if thinking_printed:
-                                        sys.stdout.write("\r\x1b[K")
-                                        sys.stdout.flush()
-                                        thinking_printed = False
+                                    _clear_thinking()
                                     text = delta.get("text", "")
                                     full_content += text
                                     yield {
@@ -305,7 +314,8 @@ class AnthropicClient:
                                     }
                                     
                             elif dtype == "message_stop":
-                                pass
+                                # Clear thinking indicator at end of message
+                                _clear_thinking()
                                     
                         except json.JSONDecodeError:
                             pass
