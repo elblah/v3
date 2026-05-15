@@ -134,6 +134,7 @@ show_menu() {
     fi
 
     response_file="$TMP/aicoder_menu_resp_${pane_numeric}.tmp"
+    rm "$response_file"
     tmux display-menu -T "#[align=centre]AICoder" \
         "Stop Processing (${processing})"        x "run-shell -b 'echo stop > ${response_file}'" \
         "Toggle YOLO (${yolo_enabled})"          y "run-shell -b 'echo yolo > ${response_file}'" \
@@ -148,6 +149,11 @@ show_menu() {
         "Save Session"      s  "run-shell -b 'echo save > ${response_file}'" \
         "Kill"              K  "run-shell -b 'echo kill > ${response_file}'" \
         "Quit"              Q  "run-shell -b 'echo quit > ${response_file}'"
+
+    for i in {1..20}; do
+        [[ -e "$response_file" ]] && break
+        sleep 0.5
+    done
 
     cat "$response_file"
     rm "$response_file"
