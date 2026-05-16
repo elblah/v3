@@ -344,9 +344,13 @@ class AnthropicClient:
             if message_usage:
                 input_tokens = message_usage.get("input_tokens") or 0
                 output_tokens = message_usage.get("output_tokens") or 0
+                cache_read = message_usage.get("cache_read_input_tokens") or 0
+                cache_creation = message_usage.get("cache_creation_input_tokens") or 0
                 if input_tokens or output_tokens:
                     self.stats.add_prompt_tokens(input_tokens)
                     self.stats.add_completion_tokens(output_tokens)
+                self.stats.add_cache_read_tokens(cache_read)
+                self.stats.add_cache_creation_tokens(cache_creation)
 
         yield {
             "content": full_content,
@@ -393,9 +397,13 @@ class AnthropicClient:
             if usage:
                 input_tokens = usage.get("input_tokens") or 0
                 output_tokens = usage.get("output_tokens") or 0
+                cache_read = usage.get("cache_read_input_tokens") or 0
+                cache_creation = usage.get("cache_creation_input_tokens") or 0
                 if input_tokens or output_tokens:
                     self.stats.add_prompt_tokens(input_tokens)
                     self.stats.add_completion_tokens(output_tokens)
+                self.stats.add_cache_read_tokens(cache_read)
+                self.stats.add_cache_creation_tokens(cache_creation)
         if self.stats:
             self.stats.increment_api_success()
             self.stats.add_api_time(time.time() - start_time)
