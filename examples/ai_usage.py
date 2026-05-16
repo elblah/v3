@@ -168,43 +168,17 @@ def get_time_range(period: str) -> tuple[datetime, datetime]:
 def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
     """Parse a stats.log file, return entries within time range."""
     entries = []
-    # Format: timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
-    for line in filepath.read_text().splitlines():
-        if not line or line.count("|") != 5:
-            continue
-        ts, url, model, p_tok, c_tok, elapsed = line.split("|")
-        try:
-            # Handle both T and underscore separators
-            ts = ts.replace("_", "T")
-            dt = datetime.fromisoformat(ts)
-            if start and (dt < start or dt > end):
-                continue
-            entries.append({
-                "url": url, "model": model,
-                "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
-            })
-        except ValueError:
-            continue
-    return entries
-
-
-def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | None):
-    """Parse central_stats.log, return entries within time range."""
-    entries = []
-    # Format: project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
-    if not filepath.exists():
-        return entries
+    # New format (8 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_read|cache_creation
+    # Old format (6 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
     for line in filepath.read_text().splitlines():
         if not line:
             continue
         pipe_count = line.count("|")
-        if pipe_count == 6:
-            # project|timestamp|url|model|prompt|completion|elapsed
-            parts = line.split("|")
-            ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
+        if pipe_count == 7:
+            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = line.split("|")
         elif pipe_count == 5:
-            # old migrated format: timestamp|url|model|prompt|completion|elapsed
             ts, url, model, p_tok, c_tok, elapsed = line.split("|")
+            cache_read = cache_create = 0
         else:
             continue
         try:
@@ -215,6 +189,49 @@ def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | 
             entries.append({
                 "url": url, "model": model,
                 "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
+                "cache_read": int(cache_read), "cache_create": int(cache_create),
+            })
+        except ValueError:
+            continue
+    return entries
+
+
+def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | None):
+    """Parse central_stats.log, return entries within time range."""
+    entries = []
+    # New format (9 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_read|cache_creation
+    # Old format (7 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
+    # Legacy format (6 fields): timestamp|url|model|prompt|completion|elapsed
+    if not filepath.exists():
+        return entries
+    for line in filepath.read_text().splitlines():
+        if not line:
+            continue
+        pipe_count = line.count("|")
+        if pipe_count == 8:
+            # new: project|timestamp|url|model|prompt|completion|elapsed|cache_read|cache_create
+            parts = line.split("|")
+            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8]
+        elif pipe_count == 6:
+            # old migrated: project|timestamp|url|model|prompt|completion|elapsed
+            parts = line.split("|")
+            ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
+            cache_read = cache_create = 0
+        elif pipe_count == 5:
+            # legacy: timestamp|url|model|prompt|completion|elapsed
+            ts, url, model, p_tok, c_tok, elapsed = line.split("|")
+            cache_read = cache_create = 0
+        else:
+            continue
+        try:
+            ts = ts.replace("_", "T")
+            dt = datetime.fromisoformat(ts)
+            if start and (dt < start or dt > end):
+                continue
+            entries.append({
+                "url": url, "model": model,
+                "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
+                "cache_read": int(cache_read), "cache_create": int(cache_create),
             })
         except ValueError:
             continue
@@ -299,16 +316,18 @@ def main():
             sys.exit(0)
 
     # Aggregate: url -> model -> stats
-    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0}))
+    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0}))
     for e in entries:
         agg[e["url"]][e["model"]]["n"] += 1
         agg[e["url"]][e["model"]]["p"] += e["prompt"]
         agg[e["url"]][e["model"]]["c"] += e["completion"]
         agg[e["url"]][e["model"]]["t"] += e["elapsed"]
+        agg[e["url"]][e["model"]]["cr"] += e.get("cache_read", 0)
+        agg[e["url"]][e["model"]]["cc"] += e.get("cache_create", 0)
 
     # Report
     print(f"\n=== AI Usage Report ({label}) ===\n")
-    total = {"n": 0, "p": 0, "c": 0, "t": 0.0}
+    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0}
 
     for url in sorted(agg):
         print(url)
@@ -321,18 +340,24 @@ def main():
             print(f"        Requests:       {d['n']:,}")
             print(f"        Input Tokens:   {d['p']:,}")
             print(f"        Output Tokens:  {d['c']:,}")
+            print(f"        Cache Read:     {d['cr']:,}")
+            print(f"        Cache Create:   {d['cc']:,}")
             print(f"        Avg Req Time:   {avg:.2f}s")
             print(f"        Output tok/s:   {tps:.1f}\n")
             total["n"] += d["n"]
             total["p"] += d["p"]
             total["c"] += d["c"]
             total["t"] += d["t"]
+            total["cr"] += d["cr"]
+            total["cc"] += d["cc"]
 
     print("-" * 50)
     print("TOTAL SUMMARY")
     print(f"    Total Requests:      {total['n']:,}")
     print(f"    Total Input Tokens:  {total['p']:,}")
     print(f"    Total Output Tokens: {total['c']:,}")
+    print(f"    Cache Read:          {total['cr']:,}")
+    print(f"    Cache Create:        {total['cc']:,}")
     print(f"    Total Time:          {total['t']:.2f}s")
     print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s")
     total_toks = total["c"]  # output tokens only

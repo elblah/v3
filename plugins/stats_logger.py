@@ -5,7 +5,7 @@ Logs each AI API request to:
 - .aicoder/stats.log (local, per-project)
 - $TMP/stats_logger.fifo (optional, for central aggregation)
 
-Format: <project_path>|<timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>
+Format: <project_path>|<timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>|<cache_read>|<cache_creation>
 """
 
 import os
@@ -36,6 +36,8 @@ def create_plugin(ctx):
     # Track last token counts to calculate deltas
     last_prompt_tokens = 0
     last_completion_tokens = 0
+    last_cache_read_tokens = 0
+    last_cache_creation_tokens = 0
     # Store estimated completion tokens from message content
     estimated_completion_tokens = 0
 
@@ -55,7 +57,7 @@ def create_plugin(ctx):
 
     def _log_api_request(has_tool_calls: bool):
         """Log API request to stats.log"""
-        nonlocal last_prompt_tokens, last_completion_tokens, estimated_completion_tokens
+        nonlocal last_prompt_tokens, last_completion_tokens, estimated_completion_tokens, last_cache_read_tokens, last_cache_creation_tokens
 
         stats = ctx.app.stats
 
@@ -65,10 +67,14 @@ def create_plugin(ctx):
         # Calculate delta from last request
         prompt_tokens = stats.prompt_tokens - last_prompt_tokens
         completion_tokens = stats.completion_tokens - last_completion_tokens
+        cache_read = stats.cache_read_tokens - last_cache_read_tokens
+        cache_creation = stats.cache_creation_tokens - last_cache_creation_tokens
 
         # Update last counts for next request
         last_prompt_tokens = stats.prompt_tokens
         last_completion_tokens = stats.completion_tokens
+        last_cache_read_tokens = stats.cache_read_tokens
+        last_cache_creation_tokens = stats.cache_creation_tokens
 
         # If prompt delta is zero, use current prompt size (already properly estimated)
         if prompt_tokens == 0 and stats.current_prompt_size > 0:
@@ -91,8 +97,8 @@ def create_plugin(ctx):
         # Format timestamp (UTC) - naive for consistency
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
 
-        # Format log line
-        log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}\n"
+        # Format log line: timestamp|url|model|prompt|completion|elapsed|cache_read|cache_creation
+        log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}|{cache_read}|{cache_creation}\n"
 
         # Ensure .aicoder dir exists
         aicoder_dir = os.path.join(os.getcwd(), ".aicoder")
