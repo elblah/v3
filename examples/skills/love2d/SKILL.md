@@ -1228,6 +1228,31 @@ end
 **Best Practices:**
 - Use semantic names: `bg`, `text`, `accent` (not `color1`, `color2`)
 - Save immediately on theme change
+
+# Web Build (PWA)
+
+Build LÖVE games for the web (runs in browser).
+
+**Requirements:**
+- Git installed (to clone love.js repo)
+
+```bash
+# Copy build script if missing
+[ ! -f love2web.sh ] && cp ./examples/skills/love2d/love2web.sh .
+
+# Build web version
+./love2web.sh yourgame.love
+
+# Run locally
+cd yourgame-web
+python3 server.py
+# Open http://localhost:8000
+```
+
+**PWA features:**
+- Installable on mobile (Add to Home Screen)
+- Offline support via service worker caching
+- COOP/COEP headers for SharedArrayBuffer compatibility
 - Load settings first in `love.load()`
 - Use `setColor()` helper for consistent 0-255 input
 
