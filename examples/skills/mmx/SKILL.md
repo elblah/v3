@@ -1,13 +1,11 @@
 ---
 name: mmx
 description: >
-  AI assistant via mmx local Unix socket service.
-  Use for web searches and image analysis via AI vision.
+  Local service via Unix socket for web searches and image analysis.
   Socket at /run/user/1000/tmp/mmx.sock.
-  If socket not responding, ask user to start mmx-server.
 ---
 
-# mmx (AI via Unix Socket)
+# mmx (Local Service via Unix Socket)
 
 Local Unix socket at `/run/user/1000/tmp/mmx.sock`.
 
