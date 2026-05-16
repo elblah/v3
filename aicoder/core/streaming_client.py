@@ -558,11 +558,11 @@ class StreamingClient:
         if self.stats and usage:
             # Handle both dict and object types
             if isinstance(usage, dict):
-                prompt_tokens = usage.get("prompt_tokens") or 0
-                completion_tokens = usage.get("completion_tokens") or 0
+                prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+                completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
             else:
-                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
             
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)
@@ -581,14 +581,14 @@ class StreamingClient:
         if not usage_data:
             return None
         return {
-            "prompt_tokens": usage_data.get("prompt_tokens") or 0,
-            "completion_tokens": usage_data.get("completion_tokens") or 0,
+            "prompt_tokens": usage_data.get("prompt_tokens") or usage_data.get("input_tokens") or 0,
+            "completion_tokens": usage_data.get("completion_tokens") or usage_data.get("output_tokens") or 0,
             "total_tokens": usage_data.get("total_tokens") or 0,
         }
     def update_token_stats(self, usage: Dict[str, Any]) -> None:
         """Update token statistics"""
         if self.stats and usage:
-            prompt_tokens = usage.get("prompt_tokens") or 0
-            completion_tokens = usage.get("completion_tokens") or 0
+            prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+            completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)
