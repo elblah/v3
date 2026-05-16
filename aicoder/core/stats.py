@@ -24,6 +24,8 @@ class Stats:
         self.compactions = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
+        self.cache_read_tokens = 0
+        self.cache_creation_tokens = 0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
@@ -86,6 +88,14 @@ class Stats:
         """
         self.completion_tokens += tokens
 
+    def add_cache_read_tokens(self, tokens: int) -> None:
+        """Add cache read tokens"""
+        self.cache_read_tokens += tokens
+
+    def add_cache_creation_tokens(self, tokens: int) -> None:
+        """Add cache creation tokens"""
+        self.cache_creation_tokens += tokens
+
     def set_current_prompt_size(self, size: int, estimated: bool = False) -> None:
         """
         Set current prompt size
@@ -135,6 +145,7 @@ class Stats:
         LogUtils.print(f"Messages Sent: {self.messages_sent}")
         LogUtils.print(f"Prompt Tokens: {self.prompt_tokens:,}")
         LogUtils.print(f"Completion Tokens: {self.completion_tokens:,}")
+        LogUtils.print(f"Cache (read/creation): {self.cache_read_tokens:,} / {self.cache_creation_tokens:,}")
         LogUtils.print(f"Compactions: {self.compactions}")
 
         if self.current_prompt_size > 0:
@@ -157,6 +168,8 @@ class Stats:
         self.compactions = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
+        self.cache_read_tokens = 0
+        self.cache_creation_tokens = 0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
