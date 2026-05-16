@@ -21,7 +21,6 @@ class Stats:
         self.api_time_spent = 0
         self.last_api_time = 0
         self.messages_sent = 0
-        self.tokens_processed = 0
         self.compactions = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
@@ -65,13 +64,6 @@ class Stats:
         
         """
         self.messages_sent += 1
-
-    def add_tokens_processed(self, tokens: int) -> None:
-        """
-        Add tokens to processed counter
-        
-        """
-        self.tokens_processed += tokens
 
     def increment_compactions(self) -> None:
         """
@@ -141,7 +133,6 @@ class Stats:
         else:
             LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s")
         LogUtils.print(f"Messages Sent: {self.messages_sent}")
-        LogUtils.print(f"Tokens Processed: {self.tokens_processed:,}")
         LogUtils.print(f"Prompt Tokens: {self.prompt_tokens:,}")
         LogUtils.print(f"Completion Tokens: {self.completion_tokens:,}")
         LogUtils.print(f"Compactions: {self.compactions}")
@@ -163,7 +154,6 @@ class Stats:
         self.api_time_spent = 0
         self.last_api_time = 0
         self.messages_sent = 0
-        self.tokens_processed = 0
         self.compactions = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0

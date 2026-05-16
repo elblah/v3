@@ -205,6 +205,7 @@ class AnthropicClient:
         current_tool_name = None
         current_tool_input = ""
         thinking_printed = False
+        message_usage = None
 
         def _show_thinking():
             nonlocal thinking_printed
@@ -246,7 +247,13 @@ class AnthropicClient:
                             data = json.loads(data_str)
                             dtype = data.get("type", "")
                             
-                            if dtype == "content_block_start":
+                            # Capture usage from message_start event
+                            if dtype == "message_start":
+                                msg = data.get("message", {})
+                                if "usage" in msg:
+                                    message_usage = msg["usage"]
+                            
+                            elif dtype == "content_block_start":
                                 content_block = data.get("content_block", {})
                                 current_block_type = content_block.get("type")
                                 current_tool_id = data.get("id") or content_block.get("id")
@@ -286,6 +293,10 @@ class AnthropicClient:
                                         current_tool_input += partial
                             
                             elif dtype == "message_delta":
+                                # Capture usage when available (at top level of data, not inside delta)
+                                if "usage" in data:
+                                    message_usage = data["usage"]
+                                
                                 if current_block_type == "tool_use" and current_tool_id:
                                     accumulated_tool_calls[current_tool_id] = {
                                         'id': current_tool_id,
@@ -329,6 +340,13 @@ class AnthropicClient:
         if self.stats:
             self.stats.increment_api_success()
             self.stats.add_api_time(time.time() - start_time)
+            # Update token stats from accumulated usage
+            if message_usage:
+                input_tokens = message_usage.get("input_tokens") or 0
+                output_tokens = message_usage.get("output_tokens") or 0
+                if input_tokens or output_tokens:
+                    self.stats.add_prompt_tokens(input_tokens)
+                    self.stats.add_completion_tokens(output_tokens)
 
         yield {
             "content": full_content,
@@ -367,6 +385,17 @@ class AnthropicClient:
                     }
 
         # Update stats on success
+        if self.stats:
+            self.stats.increment_api_success()
+            self.stats.add_api_time(time.time() - start_time)
+            # Update token stats from usage
+            usage = data.get("usage")
+            if usage:
+                input_tokens = usage.get("input_tokens") or 0
+                output_tokens = usage.get("output_tokens") or 0
+                if input_tokens or output_tokens:
+                    self.stats.add_prompt_tokens(input_tokens)
+                    self.stats.add_completion_tokens(output_tokens)
         if self.stats:
             self.stats.increment_api_success()
             self.stats.add_api_time(time.time() - start_time)
