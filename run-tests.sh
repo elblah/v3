@@ -1,6 +1,9 @@
 #!/bin/bash
 
-python -m pytest tests/ -v --tb=short --ignore=tests/integration
+if ! python -m pytest tests/ -v --tb=short --ignore=tests/integration; then
+    echo "Integration tests interrupted because previous errors... abort..."
+    exit 1
+fi
 
 echo ""
 read -t 15 -p "Run integration tests? [Y/n]: "
