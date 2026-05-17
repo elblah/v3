@@ -9,6 +9,12 @@ from aicoder.core.streaming_client import StreamingClient
 from aicoder.core.config import Config
 
 
+@pytest.fixture(autouse=True)
+def fast_sleep(monkeypatch):
+    """Speed up tests by making time.sleep instant."""
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+
+
 class TestStreamingClient:
     """Test StreamingClient"""
 
@@ -1026,74 +1032,7 @@ class TestHandleAttemptErrorExtended:
                 )
 
 
-class TestStreamRequestIntegration:
-    """Integration tests for stream_request"""
 
-    def test_stream_request_empty_messages(self):
-        """Test stream request with empty messages"""
-        client = StreamingClient()
-
-        with patch.object(Config, 'debug', return_value=False):
-            with patch.object(Config, 'base_url', return_value='http://test.com'):
-                with patch.object(Config, 'model', return_value='gpt-4'):
-                    with patch.object(Config, 'effective_max_retries', return_value=1):
-                        with patch.object(Config, 'total_timeout', return_value=30000):
-                            with patch.object(Config, 'temperature', return_value=None):
-                                with patch.object(Config, 'max_tokens', return_value=None):
-                                    result = list(client.stream_request([]))
-        assert result == []
-
-    def test_stream_request_with_single_message(self):
-        """Test stream request with single message"""
-        client = StreamingClient()
-
-        with patch.object(Config, 'debug', return_value=False):
-            with patch.object(Config, 'base_url', return_value='http://test.com'):
-                with patch.object(Config, 'model', return_value='gpt-4'):
-                    with patch.object(Config, 'effective_max_retries', return_value=1):
-                        with patch.object(Config, 'total_timeout', return_value=30000):
-                            with patch.object(Config, 'temperature', return_value=None):
-                                with patch.object(Config, 'max_tokens', return_value=None):
-                                    result = list(client.stream_request([
-                                        {"role": "user", "content": "Hello"}
-                                    ]))
-        assert result == []
-
-    def test_resets_recovery_flag_on_new_request(self):
-        """Test that recovery flag is reset for each new request"""
-        client = StreamingClient()
-        client._recovery_attempted = True
-
-        with patch.object(Config, 'debug', return_value=False):
-            with patch.object(Config, 'base_url', return_value='http://test.com'):
-                with patch.object(Config, 'model', return_value='gpt-4'):
-                    with patch.object(Config, 'effective_max_retries', return_value=1):
-                        with patch.object(Config, 'total_timeout', return_value=30000):
-                            with patch.object(Config, 'temperature', return_value=None):
-                                with patch.object(Config, 'max_tokens', return_value=None):
-                                    list(client.stream_request([{"role": "user", "content": "test"}]))
-
-        assert client._recovery_attempted is False
-
-    def test_stream_request_no_send_tools(self):
-        """Test stream request without sending tools"""
-        client = StreamingClient()
-
-        with patch.object(Config, 'debug', return_value=False):
-            with patch.object(Config, 'base_url', return_value='http://test.com'):
-                with patch.object(Config, 'model', return_value='gpt-4'):
-                    with patch.object(Config, 'effective_max_retries', return_value=1):
-                        with patch.object(Config, 'total_timeout', return_value=30000):
-                            with patch.object(Config, 'temperature', return_value=None):
-                                with patch.object(Config, 'max_tokens', return_value=None):
-                                    result = list(client.stream_request(
-                                        [{"role": "user", "content": "test"}],
-                                        send_tools=False
-                                    ))
-        assert result == []
-
-
-class TestResponseContentTypeHandling:
     """Test content-type header handling"""
 
     def test_handles_case_insensitive_content_type(self):

@@ -12,7 +12,7 @@ from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
-from aicoder.utils.log import warn as log_warn, debug as log_debug
+from aicoder.utils.log import LogUtils, warn as log_warn, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
 
 
@@ -359,6 +359,8 @@ class AnthropicClient:
             "done": True
         }
 
+    # TODO: Anthropic non-streaming tool_calls are not being yielded
+    # accumulated_tool_calls is built but never included in the output
     def _handle_non_streaming_response(self, response: Response, start_time: float) -> Generator[Dict[str, Any], None, None]:
         data = response.json()
         
