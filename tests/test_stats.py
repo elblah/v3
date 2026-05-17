@@ -18,7 +18,6 @@ def test_stats_initialization():
     assert stats.api_errors == 0
     assert stats.api_time_spent == 0
     assert stats.messages_sent == 0
-    assert stats.tokens_processed == 0
     assert stats.compactions == 0
     assert stats.prompt_tokens == 0
     assert stats.completion_tokens == 0
@@ -60,10 +59,6 @@ def test_adders():
     stats.add_api_time(1.5)
     stats.add_api_time(0.75)
     assert stats.api_time_spent == 2.25
-
-    stats.add_tokens_processed(100)
-    stats.add_tokens_processed(50)
-    assert stats.tokens_processed == 150
 
     stats.add_prompt_tokens(50)
     stats.add_prompt_tokens(30)
@@ -130,7 +125,8 @@ def test_print_stats(capsys):
     stats.increment_api_success()
     stats.add_api_time(1.23)
     stats.increment_messages_sent()
-    stats.add_tokens_processed(1000)
+    stats.add_prompt_tokens(500)
+    stats.add_completion_tokens(500)
     stats.set_current_prompt_size(500, True)
 
     # Print stats
@@ -145,6 +141,5 @@ def test_print_stats(capsys):
     assert "API Requests: 1 (Success: 1, Errors: 0)" in output
     assert "API Time Spent: 1.23s" in output
     assert "Messages Sent: 1" in output
-    assert "Tokens Processed: 1,000" in output
     assert "Final Context Size: 500 (estimated)" in output
     assert "========================" in output

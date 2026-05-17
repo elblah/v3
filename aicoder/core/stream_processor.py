@@ -156,6 +156,10 @@ class StreamProcessor:
             return
 
         index = tool_call.get("index")
+        if Config.debug():
+            name = tool_call.get("function", {}).get("name", "unknown")
+            args = tool_call.get("function", {}).get("arguments", "")[:50]
+            LogUtils.debug(f"*** accumulate_tool_call: index={index}, name={name}, args={repr(args)}")
 
         if index in accumulated_tool_calls:
             # Existing tool call - accumulate arguments

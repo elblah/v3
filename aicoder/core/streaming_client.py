@@ -25,6 +25,11 @@ class StreamingClient:
         self.message_history = message_history
         self._recovery_attempted = False
         self._plugin_system = None
+        # Pending state for Alibaba SDK streaming tool calls
+        self._pending_tool_name = None
+        self._pending_tool_id = None
+        self._pending_tool_index = None
+        self._pending_tool_args = None
 
     def set_plugin_system(self, plugin_system) -> None:
         """Set plugin system for hooks"""
@@ -407,6 +412,100 @@ class StreamingClient:
                             for choice_dict in chunk_data["choices"]:
                                 choice = choice_dict
                                 choices.append(choice)
+                        else:
+                            # Alibaba SDK format: check content_block.type
+                            content_block = chunk_data.get("content_block", {})
+                            block_type = content_block.get("type", "")
+                            # Only yield for content_block with tool_use if NOT a content_block_start event
+                            # content_block_start is handled separately below
+                            if block_type == "tool_use" and chunk_data.get("type") != "content_block_start":
+                                choice = {
+                                    "delta": {
+                                        "tool_calls": [{
+                                            "index": chunk_data.get("index", 0),
+                                            "id": content_block.get("id", ""),
+                                            "type": "function",
+                                            "function": {
+                                                "name": content_block.get("name", ""),
+                                                "arguments": json.dumps(content_block.get("input", {})),
+                                            }
+                                        }]
+                                    },
+                                }
+                                choices = [choice]
+                                chunk_data["model"] = chunk_data.get("message", {}).get("model") or chunk_data.get("model")
+
+                        # Handle input_json_delta for streaming tool arguments (Alibaba SDK)
+                        delta = chunk_data.get("delta", {})
+                        delta_type = delta.get("type", "")
+
+                        if delta_type == "input_json_delta":
+                            partial = delta.get("partial_json", "")
+                            if partial:
+                                # Track pending tool args - DON'T yield here, wait for message_delta
+                                if not hasattr(self, '_pending_tool_args') or self._pending_tool_args is None:
+                                    self._pending_tool_args = ""
+                                self._pending_tool_args += partial
+                                if Config.debug():
+                                    log_debug(f"*** input_json_delta: accumulated={repr(self._pending_tool_args[:100])}")
+
+                        elif delta_type == "text_delta" and not choices:
+                            # Only yield text if no choices already set (tool_use takes priority)
+                            text = delta.get("text", "")
+                            if text:
+                                choice = {"delta": {"content": text}}
+                                choices = [choice]
+
+                        elif delta_type == "thinking_delta" and not choices:
+                            thinking = delta.get("thinking", "")
+                            if thinking:
+                                choice = {"delta": {"reasoning_content": thinking}}
+                                choices = [choice]
+
+                        # Handle content_block_start for tool_use (Alibaba SDK)
+                        if chunk_data.get("type") == "content_block_start":
+                            content_block = chunk_data.get("content_block", {})
+                            if content_block.get("type") == "tool_use":
+                                # Store tool info - DON'T yield, wait for message_delta
+                                self._pending_tool_name = content_block.get("name", "")
+                                self._pending_tool_id = content_block.get("id", "")
+                                self._pending_tool_index = chunk_data.get("index", 0)
+                                self._pending_tool_args = ""
+                                # Skip to chunk creation with empty choices
+                                if Config.debug():
+                                    log_debug(f"*** content_block_start tool_use: name={self._pending_tool_name}, id={self._pending_tool_id}")
+
+                        # Handle message_delta for tool_use completion (Alibaba SDK)
+                        elif chunk_data.get("type") == "message_delta":
+                            stop_reason = delta.get("stop_reason", "")
+                            if stop_reason == "tool_use":
+                                # Yield final tool call with accumulated args
+                                tool_name = getattr(self, '_pending_tool_name', '') or ""
+                                tool_id = getattr(self, '_pending_tool_id', '') or ""
+                                tool_index = getattr(self, '_pending_tool_index', 0) or 0
+                                tool_args = getattr(self, '_pending_tool_args', '') or ""
+                                if tool_name and tool_args:
+                                    choice = {
+                                        "delta": {
+                                            "tool_calls": [{
+                                                "index": tool_index,
+                                                "id": tool_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": tool_name,
+                                                    "arguments": tool_args
+                                                }
+                                            }]
+                                        },
+                                    }
+                                    choices = [choice]
+                                    if Config.debug():
+                                        log_debug(f"*** message_delta yielding tool: name={tool_name}, args={tool_args}")
+                                # Clear pending
+                                self._pending_tool_name = None
+                                self._pending_tool_id = None
+                                self._pending_tool_index = None
+                                self._pending_tool_args = None
 
                         # Create chunk dict
                         chunk = {
@@ -418,13 +517,13 @@ class StreamingClient:
                             "usage": self._create_usage(chunk_data.get("usage")),
                         }
 
+                        # Handle message_stop (end of Alibaba stream)
+                        if chunk_data.get("type") == "message_stop":
+                            if Config.debug():
+                                log_debug("Received message_stop")
+                            return
+
                         if Config.debug():
-                            choices = chunk.get("choices") or []
-                            if choices:
-                                tool_calls = choices[0].get("delta", {}).get("tool_calls")
-                                if tool_calls:
-                                    log_debug(f"Tool call chunk: {len(tool_calls)} calls")
-                            # Log model/provider from first chunk
                             if chunk_data.get("model"):
                                 log_debug(f"*** Model: {chunk_data.get('model')}")
                             if chunk_data.get("provider"):
