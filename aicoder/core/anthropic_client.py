@@ -194,6 +194,10 @@ class AnthropicClient:
                     })
                 request_data["tools"] = anthropic_tools
 
+        # Transform hook for provider-specific formats
+        if self._plugin_system:
+            request_data = self._plugin_system.call_hooks_with_return("transform_request", request_data) or request_data
+
         return request_data
 
     def _handle_streaming_response(self, response: Response, start_time: float) -> Generator[Dict[str, Any], None, None]:
