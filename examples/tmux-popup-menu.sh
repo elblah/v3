@@ -14,6 +14,7 @@
 # bind -n M-i run-shell -b "$AICODER_MENU_BIN inject"
 # bind -n M-x run-shell -b "$AICODER_MENU_BIN stop"
 # bind -n M-k run-shell -b "$AICODER_MENU_BIN kill"
+# bind -n M-g run-shell -b "$AICODER_MENU_BIN debug"
 # bind -n M-q run-shell -b "$AICODER_MENU_BIN quit"
 
 # Socket directory (uses TMPDIR or /tmp)
@@ -118,6 +119,7 @@ show_menu() {
     local yolo_enabled="OFF"
     local detail_enabled="OFF"
     local sandbox_enabled="OFF"
+    local debug_enabled="OFF"
     local processing="Idle"
 
     if parse_bool "$status_json" "yolo_enabled"; then
@@ -128,6 +130,9 @@ show_menu() {
     fi
     if parse_bool "$status_json" "sandbox_enabled"; then
         sandbox_enabled="ON"
+    fi
+    if parse_bool "$status_json" "debug_enabled"; then
+        debug_enabled="ON"
     fi
     if parse_bool "$status_json" "processing"; then
         processing="RUNNING"
@@ -148,6 +153,7 @@ show_menu() {
         "Inject Message"    i  "run-shell -b 'echo inject > ${response_file}'" \
         "Save Session"      s  "run-shell -b 'echo save > ${response_file}'" \
         "Kill"              K  "run-shell -b 'echo kill > ${response_file}'" \
+        "Toggle Debug (${debug_enabled})" g  "run-shell -b 'echo debug > ${response_file}'" \
         "Quit"              Q  "run-shell -b 'echo quit > ${response_file}'"
 
     for i in {1..20}; do
@@ -250,6 +256,15 @@ execute_action() {
         "sdisk"*)
             cmd="command /sdisk toggle"
             display_msg="Sandbox Disk (sdisk) Toggle"
+            ;;
+        "debug"*)
+            if parse_bool "$status_json" "debug_enabled"; then
+                cmd="debug off"
+                display_msg="Debug Mode: OFF"
+            else
+                cmd="debug on"
+                display_msg="Debug Mode: ON"
+            fi
             ;;
 
         "stats"*)
