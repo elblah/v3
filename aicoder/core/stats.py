@@ -26,6 +26,10 @@ class Stats:
         self.completion_tokens = 0
         self.cache_read_tokens = 0
         self.cache_creation_tokens = 0
+        self.last_prompt_tokens = 0
+        self.last_completion_tokens = 0
+        self.last_cache_read_tokens = 0
+        self.last_cache_creation_tokens = 0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
@@ -77,24 +81,28 @@ class Stats:
     def add_prompt_tokens(self, tokens: int) -> None:
         """
         Add prompt tokens
-        
+
         """
         self.prompt_tokens += tokens
+        self.last_prompt_tokens = tokens
 
     def add_completion_tokens(self, tokens: int) -> None:
         """
         Add completion tokens
-        
+
         """
         self.completion_tokens += tokens
+        self.last_completion_tokens = tokens
 
     def add_cache_read_tokens(self, tokens: int) -> None:
         """Add cache read tokens"""
         self.cache_read_tokens += tokens
+        self.last_cache_read_tokens = tokens
 
     def add_cache_creation_tokens(self, tokens: int) -> None:
         """Add cache creation tokens"""
         self.cache_creation_tokens += tokens
+        self.last_cache_creation_tokens = tokens
 
     def set_current_prompt_size(self, size: int, estimated: bool = False) -> None:
         """
@@ -136,22 +144,30 @@ class Stats:
         LogUtils.print(
             f"API Requests: {self.api_requests} (Success: {self.api_success}, Errors: {self.api_errors})"
         )
-        # Format API time with average per request
         if self.api_requests > 0:
             avg_time = self.api_time_spent / self.api_requests
             LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s ({avg_time:.2f}s/req)")
         else:
             LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s")
         LogUtils.print(f"Messages Sent: {self.messages_sent}")
-        LogUtils.print(f"Prompt Tokens: {self.prompt_tokens:,}")
-        LogUtils.print(f"Completion Tokens: {self.completion_tokens:,}")
-        LogUtils.print(f"Cache (read/creation): {self.cache_read_tokens:,} / {self.cache_creation_tokens:,}")
-        LogUtils.print(f"Compactions: {self.compactions}")
+
+        LogUtils.print("--- Session ---")
+        LogUtils.print(f"  Prompt Tokens: {self.prompt_tokens:,}")
+        LogUtils.print(f"  Completion Tokens: {self.completion_tokens:,}")
+        LogUtils.print(f"  Cache Read: {self.cache_read_tokens:,}")
+        LogUtils.print(f"  Cache Write: {self.cache_creation_tokens:,}")
+
+        LogUtils.print("--- Last Request ---")
+        LogUtils.print(f"  Last Prompt: {self.last_prompt_tokens:,}")
+        LogUtils.print(f"  Last Completion: {self.last_completion_tokens:,}")
+        LogUtils.print(f"  Last Cache Read: {self.last_cache_read_tokens:,}")
+        LogUtils.print(f"  Last Cache Write: {self.last_cache_creation_tokens:,}")
 
         if self.current_prompt_size > 0:
             estimated = " (estimated)" if self.current_prompt_size_estimated else ""
             LogUtils.print(f"Final Context Size: {self.current_prompt_size:,}{estimated}")
 
+        LogUtils.print(f"Compactions: {self.compactions}")
         LogUtils.print("========================")
 
     def reset(self) -> None:
@@ -174,3 +190,7 @@ class Stats:
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
         self.usage_infos = []
+        self.last_prompt_tokens = 0
+        self.last_completion_tokens = 0
+        self.last_cache_read_tokens = 0
+        self.last_cache_creation_tokens = 0
