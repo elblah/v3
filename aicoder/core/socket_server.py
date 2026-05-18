@@ -266,6 +266,7 @@ class SocketServer:
             "yolo": self._cmd_yolo,
             "detail": self._cmd_detail,
             "sandbox": self._cmd_sandbox,
+            "debug": self._cmd_debug,
             "status": self._cmd_status,
             "stop": self._cmd_stop,
             "messages": self._cmd_messages,
@@ -398,6 +399,30 @@ class SocketServer:
             None, error_code=ERR_INVALID_ARG, error_msg="Usage: sandbox [on|off|status|toggle]"
         )
 
+    def _cmd_debug(self, args: str) -> str:
+        """Get or set debug mode"""
+        args = args.strip()
+
+        if not args or args == "status":
+            return response({"enabled": Config.debug()})
+
+        if args == "toggle":
+            current = Config.debug()
+            Config.set_debug(not current)
+            return response({"enabled": not current, "message": f"Debug {'enabled' if not current else 'disabled'}"})
+
+        if args == "on":
+            Config.set_debug(True)
+            return response({"enabled": True, "message": "Debug enabled"})
+
+        if args == "off":
+            Config.set_debug(False)
+            return response({"enabled": False, "message": "Debug disabled"})
+
+        return response(
+            None, error_code=ERR_INVALID_ARG, error_msg="Usage: debug [on|off|status|toggle]"
+        )
+
     def _cmd_status(self, args: str) -> str:
         """Get full status"""
         messages = self.aicoder.message_history.get_messages()
@@ -414,6 +439,7 @@ class SocketServer:
             "yolo_enabled": Config.yolo_mode(),
             "detail_enabled": Config.detail_mode(),
             "sandbox_enabled": not Config.sandbox_disabled(),
+            "debug_enabled": Config.debug(),
             "messages": len(messages),
         })
 
