@@ -278,6 +278,10 @@ class StreamingClient:
             if Config.debug():
                 log_debug(f"*** Adding extra_body: {extra_body}")
 
+        # Transform hook for provider-specific formats (e.g., alibaba cache control)
+        if self._plugin_system:
+            data = self._plugin_system.call_hooks_with_return("transform_request", data) or data
+
         return data
 
     def _add_optional_parameters(self, data: Dict[str, Any]) -> None:
