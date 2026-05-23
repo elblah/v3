@@ -138,6 +138,9 @@ def fetch(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     """
     Simple fetch-like function with total timeout enforcement.
     """
+    return _fetch_impl(url, options)
+
+def _fetch_impl(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     if options is None:
         options = {}
 
