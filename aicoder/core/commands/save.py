@@ -41,6 +41,18 @@ class SaveCommand(BaseCommand):
         try:
             messages = self.context.message_history.get_messages()
             
+            # Only save if there's at least one real user message (not starting with '[')
+            has_real_user_message = any(
+                msg.get("role") == "user" 
+                and msg.get("content") 
+                and not str(msg.get("content", "")).startswith("[")
+                for msg in messages
+            )
+            
+            if not has_real_user_message:
+                LogUtils.success(f"[*] Skipping save to {filename}: no real user messages in session")
+                return CommandResult(should_quit=False, run_api_call=False)
+            
             # Detect format based on file extension
             is_jsonl = Path(filename).suffix.lower() == ".jsonl"
             
