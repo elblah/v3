@@ -65,6 +65,9 @@ def create_plugin(ctx):
     
     def save_current_state():
         """Save current complete state to session file (for initialization)"""
+        if not should_save_session():
+            LogUtils.success(f"[*] Skipping save to {session_file}: no real user messages in session")
+            return
         try:
             if is_jsonl:
                 from aicoder.utils.jsonl_utils import write_file as write_jsonl
@@ -79,9 +82,22 @@ def create_plugin(ctx):
         except Exception as e:
             LogUtils.error(f"[!] Failed to save current state to {session_file}: {e}")
     
+    def should_save_session():
+        """Check if session contains at least one real user message (not starting with '[')"""
+        messages = ctx.app.message_history.get_messages()
+        for msg in messages:
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if content and not str(content).startswith("["):
+                    return True
+        return False
+    
     def save_message_to_session(message):
         """Save a single message to session file (append mode for JSONL)"""
-        # Save ALL messages now including system prompt for proper /load support
+        # Only save if session has real user content (not just system/system messages)
+        # This prevents overwriting important sessions when user exits without actual messages
+        if not should_save_session():
+            return
         
         try:
             if is_jsonl:
