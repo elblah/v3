@@ -41,16 +41,17 @@ class SaveCommand(BaseCommand):
         try:
             messages = self.context.message_history.get_messages()
             
-            # Only save if there's at least one real user message (not starting with '[')
-            has_real_user_message = any(
-                msg.get("role") == "user" 
-                and msg.get("content") 
+            # Only save if there's at least one real user message or assistant message
+            # (not starting with '[') - this handles sessions that have been compacted
+            has_real_content = any(
+                msg.get("role") in ("user", "assistant")
+                and msg.get("content")
                 and not str(msg.get("content", "")).startswith("[")
                 for msg in messages
             )
             
-            if not has_real_user_message:
-                LogUtils.success(f"[*] Skipping save to {filename}: no real user messages in session")
+            if not has_real_content:
+                LogUtils.success(f"[*] Skipping save to {filename}: no real user or assistant messages in session")
                 return CommandResult(should_quit=False, run_api_call=False)
             
             # Detect format based on file extension
