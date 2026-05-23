@@ -46,6 +46,16 @@ Commands like `i <name>` accept args on the same line (e.g., `i subagents` at sk
 - Streaming responses with retry logic
 - File operation sandbox for security
 
+## Optional Performance Boost
+
+For even faster performance, install optional dependencies:
+
+```bash
+apt install python3-httpx python3-orjson
+```
+
+Note: AI Coder runs great without them - these just add extra speed.
+
 ## Quick Start
 
 ```bash
