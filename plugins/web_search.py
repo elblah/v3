@@ -3,7 +3,7 @@ Web Search Plugin - Ultra-fast using search providers and lynx
 
 Tools:
 - web_search: Search to web
-- get_url_content: Fetch URL content
+- get_url_content: Fetch URL using lynx -dump (plain text, not raw HTML)
 
 Environment Variables:
 - WEB_SEARCH_PROVIDERS: Semicolon-separated list of search providers
@@ -103,7 +103,7 @@ def create_plugin(ctx):
         try:
             # Use lynx with user agent to avoid bot detection
             result = subprocess.run(
-                ["lynx", "-dump", "-nolist", "-useragent='Mozilla/5.0'" if user_agent else "", url],
+                ["lynx", "-dump", "-nolist", url],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -122,6 +122,35 @@ def create_plugin(ctx):
             return content
         except subprocess.TimeoutExpired:
             return "Error: Request timed out after 30 seconds"
+        except Exception as e:
+            return f"Error fetching URL: {e}"
+
+    def fetch_url_raw(url: str) -> str:
+        """Fetch raw HTML content using urllib"""
+        MAX_HTML_SIZE = 5 * 1024 * 1024  # 5MB limit
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                # Check content-length if available
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > MAX_HTML_SIZE:
+                    return f"Error: Response too large ({int(content_length) // (1024*1024)}MB). Max: {MAX_HTML_SIZE // (1024*1024)}MB"
+
+                # Read with size limit
+                data = b""
+                while True:
+                    chunk = response.read(65536)  # 64KB chunks
+                    if not chunk:
+                        break
+                    data += chunk
+                    if len(data) > MAX_HTML_SIZE:
+                        return f"Error: Response too large (> {MAX_HTML_SIZE // (1024*1024)}MB)"
+
+                # Try to decode as UTF-8, fall back to latin-1
+                try:
+                    return data.decode("utf-8")
+                except UnicodeDecodeError:
+                    return data.decode("latin-1")
         except Exception as e:
             return f"Error fetching URL: {e}"
 
@@ -194,6 +223,7 @@ def create_plugin(ctx):
         """Get URL content"""
         url = args.get("url", "").strip()
         page = args.get("page", 1)
+        raw = args.get("raw", False)
 
         if not url:
             return {
@@ -209,9 +239,12 @@ def create_plugin(ctx):
                 "detailed": "Invalid URL format",
             }
 
-        # Check cache first
-        if url in _cache:
-            content = _cache[url]
+        # Cache key includes raw flag
+        cache_key = f"{url}?raw={raw}"
+
+        # Check cache first (only for non-raw content)
+        if not raw and cache_key in _cache:
+            content = _cache[cache_key]
             lines = content.split("\n")
             start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
             end_idx = page * DEFAULT_LINES_PER_PAGE
@@ -223,16 +256,31 @@ def create_plugin(ctx):
             }
 
         try:
-            content = fetch_url_text(url, user_agent="Mozilla/5.0")
-            _cache[url] = content
-            lines = content.split("\n")
-            start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
-            end_idx = page * DEFAULT_LINES_PER_PAGE
-            paginated = "\n".join(lines[start_idx:end_idx])
+            if raw:
+                content = fetch_url_raw(url)
+            else:
+                content = fetch_url_text(url, user_agent="Mozilla/5.0")
+
+            # Only cache non-raw content
+            if not raw:
+                _cache[cache_key] = content
+
+            # Paginate by lines for text, by chars for raw HTML
+            if raw:
+                # Paginate by character ranges
+                chars_per_page = DEFAULT_LINES_PER_PAGE * 80  # ~80 chars per line average
+                start_idx = (page - 1) * chars_per_page
+                end_idx = page * chars_per_page
+                paginated = content[start_idx:end_idx]
+            else:
+                lines = content.split("\n")
+                start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
+                end_idx = page * DEFAULT_LINES_PER_PAGE
+                paginated = "\n".join(lines[start_idx:end_idx])
 
             return {
                 "tool": "get_url_content",
-                "friendly": f"Fetched {url} (page {page})",
+                "friendly": f"Fetched {url} (page {page}{', raw HTML' if raw else ''})",
                 "detailed": paginated,
             }
         except Exception as e:
@@ -247,7 +295,9 @@ def create_plugin(ctx):
         """Format arguments for get_url_content"""
         url = args.get("url", "")
         page = args.get("page", 1)
-        return f"URL: {url}\nPage: {page}"
+        raw = args.get("raw", False)
+        raw_str = " (raw HTML)" if raw else " (lynx text)"
+        return f"URL: {url}\nPage: {page}{raw_str}"
 
     # Register web_search tool
     ctx.register_tool(
@@ -271,7 +321,7 @@ def create_plugin(ctx):
     ctx.register_tool(
         name="get_url_content",
         fn=get_url_content,
-        description="Fetch static URL content (no JavaScript). Empty response means site requires JS and won't work with this tool",
+        description="Fetch URL content. Default: lynx -dump (plain text). Set raw=true for raw HTML via urllib.",
         parameters={
             "type": "object",
             "properties": {
@@ -283,6 +333,11 @@ def create_plugin(ctx):
                     "type": "integer",
                     "description": "Page number for pagination (default: 1)",
                     "default": 1
+                },
+                "raw": {
+                    "type": "boolean",
+                    "description": "Fetch raw HTML instead of lynx-processed text (default: false)",
+                    "default": False
                 }
             },
             "required": ["url"]
