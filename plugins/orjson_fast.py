@@ -21,8 +21,12 @@ except ImportError:
 import json
 
 
-def _orjson_dumps(obj):
+def _orjson_dumps(obj, **kwargs):
     """orjson.dumps returns bytes, wrap to return str like json.dumps"""
+    # Handle separators=(',', ':') - orjson uses OPT_INDENT_2 etc
+    if 'separators' in kwargs:
+        # Fall back to stdlib for compact formatting with separators
+        return json.dumps(obj, **kwargs)
     return orjson.dumps(obj).decode('utf-8')
 
 
