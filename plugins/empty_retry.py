@@ -23,7 +23,14 @@ class EmptyRetryService:
     # Message priority: custom > env > default
     _custom_message: Optional[str] = None
     _env_message: Optional[str] = None
-    _default_message: str = "Your previous response was empty. Please provide a helpful response."
+    _default_message: str = (
+        "Your previous response was empty. This is unusual. Before continuing, reflect: "
+        "Are you overthinking, rate-limited, context-overflowed, output-timing-out, or writing too much? "
+        "If context is long, summarize first. If planning too much, act immediately on one small step. "
+        "If your response was getting long, split it into shorter pieces. "
+        "Break into simpler pieces if needed. Keep the session goal in mind. "
+        "Output even a small action now, then continue step by step until the goal is achieved."
+    )
 
     @classmethod
     def is_enabled(cls) -> bool:
