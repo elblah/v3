@@ -21,8 +21,24 @@ except ImportError:
 import json
 
 
-# Save original json.dumps before patching
+# Save original json.loads/dumps before patching
+_original_json_loads = json.loads
+_original_json_load = json.load
 _original_json_dumps = json.dumps
+
+
+def _orjson_loads(s, **kwargs):
+    """Wrap orjson.loads to handle kwargs (fall back to stdlib if needed)"""
+    if kwargs:
+        return _original_json_loads(s, **kwargs)
+    return orjson.loads(s)
+
+
+def _orjson_load(f, **kwargs):
+    """Wrap json.load to handle kwargs (fall back to stdlib if needed)"""
+    if kwargs:
+        return _original_json_load(f, **kwargs)
+    return orjson.loads(f.read())
 
 
 def _orjson_dumps(obj, **kwargs):
@@ -36,7 +52,8 @@ def _orjson_dumps(obj, **kwargs):
 
 def create_plugin(ctx):
     """Patch json module with orjson"""
-    json.loads = orjson.loads
+    json.loads = _orjson_loads
+    json.load = _orjson_load
     json.dumps = _orjson_dumps
 
     if ctx.app and hasattr(ctx.app, 'Config') and ctx.app.Config.debug():
