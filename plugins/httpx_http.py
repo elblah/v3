@@ -42,7 +42,7 @@ def _get_client() -> httpx.Client:
 class HttpxResponse:
     """Wrapper around httpx response to match Response interface"""
 
-    def __init__(self, httpx_response: httpx.Response, deadline: float = 0):
+    def __init__(self, httpx_response: httpx.Response, deadline: float = 0, streaming: bool = False):
         self._resp = httpx_response
         self.status = httpx_response.status_code
         self.reason = httpx_response.reason_phrase
@@ -50,6 +50,11 @@ class HttpxResponse:
         self._content = None
         self._line_iter = None
         self.deadline = deadline
+        self._streaming = streaming
+        
+        # For non-streaming responses, read content immediately
+        if not streaming:
+            self._content = httpx_response.content
 
     def ok(self) -> bool:
         return 200 <= self.status < 300
@@ -134,9 +139,11 @@ def httpx_fetch(url: str, options: dict = None) -> HttpxResponse:
             timeout=remaining,
         )
         
-        # Use send with stream=True for SSE streaming
-        response = client.send(request, stream=True)
-        return HttpxResponse(response, deadline=deadline)
+        # For now, always use non-streaming
+        # SSE works fine - we read all content, then split with readline()
+        # streaming=True would cause issues with non-streaming responses
+        response = client.send(request, stream=False)
+        return HttpxResponse(response, deadline=deadline, streaming=False)
     except httpx.HTTPStatusError as e:
         # Return error as Response-like object
         return HttpxResponse(e.response, deadline=deadline)
