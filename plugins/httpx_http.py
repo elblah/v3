@@ -3,6 +3,7 @@
 httpx HTTP plugin - replaces urllib with httpx for connection pooling
 
 Provides ~1s speedup per request after first (SSL handshake bypass)
+Supports streaming (SSE) via stream=True
 
 Requires: httpx package
 Install: pip install httpx
@@ -20,7 +21,7 @@ except ImportError:
     sys.exit(1)
 
 from aicoder.core.config import Config
-from aicoder.utils.http_utils import _fetch_impl, Response as UrllibResponse
+from aicoder.utils.http_utils import _fetch_impl
 
 
 # Shared httpx client with connection pooling
@@ -47,6 +48,7 @@ class HttpxResponse:
         self.reason = httpx_response.reason_phrase
         self.headers = dict(httpx_response.headers)
         self._content = None
+        self._line_iter = None
         self.deadline = deadline
 
     def ok(self) -> bool:
@@ -67,24 +69,38 @@ class HttpxResponse:
         return self._content
 
     def readline(self) -> bytes:
-        # httpx doesn't support readline, but we can iterate the text
-        # For SSE, we typically read all content and split lines
-        if self._content is None:
-            self._content = self._resp.content
-        # Return first line, cache remainder
-        if b"\n" in self._content:
-            line, self._content = self._content.split(b"\n", 1)
+        """Read one line - uses streaming for SSE"""
+        if self._content is not None:
+            # Content already read, split from cache
+            if b"\n" in self._content:
+                line, self._content = self._content.split(b"\n", 1)
+                return line + b"\n"
+            return self._content
+
+        # Stream line by line
+        if self._line_iter is None:
+            self._line_iter = self._resp.iter_lines()
+        try:
+            line = next(self._line_iter)
+            # iter_lines returns str, convert to bytes and add newline
+            if isinstance(line, str):
+                return (line + "\n").encode("utf-8")
             return line + b"\n"
-        return self._content
+        except StopIteration:
+            return b""
+        except Exception:
+            return b""
 
     def close(self) -> None:
-        # httpx response doesn't need explicit close for sync client
-        pass
+        try:
+            self._resp.close()
+        except Exception:
+            pass
 
 
 def httpx_fetch(url: str, options: dict = None) -> HttpxResponse:
     """
-    httpx-based fetch with connection pooling
+    httpx-based fetch with connection pooling and streaming support
     """
     if options is None:
         options = {}
@@ -109,13 +125,17 @@ def httpx_fetch(url: str, options: dict = None) -> HttpxResponse:
         if remaining <= 0:
             raise TimeoutError("Total timeout exceeded before connection")
 
-        response = client.request(
+        # Build request with timeout
+        request = client.build_request(
             method=method,
             url=url,
             headers=headers,
             content=body_bytes,
             timeout=remaining,
         )
+        
+        # Use send with stream=True for SSE streaming
+        response = client.send(request, stream=True)
         return HttpxResponse(response, deadline=deadline)
     except httpx.HTTPStatusError as e:
         # Return error as Response-like object
@@ -141,4 +161,4 @@ def create_plugin(ctx):
     ctx.register_hook("on_cleanup", cleanup)
 
     if Config.debug():
-        print(f"[httpx_http] Connected pooling enabled")
+        print(f"[httpx_http] Connection pooling enabled (streaming)")
