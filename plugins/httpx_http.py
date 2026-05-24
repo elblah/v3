@@ -7,31 +7,26 @@ Supports streaming (SSE) via stream=True
 
 Requires: httpx package
 Install: pip install httpx
+
+Defer import until first actual HTTP call to save ~1s startup time.
 """
 
 import sys
 import time
 
-# Check httpx availability
-try:
-    import httpx
-except ImportError:
-    print("ERROR: httpx_http plugin requires 'httpx' package")
-    print("Install with: pip install httpx")
-    sys.exit(1)
-
 from aicoder.core.config import Config
-from aicoder.utils.http_utils import _fetch_impl
 
 
 # Shared httpx client with connection pooling
 _http_client = None
+_httpx_installed = False
 
 
-def _get_client() -> httpx.Client:
-    """Get or create shared httpx client"""
+def _get_client():
+    """Get or create shared httpx client - lazy import"""
     global _http_client
     if _http_client is None:
+        import httpx
         _http_client = httpx.Client(
             http2=False,  # AI APIs typically don't support HTTP/2 well
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
@@ -42,7 +37,7 @@ def _get_client() -> httpx.Client:
 class HttpxResponse:
     """Wrapper around httpx response to match Response interface"""
 
-    def __init__(self, httpx_response: httpx.Response, deadline: float = 0, streaming: bool = False):
+    def __init__(self, httpx_response, deadline: float = 0, streaming: bool = False):
         self._resp = httpx_response
         self.status = httpx_response.status_code
         self.reason = httpx_response.reason_phrase
@@ -138,34 +133,51 @@ def httpx_fetch(url: str, options: dict = None) -> HttpxResponse:
             content=body_bytes,
             timeout=remaining,
         )
-        
+
         # For now, always use non-streaming
         # SSE works fine - we read all content, then split with readline()
         # streaming=True would cause issues with non-streaming responses
         response = client.send(request, stream=False)
         return HttpxResponse(response, deadline=deadline, streaming=False)
-    except httpx.HTTPStatusError as e:
-        # Return error as Response-like object
-        return HttpxResponse(e.response, deadline=deadline)
     except Exception as e:
+        # Import httpx exception types lazily
+        import httpx
+        if isinstance(e, httpx.HTTPStatusError):
+            # Return error as Response-like object
+            return HttpxResponse(e.response, deadline=deadline)
         raise Exception(f"Request failed: {e}")
 
 
 def create_plugin(ctx):
-    """Install httpx fetch as replacement"""
-    import aicoder.utils.http_utils as http_utils
+    """Install httpx fetch as replacement - deferred until first HTTP call"""
+    global _httpx_installed
+    
+    def _install_httpx(*args, **kwargs):
+        """Install httpx on first API request, not at startup"""
+        global _httpx_installed
+        if _httpx_installed:
+            return
+        
+        # Check httpx available
+        try:
+            import httpx
+        except ImportError:
+            return  # Skip, urllib will be used
+        
+        import aicoder.utils.http_utils as http_utils
+        http_utils._fetch_impl = httpx_fetch
+        _httpx_installed = True
+        
+        # Register cleanup
+        def cleanup():
+            global _http_client
+            if _http_client:
+                _http_client.close()
+                _http_client = None
+        ctx.register_hook("on_cleanup", cleanup)
 
-    # Patch _fetch_impl
-    http_utils._fetch_impl = httpx_fetch
-
-    # Cleanup on exit
-    def cleanup():
-        global _http_client
-        if _http_client:
-            _http_client.close()
-            _http_client = None
-
-    ctx.register_hook("on_cleanup", cleanup)
+    # Defer httpx installation to first API request
+    ctx.register_hook("before_api_request", _install_httpx)
 
     if Config.debug():
-        print(f"[httpx_http] Connection pooling enabled (streaming)")
+        print(f"[httpx_http] Connection pooling enabled (deferred)")

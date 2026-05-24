@@ -12,8 +12,6 @@ Requirements:
 """
 
 import os
-import subprocess
-import secrets
 from typing import Optional
 
 from aicoder.core.config import Config
@@ -50,6 +48,7 @@ def create_plugin(ctx):
 
     def copy_to_clipboard(text: str) -> tuple[bool, str]:
         """Copy text to system clipboard using xsel"""
+        import subprocess
         if not text:
             return False, "No text to copy"
 
@@ -77,6 +76,7 @@ def create_plugin(ctx):
 
     def get_clipboard_content() -> tuple[bool, str]:
         """Get content from system clipboard using xsel"""
+        import subprocess
         if not subprocess.run(["xsel", "--version"], capture_output=True).returncode == 0:
             return False, "xsel not installed"
 
@@ -96,6 +96,11 @@ def create_plugin(ctx):
             return False, "xsel timed out after 5s"
         except Exception as e:
             return False, f"xsel error: {str(e)}"
+
+    def _gen_token():
+        """Generate random hex token - lazy import to avoid 50ms startup cost"""
+        import secrets
+        return secrets.token_hex(4)
 
     def handle_paste() -> None:
         """Open clipboard content in $EDITOR, wait for edit, send as message"""
@@ -119,7 +124,8 @@ def create_plugin(ctx):
         editor = os.environ.get("EDITOR", "nano")
 
         # Create temporary file
-        random_suffix = secrets.token_hex(4)
+        import subprocess
+        random_suffix = _gen_token()
         temp_file = create_temp_file(f"aicoder-clipboard-{random_suffix}", ".md")
 
         try:

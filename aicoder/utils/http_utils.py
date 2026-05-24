@@ -1,14 +1,25 @@
 """
 Simple HTTP utilities - Python version of fetch-like functionality
+
+Note: urllib.request is lazily imported to avoid 300ms startup cost.
+Only imported when fetch() is actually called.
 """
 
 import json
 import socket
 import time
-import urllib.request
-import urllib.error
 from typing import Dict, Any, Optional
-from aicoder.core.config import Config
+
+# Lazy import to avoid 300ms startup cost - only import when fetch() called
+_urllib_request = None
+
+def _get_urllib():
+    global _urllib_request
+    if _urllib_request is None:
+        global urllib
+        import urllib.request
+        _urllib_request = urllib.request
+    return _urllib_request
 
 
 class Response:
@@ -47,6 +58,7 @@ class Response:
             return
         
         remaining = self.deadline - time.monotonic()
+        from aicoder.core.config import Config
         extension = Config.total_timeout_extension()
         
         # Activity-based extension: if data was flowing recently, grant more time
@@ -147,6 +159,7 @@ def _fetch_impl(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     method = options.get("method", "GET")
     headers = options.get("headers", {})
     body = options.get("body")
+    from aicoder.core.config import Config
     total_timeout = options.get("timeout", Config.total_timeout())
 
     # Calculate deadline for total timeout enforcement
@@ -158,18 +171,21 @@ def _fetch_impl(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
     else:
         body_bytes = None
 
-    req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
+    urllib_req = _get_urllib()
+    req = urllib_req.Request(url, data=body_bytes, headers=headers, method=method)
 
     try:
         # Use remaining time for connection timeout
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise socket.timeout("Total timeout exceeded before connection")
-        response = urllib.request.urlopen(req, timeout=remaining)
+        response = urllib_req.urlopen(req, timeout=remaining)
         return Response(response, deadline=deadline)
-    except urllib.error.HTTPError as e:
-        # Return error as Response object
-        return Response(e, deadline=deadline)
     except Exception as e:
+        # Import urllib.error here to avoid startup cost
+        import urllib.error
+        if isinstance(e, urllib.error.HTTPError):
+            # Return error as Response object
+            return Response(e, deadline=deadline)
         # For connection errors etc., raise as exception
         raise Exception(f"Request failed: {e}")

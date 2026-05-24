@@ -3,9 +3,19 @@ Command registry implementation
 """
 
 from typing import Dict, List, Callable, Optional, Union
-from bdb import BdbQuit
 from .base import BaseCommand, CommandResult, CommandContext
 from aicoder.utils.log import LogUtils
+
+
+def _is_quit_exception(e):
+    """Check if exception is a quit type - lazy import to avoid 5ms bdb cost"""
+    if isinstance(e, SystemExit):
+        return True
+    try:
+        from bdb import BdbQuit
+        return isinstance(e, BdbQuit)
+    except ImportError:
+        return False
 
 
 class SimplePluginCommand:
@@ -35,7 +45,7 @@ class SimplePluginCommand:
             return CommandResult(should_quit=False, run_api_call=False)
         except Exception as e:
             # Handle BdbQuit (quitting debugger with 'q') gracefully
-            if isinstance(e, (BdbQuit, SystemExit)):
+            if _is_quit_exception(e):
                 pass  # Silently ignore debugger quit
             else:
                 LogUtils.error(f"Error executing command: {e}")
@@ -151,7 +161,7 @@ class CommandRegistry:
             return command.execute(args)
         except Exception as e:
             # Handle BdbQuit (quitting debugger with 'q') gracefully
-            if isinstance(e, (BdbQuit, SystemExit)):
+            if _is_quit_exception(e):
                 pass  # Silently ignore debugger quit
             else:
                 LogUtils.error(f"Error executing command: {e}")

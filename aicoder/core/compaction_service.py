@@ -5,18 +5,20 @@ Takes messages, returns compacted messages. That's it.
 """
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
 
 from aicoder.utils.log import LogUtils
 from aicoder.core.config import Config
 
 
-@dataclass
 class MessageGroup:
-    """Group of messages that should stay together"""
-    messages: List[Dict[str, Any]]
-    is_summary: bool
-    is_user_turn: bool  # true if this starts with user message
+    """Group of messages that should stay together - simple class instead of dataclass"""
+
+    __slots__ = ('messages', 'is_summary', 'is_user_turn')
+
+    def __init__(self, messages: List[Dict[str, Any]], is_summary: bool, is_user_turn: bool):
+        self.messages = messages
+        self.is_summary = is_summary
+        self.is_user_turn = is_user_turn
 
 
 class CompactionService:

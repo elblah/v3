@@ -5,17 +5,18 @@ Stateless module functions - no classes needed
 
 import subprocess
 from typing import Dict, Any
-from dataclasses import dataclass
 
 
-@dataclass
 class ShellResult:
-    """Result of shell command execution"""
+    """Result of shell command execution - simple class instead of dataclass"""
 
-    success: bool
-    exit_code: int
-    stdout: str
-    stderr: str
+    __slots__ = ('success', 'exit_code', 'stdout', 'stderr')
+
+    def __init__(self, success: bool, exit_code: int, stdout: str, stderr: str):
+        self.success = success
+        self.exit_code = exit_code
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 def execute_command_sync(command: str) -> ShellResult:

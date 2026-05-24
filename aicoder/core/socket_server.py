@@ -11,7 +11,6 @@ import threading
 import fcntl
 import select
 import subprocess
-import secrets
 import signal
 import base64
 from typing import Optional, Dict, Any, List
@@ -19,6 +18,12 @@ from typing import Optional, Dict, Any, List
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.utils.temp_file_utils import create_temp_file
+
+
+def _gen_token_hex(n):
+    """Generate random hex token - lazy import to avoid 50ms secrets cost"""
+    import secrets
+    return secrets.token_hex(n)
 
 
 # Error codes
@@ -495,7 +500,7 @@ class SocketServer:
                 )
 
             editor = os.environ.get("EDITOR", "nano")
-            random_suffix = secrets.token_hex(4)
+            random_suffix = _gen_token_hex(4)
             temp_file = create_temp_file(f"aicoder-inject-{random_suffix}", ".md")
 
             with open(temp_file, "w", encoding="utf-8") as f:

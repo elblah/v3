@@ -30,7 +30,15 @@ import sys
 import builtins
 from datetime import datetime
 from typing import Optional
-from dataclasses import dataclass
+
+# Simple options class instead of dataclass (avoids 150ms import cost)
+class LogOptions:
+    """Options for log formatting"""
+    __slots__ = ('color', 'debug', 'bold')
+    def __init__(self, color: Optional[str] = None, debug: bool = False, bold: bool = False):
+        self.color = color
+        self.debug = debug
+        self.bold = bold
 
 
 # Import colors from Config (single source of truth)
@@ -62,15 +70,6 @@ def _append_error_log(message: str, traceback_str: str) -> None:
         f.write(f"[{timestamp}] {message}\n")
         f.write(traceback_str)
         f.write("\n")
-
-
-@dataclass
-class LogOptions:
-    """Options for log formatting"""
-
-    color: Optional[str] = None
-    debug: bool = False
-    bold: bool = False
 
 
 class LogUtils:

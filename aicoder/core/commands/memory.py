@@ -4,11 +4,16 @@ Memory command - Export conversation JSON to temp file, edit with $EDITOR, then 
 
 import json
 import os
-import secrets
 from aicoder.core.commands.base import BaseCommand, CommandResult, CommandContext
 from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
 from aicoder.core.config import Config
+
+
+def _gen_token():
+    """Generate random hex token - lazy import to avoid 50ms startup cost"""
+    import secrets
+    return secrets.token_hex(4)
 
 
 class MemoryCommand(BaseCommand):
@@ -34,7 +39,7 @@ class MemoryCommand(BaseCommand):
             return CommandResult(should_quit=False, run_api_call=False)
 
         editor = os.environ.get("EDITOR", "nano")
-        random_suffix = secrets.token_hex(4)
+        random_suffix = _gen_token()
         temp_file = create_temp_file(f"aicoder-memory-{random_suffix}", ".json")
 
         try:

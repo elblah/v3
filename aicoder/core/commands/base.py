@@ -4,20 +4,18 @@ Base command interface
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
-from aicoder.core.message_history import MessageHistory
-from aicoder.core.input_handler import InputHandler
-from aicoder.core.stats import Stats
 
 
-@dataclass
 class CommandContext:
-    """Context provided to commands"""
+    """Context provided to commands - using simple class instead of dataclass to avoid ~80ms import cost"""
 
-    message_history: MessageHistory
-    input_handler: InputHandler
-    stats: Stats
-    command_handler: Optional["CommandHandler"] = None
+    __slots__ = ('message_history', 'input_handler', 'stats', 'command_handler')
+
+    def __init__(self, message_history, input_handler, stats, command_handler=None):
+        self.message_history = message_history
+        self.input_handler = input_handler
+        self.stats = stats
+        self.command_handler = command_handler
 
 
 class CommandHandler(ABC):
@@ -28,14 +26,16 @@ class CommandHandler(ABC):
         pass
 
 
-@dataclass
 class CommandResult:
-    """Result of command execution"""
+    """Result of command execution - using simple class instead of dataclass"""
 
-    should_quit: bool = False
-    run_api_call: bool = True
-    message: Optional[str] = None
-    command_to_execute: Optional[str] = None
+    __slots__ = ('should_quit', 'run_api_call', 'message', 'command_to_execute')
+
+    def __init__(self, should_quit=False, run_api_call=True, message=None, command_to_execute=None):
+        self.should_quit = should_quit
+        self.run_api_call = run_api_call
+        self.message = message
+        self.command_to_execute = command_to_execute
 
 
 class BaseCommand(ABC):

@@ -5,7 +5,6 @@ Centralized tool output formatter
 
 import json
 from typing import Dict, Any, Optional, Union
-from dataclasses import dataclass
 
 from aicoder.core.config import Config
 
