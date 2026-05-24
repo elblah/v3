@@ -9,6 +9,7 @@ Install: pip install orjson
 """
 
 import json
+import os
 
 from aicoder.core.config import Config
 
@@ -54,6 +55,12 @@ def _orjson_dumps(obj, **kwargs):
 def create_plugin(ctx):
     """Patch json module with orjson - deferred until first JSON call"""
     # Don't import orjson here - defer to first actual use
+    
+    # Check if disabled via env var
+    if os.environ.get("PERF_DISABLE", "0") == "1":
+        return
+    if os.environ.get("ORJSON_DISABLE", "0") == "1":
+        return
     
     json.loads = _orjson_loads
     json.load = _orjson_load

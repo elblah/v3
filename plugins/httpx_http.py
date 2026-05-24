@@ -13,6 +13,7 @@ Defer import until first actual HTTP call to save ~1s startup time.
 
 import sys
 import time
+import os
 
 from aicoder.core.config import Config
 
@@ -151,6 +152,12 @@ def httpx_fetch(url: str, options: dict = None) -> HttpxResponse:
 def create_plugin(ctx):
     """Install httpx fetch as replacement - deferred until first HTTP call"""
     global _httpx_installed
+    
+    # Check if disabled via env var
+    if os.environ.get("PERF_DISABLE", "0") == "1":
+        return
+    if os.environ.get("HTTPX_DISABLE", "0") == "1":
+        return
     
     def _install_httpx(*args, **kwargs):
         """Install httpx on first API request, not at startup"""
