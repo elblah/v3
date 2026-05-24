@@ -8,18 +8,9 @@ Requires: orjson package
 Install: pip install orjson
 """
 
-import sys
-
-# Check orjson availability
-try:
-    import orjson
-except ImportError:
-    print("ERROR: orjson plugin requires 'orjson' package")
-    print("Install with: pip install orjson")
-    sys.exit(1)
-
 import json
 
+from aicoder.core.config import Config
 
 # Save original json.loads/dumps before patching
 _original_json_loads = json.loads
@@ -27,18 +18,28 @@ _original_json_load = json.load
 _original_json_dumps = json.dumps
 
 
+def _ensure_orjson():
+    """Lazy load orjson - only import when first JSON call happens"""
+    global orjson
+    try:
+        return orjson
+    except NameError:
+        import orjson
+        return orjson
+
+
 def _orjson_loads(s, **kwargs):
     """Wrap orjson.loads to handle kwargs (fall back to stdlib if needed)"""
     if kwargs:
         return _original_json_loads(s, **kwargs)
-    return orjson.loads(s)
+    return _ensure_orjson().loads(s)
 
 
 def _orjson_load(f, **kwargs):
     """Wrap json.load to handle kwargs (fall back to stdlib if needed)"""
     if kwargs:
         return _original_json_load(f, **kwargs)
-    return orjson.loads(f.read())
+    return _ensure_orjson().loads(f.read())
 
 
 def _orjson_dumps(obj, **kwargs):
@@ -47,14 +48,16 @@ def _orjson_dumps(obj, **kwargs):
     if 'separators' in kwargs:
         # Fall back to original stdlib json for compact formatting
         return _original_json_dumps(obj, **kwargs)
-    return orjson.dumps(obj).decode('utf-8')
+    return _ensure_orjson().dumps(obj).decode('utf-8')
 
 
 def create_plugin(ctx):
-    """Patch json module with orjson"""
+    """Patch json module with orjson - deferred until first JSON call"""
+    # Don't import orjson here - defer to first actual use
+    
     json.loads = _orjson_loads
     json.load = _orjson_load
     json.dumps = _orjson_dumps
 
-    if ctx.app and hasattr(ctx.app, 'Config') and ctx.app.Config.debug():
+    if Config.debug():
         print(f"[orjson] JSON speedups enabled ({orjson.__version__})")

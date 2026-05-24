@@ -12,9 +12,7 @@ Environment Variables:
   Default: DuckDuckGo only
 """
 
-import urllib.request
 import urllib.parse
-import subprocess
 import os
 import time
 from typing import Dict, Any, Tuple
@@ -94,6 +92,7 @@ def create_plugin(ctx):
 
     def fetch_url_text(url: str, user_agent: str = None) -> str:
         """Fetch URL text using lynx browser with user agent"""
+        import subprocess
         try:
             # Check if lynx exists
             subprocess.run(["which", "lynx"], capture_output=True, check=True)
@@ -127,6 +126,7 @@ def create_plugin(ctx):
 
     def fetch_url_raw(url: str) -> str:
         """Fetch raw HTML content using urllib"""
+        import urllib.request
         MAX_HTML_SIZE = 5 * 1024 * 1024  # 5MB limit
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})

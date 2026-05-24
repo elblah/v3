@@ -6,7 +6,6 @@ Supports Python {variable} format and automatic AGENTS.md integration
 """
 
 import os
-import platform
 import sys
 from typing import Optional, Dict, Any
 
@@ -29,7 +28,8 @@ class PromptContext:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     def _get_system_info(self) -> str:
-        """Get system information"""
+        """Get system information - lazy import to avoid 70ms startup cost"""
+        import platform
         return f"Platform: {platform.system()} ({platform.machine()}), Python: {sys.version.split()[0]}"
 
 

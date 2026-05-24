@@ -6,11 +6,16 @@ Edit command - Create new message in $EDITOR
 import os
 import shutil
 import subprocess
-import secrets
 from aicoder.core.commands.base import BaseCommand, CommandResult, CommandContext
 from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
 from aicoder.core import prompt_history
+
+
+def _gen_token():
+    """Generate random hex token - lazy import to avoid 50ms startup cost"""
+    import secrets
+    return secrets.token_hex(4)
 
 
 class EditCommand(BaseCommand):
@@ -47,7 +52,7 @@ class EditCommand(BaseCommand):
                 editor = os.environ.get("EDITOR", "nano")
 
             # Create temporary file
-            random_suffix = secrets.token_hex(4)
+            random_suffix = _gen_token()
             temp_file = create_temp_file(f"aicoder-edit-{random_suffix}", ".md")
 
             # Determine initial content
