@@ -42,28 +42,34 @@ class EditCommand(BaseCommand):
                 LogUtils.warn("Please run this command inside tmux.")
                 return CommandResult(should_quit=False, run_api_call=False)
 
-            # Get editor from environment or default to nano
+            # Determine initial content
+            initial_content = ""
+            
+            # Check if first arg is a valid editor
+            editor = os.environ.get("EDITOR", "nano")
             if args and args[0] != "last":
-                editor = args[0]
-                if not shutil.which(editor):
-                    LogUtils.error(f"Editor '{editor}' not found.")
-                    return CommandResult(should_quit=False, run_api_call=False)
-            else:
-                editor = os.environ.get("EDITOR", "nano")
+                potential_editor = args[0]
+                # If it's a valid editor, use it and collect remaining as content
+                if shutil.which(potential_editor):
+                    editor = potential_editor
+                    remaining_args = args[1:]
+                    if remaining_args:
+                        initial_content = " ".join(remaining_args)
+                else:
+                    # Not a valid editor - treat all args as initial content
+                    initial_content = " ".join(args)
+                    LogUtils.info("Pre-populating with input text...")
 
             # Create temporary file
             random_suffix = _gen_token()
             temp_file = create_temp_file(f"aicoder-edit-{random_suffix}", ".md")
 
-            # Determine initial content
-            initial_content = ""
+            # Handle /e last - populate from last user message
             if args and args[0] == "last":
-                # Find last user message
                 messages = self.context.message_history.get_messages()
                 for msg in reversed(messages):
                     if msg.get("role") == "user":
                         content = msg.get("content", "")
-                        # Handle both string and dict content (multimodal)
                         if isinstance(content, str):
                             initial_content = content
                         elif isinstance(content, dict) and "text" in content:
