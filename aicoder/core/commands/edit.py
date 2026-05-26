@@ -45,18 +45,20 @@ class EditCommand(BaseCommand):
             # Determine initial content
             initial_content = ""
             
-            # Check if first arg is a valid editor
+            # Determine initial content and editor
+            initial_content = ""
             editor = os.environ.get("EDITOR", "nano")
-            if args and args[0] != "last":
-                potential_editor = args[0]
-                # If it's a valid editor, use it and collect remaining as content
-                if shutil.which(potential_editor):
-                    editor = potential_editor
-                    remaining_args = args[1:]
-                    if remaining_args:
-                        initial_content = " ".join(remaining_args)
+
+            if args:
+                if len(args) == 1:
+                    # Single arg - check if it's "last" or a valid editor
+                    arg = args[0]
+                    if arg == "last":
+                        pass  # handled below
+                    elif shutil.which(arg):
+                        editor = arg  # valid editor found
                 else:
-                    # Not a valid editor - treat all args as initial content
+                    # Multiple args - treat all as initial content
                     initial_content = " ".join(args)
                     LogUtils.info("Pre-populating with input text...")
 
@@ -65,7 +67,7 @@ class EditCommand(BaseCommand):
             temp_file = create_temp_file(f"aicoder-edit-{random_suffix}", ".md")
 
             # Handle /e last - populate from last user message
-            if args and args[0] == "last":
+            if args and len(args) == 1 and args[0] == "last":
                 messages = self.context.message_history.get_messages()
                 for msg in reversed(messages):
                     if msg.get("role") == "user":
