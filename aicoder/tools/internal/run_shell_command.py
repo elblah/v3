@@ -41,8 +41,8 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
 
     # Create process group for the entire process tree
     proc = subprocess.Popen(
-        command,
-        shell=True,
+        ["bash", "-c", command],
+        shell=False,
         preexec_fn=os.setsid,  # Create new process group
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
