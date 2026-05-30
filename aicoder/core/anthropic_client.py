@@ -79,11 +79,9 @@ class AnthropicClient:
                                 "headers": {k: v if k.lower() != "authorization" else "***" for k, v in headers.items()},
                                 "body": request_data
                             }, f, indent=2)
-                        from aicoder.utils.log import LogUtils
-                        LogUtils.debug(f"*** Request payload saved to {debug_file}")
+                        log_debug(f"*** Request payload saved to {debug_file}")
                     except Exception as e:
-                        from aicoder.utils.log import LogUtils
-                        LogUtils.debug(f"*** Failed to save request payload: {e}")
+                        log_debug(f"*** Failed to save request payload: {e}")
 
                 response = fetch(
                     endpoint,
