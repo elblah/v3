@@ -152,14 +152,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             "detailed": detailed
         }
 
-    # Timeout is now handled in execute_with_process_group
-    # This exception should not be reached anymore
-    except subprocess.TimeoutExpired:
-        return {
-            "tool": "run_shell_command",
-            "friendly": f"✗ Command timed out after {timeout}s (exit code: 124)",
-            "detailed": f"Command timed out after {timeout}s: {command}"
-        }
     except Exception as e:
         return {
             "tool": "run_shell_command",
@@ -173,11 +165,11 @@ TOOL_DEFINITION = {
     "type": "internal",
     "auto_approved": False,  # Requires approval for safety
     "approval_excludes_arguments": False,
-    "description": "Execute shell command with timeout",
+    "description": "Execute bash command with timeout",
     "parameters": {
         "type": "object",
         "properties": {
-            "command": {"type": "string", "description": "Shell command to execute"},
+            "command": {"type": "string", "description": "bash command to execute"},
             "timeout": {
                 "type": "integer",
                 "description": f"Timeout in seconds (default: {DEFAULT_TIMEOUT}). IMPORTANT: For slow environments or compilation tasks (go build, cargo build, make, npm install, etc.), use much larger timeouts like 3600 (1 hour) to avoid wasting time on repeated timeout failures.",
@@ -195,20 +187,16 @@ TOOL_DEFINITION = {
 
 
 def format_arguments(args):
-    """Format arguments for display ()"""
+    """Format arguments for display"""
     command = args.get("command")
     try:
         timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
     except ValueError:
         raise Exception("timeout must be an integer, got: " + str(args.get("timeout")))
-    reason = args.get("reason")
 
     lines = []
     if command:
         lines.append(f"Command: {command}")
-
-    if reason:
-        lines.append(f"Reason: {reason}")
 
     if timeout != DEFAULT_TIMEOUT:
         lines.append(f"Timeout: {timeout}s")
