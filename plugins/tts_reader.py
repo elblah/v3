@@ -13,12 +13,27 @@ Features:
 
 import os
 import re
-import subprocess
-import shutil
-from typing import Optional
+from typing import Any, Optional
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+
+_subprocess = None
+_shutil = None
+
+def _get_subprocess():
+    global _subprocess
+    if _subprocess is None:
+        import subprocess
+        _subprocess = subprocess
+    return _subprocess
+
+def _get_shutil():
+    global _shutil
+    if _shutil is None:
+        import shutil
+        _shutil = shutil
+    return _shutil
 
 # Default settings
 DEFAULT_ENGINE = "espeak"
@@ -48,7 +63,7 @@ def create_plugin(ctx):
     current_sink = "pipewire/combined"
 
     # Track current TTS process for interruption
-    current_process: Optional[subprocess.Popen] = None
+    current_process: Optional[Any] = None
 
     # Exclude phrases - filter out common filler phrases (lazy parse)
     exclude_phrases_str = os.environ.get("TTS_EXCLUDE", "")
@@ -71,7 +86,7 @@ def create_plugin(ctx):
         if current_sink != "pipewire/combined":  # Already detected
             return
         try:
-            result = subprocess.run(
+            result = _get_subprocess().run(
                 ["pactl", "list", "sinks", "short"],
                 capture_output=True,
                 text=True
@@ -89,9 +104,9 @@ def create_plugin(ctx):
     def get_available_engines():
         """Check which TTS engines are available"""
         engines = []
-        if shutil.which("espeak"):
+        if _get_shutil().which("espeak"):
             engines.append("espeak")
-        if shutil.which("flite"):
+        if _get_shutil().which("flite"):
             engines.append("flite")
         return engines
 
@@ -99,7 +114,7 @@ def create_plugin(ctx):
         """List available voices for current engine"""
         if engine == "espeak":
             try:
-                result = subprocess.run(
+                result = _get_subprocess().run(
                     ["espeak", "--voices=en"],
                     capture_output=True,
                     text=True
@@ -109,7 +124,7 @@ def create_plugin(ctx):
                 return "Could not list espeak voices"
         elif engine == "flite":
             try:
-                result = subprocess.run(
+                result = _get_subprocess().run(
                     ["flite", "-lv"],
                     capture_output=True,
                     text=True
@@ -182,11 +197,11 @@ def create_plugin(ctx):
         """Speak using espeak"""
         env = os.environ.copy()
         env["PULSE_SINK"] = current_sink
-        return subprocess.Popen(
+        return _get_subprocess().Popen(
             ["espeak", "-v", voice, "-s", str(speed), text],
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=_get_subprocess().DEVNULL,
+            stderr=_get_subprocess().DEVNULL
         )
 
     def speak_flite(text: str):
@@ -197,11 +212,11 @@ def create_plugin(ctx):
             # Normal speed - no ffmpeg needed
             env = os.environ.copy()
             env["PULSE_SINK"] = current_sink
-            return subprocess.Popen(
+            return _get_subprocess().Popen(
                 ["flite", "-voice", voice, text],
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stdout=_get_subprocess().DEVNULL,
+                stderr=_get_subprocess().DEVNULL
             )
         else:
             # Speed adjustment via ffmpeg
@@ -211,7 +226,7 @@ def create_plugin(ctx):
 
             try:
                 # Generate audio file
-                subprocess.run(
+                _get_subprocess().run(
                     ["flite", "-voice", voice, text, tmp_path],
                     capture_output=True
                 )
@@ -219,18 +234,18 @@ def create_plugin(ctx):
                 # Play with tempo adjustment using paplay with env var
                 env = os.environ.copy()
                 env["PULSE_SINK"] = current_sink
-                proc = subprocess.Popen(
+                proc = _get_subprocess().Popen(
                     ["ffmpeg", "-i", tmp_path, "-af", f"atempo={tempo:.2f}", "-f", "wav", "-"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL
+                    stdout=_get_subprocess().PIPE,
+                    stderr=_get_subprocess().DEVNULL
                 )
                 # Pipe to paplay
-                paplay = subprocess.Popen(
+                paplay = _get_subprocess().Popen(
                     ["paplay", f"--device={current_sink}"],
                     stdin=proc.stdout,
                     env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stdout=_get_subprocess().DEVNULL,
+                    stderr=_get_subprocess().DEVNULL
                 )
                 # Close pipe in parent
                 proc.stdout.close()

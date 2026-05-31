@@ -6,9 +6,16 @@ context to the AI system prompt about git awareness and commit requirements.
 Runs git command only once at plugin load to cache branch name.
 """
 
-import subprocess
-
 from aicoder.core.config import Config
+
+_subprocess = None
+
+def _get_subprocess():
+    global _subprocess
+    if _subprocess is None:
+        import subprocess
+        _subprocess = subprocess
+    return _subprocess
 
 # Cache git branch at module level - run once at plugin load
 _cached_git_branch = None
@@ -17,7 +24,7 @@ _cached_git_branch = None
 def _get_git_branch():
     """Get current git branch, returns None if not a git repo"""
     try:
-        result = subprocess.run(
+        result = _get_subprocess().run(
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
@@ -25,7 +32,7 @@ def _get_git_branch():
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+    except (_get_subprocess().TimeoutExpired, FileNotFoundError, _get_subprocess().SubprocessError):
         pass
     return None
 

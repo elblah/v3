@@ -12,13 +12,20 @@ Environment Variables:
   Default: DuckDuckGo only
 """
 
-import urllib.parse
 import os
 import time
 from typing import Dict, Any, Tuple
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+
+_urllib_parse = None
+def _get_urllib():
+    global _urllib_parse
+    if _urllib_parse is None:
+        import urllib.parse
+        _urllib_parse = urllib.parse
+    return _urllib_parse
 
 
 def create_plugin(ctx):
@@ -60,7 +67,7 @@ def create_plugin(ctx):
     def validate_url(url: str) -> bool:
         """Basic URL validation"""
         try:
-            result = urllib.parse.urlparse(url)
+            result = _get_urllib().urlparse(url)
             return all([result.scheme, result.netloc])
         except:
             return False
@@ -92,15 +99,12 @@ def create_plugin(ctx):
 
     def fetch_url_text(url: str, user_agent: str = None) -> str:
         """Fetch URL text using lynx browser with user agent"""
-        import subprocess
-        try:
-            # Check if lynx exists
-            subprocess.run(["which", "lynx"], capture_output=True, check=True)
-        except:
+        import shutil
+        if not shutil.which("lynx"):
             return "Error: lynx browser not installed. Install with: sudo apt install lynx"
 
+        import subprocess
         try:
-            # Use lynx with user agent to avoid bot detection
             result = subprocess.run(
                 ["lynx", "-dump", "-nolist", url],
                 capture_output=True,
@@ -182,7 +186,7 @@ def create_plugin(ctx):
         _last_search_time = now
 
         failed_providers = []
-        encoded = urllib.parse.quote_plus(query)
+        encoded = _get_urllib().quote_plus(query)
         num_providers = len(SEARCH_PROVIDERS)
 
         # Rotate through providers starting from last used index

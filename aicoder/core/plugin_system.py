@@ -240,12 +240,15 @@ class PluginSystem:
             plugin_files = [f for f in plugin_files if Path(f).stem not in denied_plugins]
 
         # Load each plugin
+        total_start = time.perf_counter()
         if Config.debug():
             for filename in plugin_files:
                 t0 = time.perf_counter()
                 self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
                 dt = time.perf_counter() - t0
                 print(f"[+] Loaded plugin: {Path(filename).stem} ({dt:.3f}s)")
+            total_dt = time.perf_counter() - total_start
+            print(f"[+] Plugins loaded in {total_dt:.3f}s")
         else:
             for filename in plugin_files:
                 self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
