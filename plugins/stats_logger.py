@@ -12,7 +12,15 @@ import os
 import sys
 from datetime import datetime, UTC
 from aicoder.core.config import Config
-from aicoder.core.token_estimator import _estimate_weighted_tokens
+
+_token_estimator = None
+
+def _get_token_estimator():
+    global _token_estimator
+    if _token_estimator is None:
+        from aicoder.core.token_estimator import _estimate_weighted_tokens
+        _token_estimator = _estimate_weighted_tokens
+    return _token_estimator
 
 # Central FIFO path (optional external listener)
 FIFO_PATH = os.path.join(os.environ.get("TMP", "/tmp"), "stats_logger.fifo")
@@ -53,7 +61,7 @@ def create_plugin(ctx):
         if stats.completion_tokens == 0 and assistant_message.get("content"):
             content = assistant_message["content"]
             # Use proper token estimation
-            estimated_completion_tokens = _estimate_weighted_tokens(content)
+            estimated_completion_tokens = _get_token_estimator()(content)
 
     def _log_api_request(has_tool_calls: bool):
         """Log API request to stats.log"""

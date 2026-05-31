@@ -11,10 +11,18 @@ Usage:
 """
 
 import base64
-import mimetypes
 import os
 import re
 from typing import Dict, Any, List, Optional
+
+_mime_types_init = False
+
+def _get_mime_types():
+    global _mime_types_init
+    if not _mime_types_init:
+        import mimetypes
+        _mime_types_init = True
+    return mimetypes
 
 
 # Supported image formats
@@ -33,7 +41,7 @@ SUPPORTED_FORMATS = {
 
 def get_mime_type(file_path: str) -> Optional[str]:
     """Get MIME type for an image file."""
-    mime_type, _ = mimetypes.guess_type(file_path)
+    mime_type, _ = _get_mime_types().guess_type(file_path)
     if mime_type and mime_type.startswith("image/"):
         return mime_type
     ext = os.path.splitext(file_path)[1].lower()

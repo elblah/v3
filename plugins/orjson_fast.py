@@ -26,6 +26,8 @@ def _ensure_orjson():
         return orjson
     except NameError:
         import orjson
+        if Config.debug():
+            print(f"[orjson] JSON speedups enabled ({orjson.__version__})")
         return orjson
 
 
@@ -65,6 +67,3 @@ def create_plugin(ctx):
     json.loads = _orjson_loads
     json.load = _orjson_load
     json.dumps = _orjson_dumps
-
-    if Config.debug():
-        print(f"[orjson] JSON speedups enabled ({orjson.__version__})")
