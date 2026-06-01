@@ -112,7 +112,7 @@ def test_encode_image():
 
 
 def test_create_image_content_part():
-    """Test creating image content part"""
+    """Test creating image content part (provider-aware)"""
     from plugins.vision import create_image_content_part
 
     # Create a small test image
@@ -122,9 +122,17 @@ def test_create_image_content_part():
 
     try:
         part = create_image_content_part(temp_path)
-        assert part["type"] == "image_url"
-        assert "image_url" in part
-        assert part["image_url"]["url"].startswith("data:image/png;base64,")
+        if os.environ.get("API_PROVIDER", "").lower() == "anthropic":
+            # Anthropic format
+            assert part["type"] == "image"
+            assert part["source"]["type"] == "base64"
+            assert part["source"]["media_type"] == "image/png"
+            assert part["source"]["data"]  # non-empty base64
+        else:
+            # OpenAI format
+            assert part["type"] == "image_url"
+            assert "image_url" in part
+            assert part["image_url"]["url"].startswith("data:image/png;base64,")
     finally:
         os.unlink(temp_path)
 
@@ -148,8 +156,14 @@ def test_create_user_message():
         assert message["role"] == "user"
         assert len(message["content"]) == 3  # text + 2 images
         assert message["content"][0] == {"type": "text", "text": "Analyze these"}
-        assert message["content"][1]["type"] == "image_url"
-        assert message["content"][2]["type"] == "image_url"
+        if os.environ.get("API_PROVIDER", "").lower() == "anthropic":
+            assert message["content"][1]["type"] == "image"
+            assert message["content"][1]["source"]["media_type"] == "image/png"
+            assert message["content"][2]["type"] == "image"
+            assert message["content"][2]["source"]["media_type"] == "image/jpeg"
+        else:
+            assert message["content"][1]["type"] == "image_url"
+            assert message["content"][2]["type"] == "image_url"
     finally:
         os.unlink(img1)
         os.unlink(img2)
