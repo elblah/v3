@@ -20,6 +20,7 @@ _mime_types_init = False
 def _get_mime_types():
     global _mime_types_init
     if not _mime_types_init:
+        global mimetypes
         import mimetypes
         _mime_types_init = True
     return mimetypes
@@ -61,6 +62,10 @@ def encode_image(file_path: str) -> str:
     return base64.b64encode(binary_data).decode("utf-8")
 
 
+def _is_anthropic_provider() -> bool:
+    return os.environ.get("API_PROVIDER", "").lower() == "anthropic"
+
+
 def create_image_content_part(file_path: str) -> Dict[str, Any]:
     """Create an image content part for multimodal API message."""
     if not os.path.exists(file_path):
@@ -72,6 +77,16 @@ def create_image_content_part(file_path: str) -> Dict[str, Any]:
 
     base64_data = encode_image(file_path)
     mime_type = get_mime_type(file_path)
+
+    if _is_anthropic_provider():
+        return {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": mime_type,
+                "data": base64_data,
+            },
+        }
 
     return {
         "type": "image_url",
