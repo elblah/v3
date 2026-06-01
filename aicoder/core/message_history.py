@@ -45,13 +45,17 @@ class MessageHistory:
         self.api_client = api_client
 
     @staticmethod
+    def _is_image_part(item: Any) -> bool:
+        return isinstance(item, dict) and item.get("type") in ("image_url", "image")
+
+    @staticmethod
     def _get_content_as_string(content: Any) -> Optional[str]:
         """Safely get message content as string (handles both string and list types).
         Returns None if content contains images."""
         if isinstance(content, list):
             # For multi-modal messages, check for images
             for item in content:
-                if isinstance(item, dict) and item.get("type") == "image_url":
+                if MessageHistory._is_image_part(item):
                     return None
             # Extract text content
             for item in content:
@@ -66,7 +70,7 @@ class MessageHistory:
         content = msg.get("content", "")
         if isinstance(content, list):
             for item in content:
-                if isinstance(item, dict) and item.get("type") == "image_url":
+                if MessageHistory._is_image_part(item):
                     return True
         return False
 
