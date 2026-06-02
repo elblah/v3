@@ -5,14 +5,12 @@ from unittest.mock import patch, MagicMock
 import subprocess
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.shell_utils import (
     ShellResult,
     execute_command_sync,
     execute_command_with_timeout,
 )
-
 
 class TestShellResult:
     """Test ShellResult dataclass."""
@@ -30,7 +28,6 @@ class TestShellResult:
         result = ShellResult(success=False, exit_code=1, stdout="", stderr="error")
         assert result.success is False
         assert result.exit_code == 1
-
 
 class TestExecuteCommandSync:
     """Test execute_command_sync function."""
@@ -109,7 +106,6 @@ class TestExecuteCommandSync:
         assert result.success is True
         assert "hello" in result.stdout
 
-
 class TestExecuteCommandWithTimeout:
     """Test execute_command_with_timeout function."""
 
@@ -137,7 +133,6 @@ class TestExecuteCommandWithTimeout:
         result = execute_command_with_timeout("sleep 0.1 && echo done", 5)
         assert result.success is True
         assert "done" in result.stdout
-
 
 class TestExecuteCommandSyncEdgeCases:
     """Test edge cases for execute_command_sync."""

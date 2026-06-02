@@ -6,7 +6,6 @@ import pytest
 from unittest.mock import patch
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.temp_file_utils import (
     get_temp_dir,
@@ -14,7 +13,6 @@ from aicoder.utils.temp_file_utils import (
     delete_file,
     write_temp_file
 )
-
 
 class TestGetTempDir:
     """Test get_temp_dir function."""
@@ -54,7 +52,6 @@ class TestGetTempDir:
                 result = tf_utils.get_temp_dir()
                 assert result == "/tmp"
 
-
 class TestCreateTempFile:
     """Test create_temp_file function."""
 
@@ -76,7 +73,6 @@ class TestCreateTempFile:
         assert "prefix" in path
         # Should contain extension
         assert ".ext" in path
-
 
 class TestDeleteFile:
     """Test delete_file function."""
@@ -101,7 +97,6 @@ class TestDeleteFile:
         with patch('os.remove', side_effect=Exception("Permission denied")):
             delete_file("/some/path")
             # Should not raise
-
 
 class TestWriteTempFile:
     """Test write_temp_file function."""

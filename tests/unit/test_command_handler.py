@@ -4,13 +4,11 @@ import pytest
 from unittest.mock import MagicMock
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.command_handler import CommandHandler
 from aicoder.core.message_history import MessageHistory
 from aicoder.core.input_handler import InputHandler
 from aicoder.core.stats import Stats
-
 
 class TestCommandHandler:
     """Test CommandHandler class."""

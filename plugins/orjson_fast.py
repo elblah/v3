@@ -58,6 +58,10 @@ def create_plugin(ctx):
     """Patch json module with orjson - deferred until first JSON call"""
     # Don't import orjson here - defer to first actual use
     
+    # Don't patch during tests
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    
     # Check if disabled via env var
     if os.environ.get("PERF_DISABLE", "0") == "1":
         return

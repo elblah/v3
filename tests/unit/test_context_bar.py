@@ -7,11 +7,9 @@ from unittest.mock import Mock, patch, PropertyMock
 import math
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.context_bar import ContextBar
 from aicoder.core.config import Config
-
 
 class TestContextBar:
     """Test ContextBar class."""
@@ -118,7 +116,6 @@ class TestContextBar:
         assert len(parts[1]) == 2  # Minutes
         assert len(parts[2]) == 2  # Seconds
 
-
 class TestProgressBar:
     """Test progress bar creation."""
 
@@ -162,7 +159,6 @@ class TestProgressBar:
         assert len(result) >= 8
         assert len(result) <= 15
 
-
 class TestPrintContextBar:
     """Test printing context bar."""
 
@@ -196,7 +192,6 @@ class TestPrintContextBar:
             captured = capsys.readouterr()
             assert "Context:" in captured.out
             assert "\n" in captured.out  # Should have newline before
-
 
 class TestContextBarEdgeCases:
     """Test edge cases for context bar."""

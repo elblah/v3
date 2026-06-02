@@ -2,7 +2,7 @@
 Unit tests for http_utils module
 """
 
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import sys
 sys.path.insert(0, '.')
@@ -252,22 +252,27 @@ class TestResponse:
 class TestFetch:
     """Test fetch function behavior"""
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_get_request(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_get_request(self, mock_get_urllib):
         """Test fetch() makes GET request by default"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         result = fetch("http://example.com")
 
         assert result.status == 200
-        mock_urlopen.assert_called_once()
+        mock_req_mod.urlopen.assert_called_once()
+        # Check the Request object was created with correct args
+        req_obj = mock_req_mod.Request.call_args
+        assert req_obj[0][0] == "http://example.com"
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_options_headers(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_options_headers(self, mock_get_urllib):
         """Test fetch() passes headers in options"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         options = {
             "headers": {"Authorization": "Bearer token", "Content-Type": "application/json"}
@@ -276,103 +281,106 @@ class TestFetch:
 
         assert result.status == 200
         # Check that Request was created with headers
-        call_args = mock_urlopen.call_args[0]
-        request = call_args[0]
-        # urllib.Request keeps header case
-        assert request.headers.get("Authorization") == "Bearer token"
+        req_call = mock_req_mod.Request.call_args
+        assert req_call[1]["headers"] == {"Authorization": "Bearer token", "Content-Type": "application/json"}
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_post_method(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_post_method(self, mock_get_urllib):
         """Test fetch() makes POST request"""
-        mock_response = MockResponse(status=201)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=201)
+        mock_get_urllib.return_value = mock_req_mod
 
         options = {"method": "POST", "body": '{"test": "data"}'}
         result = fetch("http://example.com", options)
 
         assert result.status == 201
-        call_args = mock_urlopen.call_args[0]
-        request = call_args[0]
-        assert request.method == "POST"
-        assert request.data == b'{"test": "data"}'
+        req_call = mock_req_mod.Request.call_args
+        assert req_call[1]["method"] == "POST"
+        assert req_call[1]["data"] == b'{"test": "data"}'
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_put_method(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_put_method(self, mock_get_urllib):
         """Test fetch() makes PUT request"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         options = {"method": "PUT", "body": "updated data"}
         result = fetch("http://example.com", options)
 
         assert result.status == 200
-        call_args = mock_urlopen.call_args[0]
-        request = call_args[0]
-        assert request.method == "PUT"
-        assert request.data == b"updated data"
+        req_call = mock_req_mod.Request.call_args
+        assert req_call[1]["method"] == "PUT"
+        assert req_call[1]["data"] == b"updated data"
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_bytes_body(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_bytes_body(self, mock_get_urllib):
         """Test fetch() handles bytes body"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         options = {"method": "POST", "body": b"binary data"}
         result = fetch("http://example.com", options)
 
         assert result.status == 200
-        call_args = mock_urlopen.call_args[0]
-        request = call_args[0]
-        assert request.data == b"binary data"
+        req_call = mock_req_mod.Request.call_args
+        assert req_call[1]["data"] == b"binary data"
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_custom_timeout(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_custom_timeout(self, mock_get_urllib):
         """Test fetch() uses custom timeout from options"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         options = {"timeout": 60}
         result = fetch("http://example.com", options)
 
         assert result.status == 200
-        mock_urlopen.assert_called_once()
+        mock_req_mod.urlopen.assert_called_once()
         # Check timeout in call kwargs (allow small variance due to time calculation)
-        call_kwargs = mock_urlopen.call_args[1]
+        call_kwargs = mock_req_mod.urlopen.call_args[1]
         assert 55 <= call_kwargs["timeout"] <= 60
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_default_timeout(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_default_timeout(self, mock_get_urllib):
         """Test fetch() uses default timeout from Config"""
         from aicoder.core.config import Config
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         result = fetch("http://example.com")
 
         assert result.status == 200
-        call_kwargs = mock_urlopen.call_args[1]
+        call_kwargs = mock_req_mod.urlopen.call_args[1]
         # Allow small variance due to time calculation between calls
         expected = Config.total_timeout()
         assert expected - 5 <= call_kwargs["timeout"] <= expected
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_handles_http_error(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_handles_http_error(self, mock_get_urllib):
         """Test fetch() returns Response for HTTP errors"""
         from urllib.error import HTTPError
-
+        mock_req_mod = MagicMock()
         # Create a real HTTPError
         error = HTTPError("http://example.com", 404, "Not Found", {}, None)
-        mock_urlopen.side_effect = error
+        mock_req_mod.urlopen.side_effect = error
+        mock_get_urllib.return_value = mock_req_mod
 
         result = fetch("http://example.com")
 
         assert result.status == 404
         assert result.reason == "Not Found"
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_handles_connection_error(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_handles_connection_error(self, mock_get_urllib):
         """Test fetch() raises exception for connection errors"""
-        mock_urlopen.side_effect = Exception("Connection failed")
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.side_effect = Exception("Connection failed")
+        mock_get_urllib.return_value = mock_req_mod
 
         try:
             fetch("http://example.com")
@@ -381,10 +389,12 @@ class TestFetch:
             assert "Request failed" in str(e)
             assert "Connection failed" in str(e)
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_handles_timeout_error(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_handles_timeout_error(self, mock_get_urllib):
         """Test fetch() raises exception for timeout errors"""
-        mock_urlopen.side_effect = Exception("timeout")
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.side_effect = Exception("timeout")
+        mock_get_urllib.return_value = mock_req_mod
 
         try:
             fetch("http://example.com")
@@ -392,27 +402,29 @@ class TestFetch:
         except Exception as e:
             assert "Request failed" in str(e)
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_none_options(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_none_options(self, mock_get_urllib):
         """Test fetch() handles None options (default behavior)"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         result = fetch("http://example.com", None)
 
         assert result.status == 200
-        mock_urlopen.assert_called_once()
+        mock_req_mod.urlopen.assert_called_once()
 
-    @patch('aicoder.utils.http_utils.urllib.request.urlopen')
-    def test_fetch_with_empty_options(self, mock_urlopen):
+    @patch('aicoder.utils.http_utils._get_urllib')
+    def test_fetch_with_empty_options(self, mock_get_urllib):
         """Test fetch() handles empty options dict"""
-        mock_response = MockResponse(status=200)
-        mock_urlopen.return_value = mock_response
+        mock_req_mod = MagicMock()
+        mock_req_mod.urlopen.return_value = MockResponse(status=200)
+        mock_get_urllib.return_value = mock_req_mod
 
         result = fetch("http://example.com", {})
 
         assert result.status == 200
-        mock_urlopen.assert_called_once()
+        mock_req_mod.urlopen.assert_called_once()
 
 
 # Note: We removed MockErrorWithRead because objects with read() method are

@@ -3,10 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.prompt_builder import PromptBuilder, PromptContext, PromptOptions
-
 
 class TestPromptContext:
     """Test PromptContext dataclass."""
@@ -46,7 +44,6 @@ class TestPromptContext:
 
         assert context.agents_content == "Custom agents content"
 
-
 class TestPromptOptions:
     """Test PromptOptions dataclass."""
 
@@ -55,7 +52,6 @@ class TestPromptOptions:
         options = PromptOptions()
 
         assert options.override_prompt is None
-
 
 class TestPromptBuilderBasics:
     """Test PromptBuilder basic functionality."""
@@ -73,7 +69,6 @@ class TestPromptBuilderBasics:
 
         assert PromptBuilder.is_initialized()
         assert PromptBuilder._default_prompt_template is not None
-
 
 class TestPromptBuilderBuildPrompt:
     """Test PromptBuilder build_prompt method."""
@@ -160,7 +155,6 @@ class TestPromptBuilderBuildPrompt:
 
         assert context.current_directory in prompt
 
-
 class TestPromptBuilderLoadPromptOverride:
     """Test PromptBuilder load_prompt_override method."""
 
@@ -181,7 +175,6 @@ class TestPromptBuilderLoadPromptOverride:
             with patch('builtins.open', return_value=mock_file):
                 result = PromptBuilder.load_prompt_override()
                 assert result == mock_content
-
 
 class TestPromptBuilderLoadAgentsContent:
     """Test PromptBuilder load_agents_content method."""
@@ -204,7 +197,6 @@ class TestPromptBuilderLoadAgentsContent:
                 result = PromptBuilder.load_agents_content()
                 # Content is prefixed with separator
                 assert mock_content in result
-
 
 class TestPromptBuilderBuildSystemPrompt:
     """Test PromptBuilder build_system_prompt method."""
@@ -267,7 +259,6 @@ class TestPromptBuilderBuildSystemPrompt:
         finally:
             PromptBuilder._default_prompt_template = original_template
 
-
 class TestPromptBuilderAvailableToolsInfo:
     """Test PromptBuilder _get_available_tools_info method."""
 
@@ -289,7 +280,6 @@ class TestPromptBuilderAvailableToolsInfo:
 
         assert isinstance(info, str)
         assert len(info) > 0
-
 
 class TestPromptBuilderSmartAgentsHandling:
     """Test PromptBuilder smart AGENTS.md handling."""

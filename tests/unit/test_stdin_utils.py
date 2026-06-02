@@ -5,10 +5,8 @@ import pytest
 from unittest.mock import patch
 
 import sys as system_sys
-system_sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.stdin_utils import read_stdin_as_string
-
 
 class TestReadStdinAsString:
     """Test read_stdin_as_string function."""

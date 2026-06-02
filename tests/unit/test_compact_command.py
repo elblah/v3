@@ -3,11 +3,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.commands.base import CommandContext, CommandResult
 from aicoder.core.commands.compact import CompactCommand
-
 
 class MockMessageHistory:
     """Mock MessageHistory for testing."""
@@ -58,11 +56,9 @@ class MockMessageHistory:
             return 0
         return self._stats["count"] - keep_count
 
-
 class MockInputHandler:
     """Mock InputHandler for testing."""
     pass
-
 
 class MockStats:
     """Mock Stats for testing."""
@@ -71,7 +67,6 @@ class MockStats:
 
     def print_stats(self):
         pass
-
 
 @pytest.fixture
 def mock_context():
@@ -82,12 +77,10 @@ def mock_context():
         stats=MockStats()
     )
 
-
 @pytest.fixture
 def compact_command(mock_context):
     """Create CompactCommand instance."""
     return CompactCommand(mock_context)
-
 
 class TestCompactCommandBasics:
     """Test CompactCommand basic properties."""
@@ -108,7 +101,6 @@ class TestCompactCommandBasics:
     def test_usage_format(self, compact_command):
         """Test usage string format."""
         assert "/compact" in compact_command.usage
-
 
 class TestCompactCommandExecute:
     """Test CompactCommand execute method."""
@@ -146,7 +138,6 @@ class TestCompactCommandExecute:
             result = compact_command.execute(None)
             assert result.should_quit is False
             assert result.run_api_call is False
-
 
 class TestCompactCommandForce:
     """Test CompactCommand force options."""
@@ -242,7 +233,6 @@ class TestCompactCommandForce:
             result = compact_command.execute(["force-messages", "-15"])
             assert result.should_quit is False
             mock_context.message_history.force_compact_messages.assert_called_with(-15)
-
 
 class TestCompactCommandPrune:
     """Test CompactCommand prune options."""
@@ -371,7 +361,6 @@ class TestCompactCommandPrune:
             assert result.run_api_call is False
             mock_context.message_history.prune_keep_newest_tool_results.assert_called_with(5)
 
-
 class TestCompactCommandStats:
     """Test CompactCommand stats option."""
 
@@ -399,7 +388,6 @@ class TestCompactCommandStats:
             assert result.should_quit is False
             assert result.run_api_call is False
 
-
 class TestCompactCommandHelp:
     """Test CompactCommand help option."""
 
@@ -417,7 +405,6 @@ class TestCompactCommandHelp:
             result = compact_command.execute(["help"])
             # Help should return CommandResult
             assert isinstance(result, CommandResult)
-
 
 class TestCompactCommandUnknown:
     """Test CompactCommand unknown command handling."""
@@ -438,7 +425,6 @@ class TestCompactCommandUnknown:
             assert isinstance(result, CommandResult)
             assert result.should_quit is False
             assert result.run_api_call is False
-
 
 class TestCompactCommandAutoCompactDisabled:
     """Test CompactCommand when auto-compaction is disabled."""
@@ -489,7 +475,6 @@ class TestCompactCommandAutoCompactDisabled:
             assert result.should_quit is False
             assert result.run_api_call is False
 
-
 class TestCompactCommandNoMessages:
     """Test CompactCommand when no messages available."""
 
@@ -512,7 +497,6 @@ class TestCompactCommandNoMessages:
             result = compact_command.execute([])
             assert result.should_quit is False
             assert result.run_api_call is False
-
 
 class TestCompactCommandParseArgs:
     """Test CompactCommand argument parsing."""
@@ -582,7 +566,6 @@ class TestCompactCommandParseArgs:
         # When ValueError occurs, count defaults to 1
         assert result.get("force") is True
         assert result.get("count") == 1
-
 
 class TestCompactCommandHandleCompact:
     """Test CompactCommand _handle_compact method."""

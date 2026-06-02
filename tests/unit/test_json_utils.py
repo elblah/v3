@@ -7,7 +7,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.json_utils import (
     write_file,
@@ -16,7 +15,6 @@ from aicoder.utils.json_utils import (
     is_valid,
     parse_safe
 )
-
 
 class TestIsValid:
     """Test is_valid function."""
@@ -62,7 +60,6 @@ class TestIsValid:
         """Test empty string returns False."""
         assert is_valid('') is False
 
-
 class TestParseSafe:
     """Test parse_safe function."""
 
@@ -90,7 +87,6 @@ class TestParseSafe:
         """Test empty string returns default."""
         result = parse_safe('')
         assert result is None
-
 
 class TestReadFileSafe:
     """Test read_file_safe function."""
@@ -129,7 +125,6 @@ class TestReadFileSafe:
         finally:
             os.unlink(path)
 
-
 class TestWriteFile:
     """Test write_file function."""
 
@@ -156,7 +151,6 @@ class TestWriteFile:
                 content = f.read()
 
             assert "[\n" in content
-
 
 class TestReadFile:
     """Test read_file function."""

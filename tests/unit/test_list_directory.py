@@ -8,11 +8,9 @@ import pytest
 from unittest.mock import patch
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.tools.internal.list_directory import execute, formatArguments, validateArguments
 from aicoder.core.config import Config
-
 
 class TestListDirectory:
     """Test list_directory tool."""
@@ -152,7 +150,6 @@ class TestListDirectory:
         args = {"path": "/my/path"}
         validateArguments(args)
         assert args.get("path") == "/my/path"
-
 
 class TestListDirectoryEdgeCases:
     """Test edge cases for list_directory."""

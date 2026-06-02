@@ -588,12 +588,12 @@ class TestUpdateStatsFromUsage:
         mock_stats = Mock()
         client = StreamingClient(stats=mock_stats)
 
-        # Create a mock usage object with attributes
-        mock_usage = Mock()
-        mock_usage.prompt_tokens = 100
-        mock_usage.completion_tokens = 50
+        # Create a usage object with attributes (use SimpleNamespace to avoid
+        # Mock auto-creating prompt_tokens_details which breaks getattr defaults)
+        from types import SimpleNamespace
+        usage = SimpleNamespace(prompt_tokens=100, completion_tokens=50)
 
-        client._update_stats_from_usage(mock_usage)
+        client._update_stats_from_usage(usage)
 
         mock_stats.add_prompt_tokens.assert_called_once_with(100)
         mock_stats.add_completion_tokens.assert_called_once_with(50)

@@ -6,10 +6,8 @@ import pytest
 from unittest.mock import Mock, MagicMock
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.stream_processor import StreamProcessor
-
 
 class TestStreamProcessor:
     """Test StreamProcessor class."""
@@ -419,7 +417,6 @@ class TestStreamProcessor:
         assert result["should_continue"] == True
         assert result["reasoning_content"] == "Reasoning..."
         assert result["full_response"] == "Content..."
-
 
 class TestAccumulateToolCall:
     """Test accumulate_tool_call method."""

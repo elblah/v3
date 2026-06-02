@@ -6,7 +6,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.file_utils import (
     get_current_dir,
@@ -23,7 +22,6 @@ from aicoder.utils.file_utils import (
     _read_files
 )
 
-
 class TestGetCurrentDir:
     """Test get_current_dir function."""
 
@@ -32,7 +30,6 @@ class TestGetCurrentDir:
         result = get_current_dir()
         assert result == _current_dir
         assert result == os.getcwd()
-
 
 class TestGetRelativePath:
     """Test get_relative_path function."""
@@ -65,7 +62,6 @@ class TestGetRelativePath:
         """Test handles relative paths."""
         result = get_relative_path("./test.txt")
         assert "test.txt" in result
-
 
 class TestCheckSandbox:
     """Test check_sandbox function."""
@@ -112,7 +108,6 @@ class TestCheckSandbox:
             result = check_sandbox(None)
         assert result is True
 
-
 class TestFileExists:
     """Test file_exists function."""
 
@@ -130,7 +125,6 @@ class TestFileExists:
     def test_returns_false_for_nonexistent(self):
         """Test returns False for nonexistent file."""
         assert file_exists("/nonexistent/path.txt") is False
-
 
 class TestReadFile:
     """Test read_file function."""
@@ -177,7 +171,6 @@ class TestReadFile:
         finally:
             os.unlink(path)
 
-
 class TestReadFileWithSandbox:
     """Test read_file_with_sandbox function."""
 
@@ -200,7 +193,6 @@ class TestReadFileWithSandbox:
             with pytest.raises(Exception) as exc_info:
                 read_file_with_sandbox("/tmp/test.txt")
         assert "outside current directory" in str(exc_info.value)
-
 
 class TestWriteFile:
     """Test write_file function."""
@@ -244,7 +236,6 @@ class TestWriteFile:
             with open(path, 'r', encoding='utf-8') as f:
                 assert f.read() == "你好世界"
 
-
 class TestWriteFileWithSandbox:
     """Test write_file_with_sandbox function."""
 
@@ -265,7 +256,6 @@ class TestWriteFileWithSandbox:
             with pytest.raises(Exception) as exc_info:
                 write_file_with_sandbox("/tmp/test.txt", "content")
         assert "outside current directory" in str(exc_info.value)
-
 
 class TestListDirectory:
     """Test list_directory function."""
@@ -323,7 +313,6 @@ class TestListDirectory:
                 result = list_directory(tmpdir)
 
             assert result == []
-
 
 class TestGetReadFiles:
     """Test get_read_files function."""

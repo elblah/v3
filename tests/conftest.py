@@ -2,7 +2,12 @@
 Global test fixtures for all tests
 """
 
+import os
 import pytest
+
+# Disable performance plugins that monkey-patch stdlib (urllib->httpx, json->orjson)
+# These interfere with tests that depend on stdlib behavior
+os.environ["PERF_DISABLE"] = "1"
 
 from aicoder.core.token_estimator import clear_cache, _message_cache, _tools_tokens
 

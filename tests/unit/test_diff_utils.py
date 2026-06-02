@@ -5,14 +5,12 @@ import tempfile
 import pytest
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.diff_utils import (
     colorize_diff,
     generate_unified_diff,
     generate_unified_diff_with_status,
 )
-
 
 class TestColorizeDiff:
     """Test colorize_diff function."""
@@ -75,7 +73,6 @@ class TestColorizeDiff:
         assert "Deleted line" in result
         assert "Context line" in result
 
-
 class TestGenerateUnifiedDiff:
     """Test generate_unified_diff function."""
 
@@ -115,7 +112,6 @@ class TestGenerateUnifiedDiff:
         finally:
             os.unlink(path1)
             os.unlink(path2)
-
 
 class TestGenerateUnifiedDiffWithStatus:
     """Test generate_unified_diff_with_status function."""

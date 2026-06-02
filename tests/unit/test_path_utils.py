@@ -4,14 +4,11 @@ import pytest
 from unittest.mock import patch, MagicMock
 import sys
 
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
-
 from aicoder.utils.path_utils import (
     is_safe_path,
     validate_path,
     validate_tool_path
 )
-
 
 class TestIsSafePath:
     """Test is_safe_path function."""
@@ -42,7 +39,6 @@ class TestIsSafePath:
     def test_empty_path(self):
         """Test handles empty path."""
         assert is_safe_path("") is True
-
 
 class TestValidatePath:
     """Test validate_path function."""
@@ -86,7 +82,6 @@ class TestValidatePath:
             result = validate_path("")
 
         assert result is True
-
 
 class TestValidateToolPath:
     """Test validate_tool_path function."""
