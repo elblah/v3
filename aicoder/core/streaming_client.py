@@ -660,7 +660,9 @@ class StreamingClient:
                 return False
 
     def _update_stats_from_usage(self, usage: Dict[str, Any]) -> None:
-        """Update stats from usage -"""
+        """Update stats from usage.
+        OpenAI: prompt_tokens = total (includes cached), cached_tokens = cache hit
+        """
         if self.stats and usage:
             # Handle both dict and object types
             if isinstance(usage, dict):
@@ -678,7 +680,7 @@ class StreamingClient:
                             or getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
                 cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or getattr(usage, "prompt_cache_miss_tokens", 0) or 0
 
-            # Compute cache miss if not provided (prompt - cached = non-cached portion)
+            # OpenAI: prompt_tokens includes cached, compute cache miss if not provided
             if cache_read > 0 and cache_creation == 0:
                 cache_creation = max(0, prompt_tokens - cache_read)
 
