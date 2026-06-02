@@ -672,6 +672,8 @@ class StreamingClient:
                             or usage.get("cache_read_input_tokens")
                             or usage.get("prompt_cache_hit_tokens") or 0)
                 cache_creation = usage.get("cache_creation_input_tokens") or usage.get("prompt_cache_miss_tokens") or 0
+                cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
+                       or usage.get("cost") or 0)
             else:
                 prompt_tokens = getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0
                 completion_tokens = getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
@@ -679,6 +681,7 @@ class StreamingClient:
                             or getattr(usage, "cache_read_input_tokens", 0)
                             or getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
                 cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or getattr(usage, "prompt_cache_miss_tokens", 0) or 0
+                cost = 0
 
             # OpenAI: prompt_tokens includes cached, compute cache miss if not provided
             if cache_read > 0 and cache_creation == 0:
@@ -688,6 +691,7 @@ class StreamingClient:
             self.stats.add_completion_tokens(completion_tokens)
             self.stats.add_cache_read_tokens(cache_read)
             self.stats.add_cache_creation_tokens(cache_creation)
+            self.stats.add_cost(cost)
 
     # Methods for colorization (from original Python version)
     def process_with_colorization(self, content: str) -> str:
@@ -702,6 +706,9 @@ class StreamingClient:
         """Create ApiUsage object from dict data"""
         if not usage_data:
             return None
+        # Cost: prefer upstream_inference_cost, fall back to cost field
+        cost = (usage_data.get("cost_details", {}).get("upstream_inference_cost")
+               or usage_data.get("cost") or 0)
         return {
             "prompt_tokens": usage_data.get("prompt_tokens") or usage_data.get("input_tokens") or 0,
             "completion_tokens": usage_data.get("completion_tokens") or usage_data.get("output_tokens") or 0,
@@ -710,6 +717,7 @@ class StreamingClient:
                          or usage_data.get("cache_read_input_tokens")
                          or usage_data.get("prompt_cache_hit_tokens") or 0),
             "cache_creation": usage_data.get("cache_creation_input_tokens") or usage_data.get("prompt_cache_miss_tokens") or 0,
+            "cost": cost,
         }
     def update_token_stats(self, usage: Dict[str, Any]) -> None:
         """Update token statistics"""
@@ -724,6 +732,8 @@ class StreamingClient:
             cache_creation = (usage.get("cache_creation")
                             or usage.get("cache_creation_input_tokens")
                             or usage.get("prompt_cache_miss_tokens") or 0)
+            cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
+                   or usage.get("cost") or 0)
 
             # Compute cache miss if not provided (prompt - cached = non-cached portion)
             if cache_read > 0 and cache_creation == 0:
@@ -733,3 +743,4 @@ class StreamingClient:
             self.stats.add_completion_tokens(completion_tokens)
             self.stats.add_cache_read_tokens(cache_read)
             self.stats.add_cache_creation_tokens(cache_creation)
+            self.stats.add_cost(cost)

@@ -168,17 +168,22 @@ def get_time_range(period: str) -> tuple[datetime, datetime]:
 def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
     """Parse a stats.log file, return entries within time range."""
     entries = []
-    # New format (8 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss
-    # Old format (6 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
+    # New format (9 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss|cost
+    # Old format (8 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss
+    # Older format (6 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
     for line in filepath.read_text().splitlines():
         if not line:
             continue
-        pipe_count = line.count("|")
-        if pipe_count == 7:
-            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = line.split("|")
-        elif pipe_count == 5:
-            ts, url, model, p_tok, c_tok, elapsed = line.split("|")
+        parts = line.split("|")
+        if len(parts) == 9:
+            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create, cost = parts
+        elif len(parts) == 8:
+            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = parts
+            cost = 0.0
+        elif len(parts) == 6:
+            ts, url, model, p_tok, c_tok, elapsed = parts
             cache_read = cache_create = 0
+            cost = 0.0
         else:
             continue
         try:
@@ -190,6 +195,7 @@ def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
                 "url": url, "model": model,
                 "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
                 "cache_read": int(cache_read), "cache_create": int(cache_create),
+                "cost": float(cost),
             })
         except ValueError:
             continue
@@ -207,20 +213,30 @@ def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | 
     for line in filepath.read_text().splitlines():
         if not line:
             continue
-        pipe_count = line.count("|")
-        if pipe_count == 8:
+        parts = line.split("|")
+        parts_count = len(parts)
+        if parts_count == 10:
+            # new with cost: project|timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss|cost
+            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create, cost = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8], parts[9]
+        elif parts_count == 9:
             # new: project|timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss
-            parts = line.split("|")
             ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8]
-        elif pipe_count == 6:
+            cost = 0.0
+        elif parts_count == 7:
             # old migrated: project|timestamp|url|model|prompt|completion|elapsed
-            parts = line.split("|")
             ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
             cache_read = cache_create = 0
-        elif pipe_count == 5:
-            # legacy: timestamp|url|model|prompt|completion|elapsed
-            ts, url, model, p_tok, c_tok, elapsed = line.split("|")
+            cost = 0.0
+        elif parts_count == 6:
+            # legacy: project|timestamp|url|model|prompt|completion|elapsed
+            ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
             cache_read = cache_create = 0
+            cost = 0.0
+        elif parts_count == 5:
+            # legacy: timestamp|url|model|prompt|completion|elapsed
+            ts, url, model, p_tok, c_tok, elapsed = parts
+            cache_read = cache_create = 0
+            cost = 0.0
         else:
             continue
         try:
@@ -232,6 +248,7 @@ def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | 
                 "url": url, "model": model,
                 "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
                 "cache_read": int(cache_read), "cache_create": int(cache_create),
+                "cost": float(cost),
             })
         except ValueError:
             continue
@@ -316,18 +333,21 @@ def main():
             sys.exit(0)
 
     # Aggregate: url -> model -> stats
-    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0}))
+    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0, "cost": 0.0}))
     for e in entries:
+        if e["model"] == "test-model":
+            continue
         agg[e["url"]][e["model"]]["n"] += 1
         agg[e["url"]][e["model"]]["p"] += e["prompt"]
         agg[e["url"]][e["model"]]["c"] += e["completion"]
         agg[e["url"]][e["model"]]["t"] += e["elapsed"]
         agg[e["url"]][e["model"]]["cr"] += e.get("cache_read", 0)
         agg[e["url"]][e["model"]]["cc"] += e.get("cache_create", 0)
+        agg[e["url"]][e["model"]]["cost"] += e.get("cost", 0.0)
 
     # Report
     print(f"\n=== AI Usage Report ({label}) ===\n")
-    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0}
+    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0, "cost": 0.0}
 
     for url in sorted(agg):
         print(url)
@@ -342,6 +362,8 @@ def main():
             print(f"        Output Tokens:  {d['c']:,}")
             print(f"        Cache Hit:      {d['cr']:,}")
             print(f"        Cache Miss:     {d['cc']:,}")
+            if d["cost"] > 0:
+                print(f"        Cost:           ${d['cost']:.6f}")
             print(f"        Avg Req Time:   {avg:.2f}s")
             print(f"        Output tok/s:   {tps:.1f}\n")
             total["n"] += d["n"]
@@ -350,6 +372,7 @@ def main():
             total["t"] += d["t"]
             total["cr"] += d["cr"]
             total["cc"] += d["cc"]
+            total["cost"] += d["cost"]
 
     print("-" * 50)
     print("TOTAL SUMMARY")
@@ -361,7 +384,11 @@ def main():
     print(f"    Total Time:          {total['t']:.2f}s")
     print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s")
     total_toks = total["c"]  # output tokens only
-    print(f"    Total Output tok/s:  {total_toks / total['t']:.1f}\n")
+    print(f"    Total Output tok/s:  {total_toks / total['t']:.1f}")
+    if total["cost"] > 0:
+        print(f"    Total Cost:          ${total['cost']:.6f}\n")
+    else:
+        print()
 
 
 if __name__ == "__main__":

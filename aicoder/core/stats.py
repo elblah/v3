@@ -30,6 +30,8 @@ class Stats:
         self.last_completion_tokens = 0
         self.last_cache_read_tokens = 0
         self.last_cache_creation_tokens = 0
+        self.last_cost = 0.0
+        self.cost = 0.0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
@@ -104,6 +106,11 @@ class Stats:
         self.cache_creation_tokens += tokens
         self.last_cache_creation_tokens = tokens
 
+    def add_cost(self, cost: float) -> None:
+        """Add cost to accumulated total"""
+        self.cost += cost
+        self.last_cost = cost
+
     def set_current_prompt_size(self, size: int, estimated: bool = False) -> None:
         """
         Set current prompt size
@@ -156,12 +163,16 @@ class Stats:
         LogUtils.print(f"  Completion Tokens: {self.completion_tokens:,}")
         LogUtils.print(f"  Cache Hit: {self.cache_read_tokens:,}")
         LogUtils.print(f"  Cache Miss: {self.cache_creation_tokens:,}")
+        if self.cost > 0:
+            LogUtils.print(f"  Cost: ${self.cost:.6f}")
 
         LogUtils.print("--- Last Request ---")
         LogUtils.print(f"  Last Prompt: {self.last_prompt_tokens:,}")
         LogUtils.print(f"  Last Completion: {self.last_completion_tokens:,}")
         LogUtils.print(f"  Last Cache Hit: {self.last_cache_read_tokens:,}")
         LogUtils.print(f"  Last Cache Miss: {self.last_cache_creation_tokens:,}")
+        if self.last_cost > 0:
+            LogUtils.print(f"  Last Cost: ${self.last_cost:.6f}")
 
         if self.current_prompt_size > 0:
             estimated = " (estimated)" if self.current_prompt_size_estimated else ""
@@ -186,6 +197,8 @@ class Stats:
         self.completion_tokens = 0
         self.cache_read_tokens = 0
         self.cache_creation_tokens = 0
+        self.cost = 0.0
+        self.last_cost = 0.0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
