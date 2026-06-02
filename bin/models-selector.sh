@@ -19,11 +19,15 @@ if [[ "$@" =~ --list ]]; then
     if [ -z "$MODEL" ]; then
         exit 1
     fi
-    IFS=";" read -r API_MODEL CONTEXT_SIZE PROVIDER API_BASE_URL API_KEY _ <<< "$MODEL"
-    echo "API_MODEL=$API_MODEL" > $AICODER_MODEL_CURRENT_FILE
-    echo "CONTEXT_SIZE=$CONTEXT_SIZE" >> $AICODER_MODEL_CURRENT_FILE
-    echo "API_BASE_URL=$API_BASE_URL" >> $AICODER_MODEL_CURRENT_FILE
-    echo "API_KEY=$API_KEY" >> $AICODER_MODEL_CURRENT_FILE
+    IFS=";" read -r API_MODEL CONTEXT_SIZE PROVIDER API_BASE_URL API_KEY API_PROVIDER _ <<< "$MODEL"
+    printf '%s\n' \
+        "API_MODEL=$API_MODEL" \
+        "CONTEXT_SIZE=$CONTEXT_SIZE" \
+        "API_BASE_URL=$API_BASE_URL" \
+        "API_KEY=$API_KEY" \
+        "API_PROVIDER=$API_PROVIDER" \
+        > "$AICODER_MODEL_CURRENT_FILE"
+    sleep 1
 fi
 
 tmux display-popup -E "$SCRIPT_FILE --list"
