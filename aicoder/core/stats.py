@@ -154,14 +154,14 @@ class Stats:
         LogUtils.print("--- Session ---")
         LogUtils.print(f"  Prompt Tokens: {self.prompt_tokens:,}")
         LogUtils.print(f"  Completion Tokens: {self.completion_tokens:,}")
-        LogUtils.print(f"  Cache Read: {self.cache_read_tokens:,}")
-        LogUtils.print(f"  Cache Write: {self.cache_creation_tokens:,}")
+        LogUtils.print(f"  Cache Hit: {self.cache_read_tokens:,}")
+        LogUtils.print(f"  Cache Miss: {self.cache_creation_tokens:,}")
 
         LogUtils.print("--- Last Request ---")
         LogUtils.print(f"  Last Prompt: {self.last_prompt_tokens:,}")
         LogUtils.print(f"  Last Completion: {self.last_completion_tokens:,}")
-        LogUtils.print(f"  Last Cache Read: {self.last_cache_read_tokens:,}")
-        LogUtils.print(f"  Last Cache Write: {self.last_cache_creation_tokens:,}")
+        LogUtils.print(f"  Last Cache Hit: {self.last_cache_read_tokens:,}")
+        LogUtils.print(f"  Last Cache Miss: {self.last_cache_creation_tokens:,}")
 
         if self.current_prompt_size > 0:
             estimated = " (estimated)" if self.current_prompt_size_estimated else ""

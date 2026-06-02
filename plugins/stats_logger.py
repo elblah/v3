@@ -5,7 +5,7 @@ Logs each AI API request to:
 - .aicoder/stats.log (local, per-project)
 - $TMP/stats_logger.fifo (optional, for central aggregation)
 
-Format: <project_path>|<timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>|<cache_read>|<cache_creation>
+Format: <timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>|<cache_hit>|<cache_miss>
 """
 
 import os
@@ -105,7 +105,7 @@ def create_plugin(ctx):
         # Format timestamp (UTC) - naive for consistency
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
 
-        # Format log line: timestamp|url|model|prompt|completion|elapsed|cache_read|cache_creation
+        # Format log line: timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss
         log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}|{cache_read}|{cache_creation}\n"
 
         # Ensure .aicoder dir exists
