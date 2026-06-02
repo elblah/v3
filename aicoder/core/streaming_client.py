@@ -265,6 +265,9 @@ class StreamingClient:
             "stream": stream,
         }
 
+        if stream:
+            data["stream_options"] = {"include_usage": True}
+
         self._add_optional_parameters(data)
 
         # Add tool definitions only if send_tools is True
@@ -675,6 +678,10 @@ class StreamingClient:
                             or getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
                 cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or getattr(usage, "prompt_cache_miss_tokens", 0) or 0
 
+            # Compute cache miss if not provided (prompt - cached = non-cached portion)
+            if cache_read > 0 and cache_creation == 0:
+                cache_creation = max(0, prompt_tokens - cache_read)
+
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)
             self.stats.add_cache_read_tokens(cache_read)
@@ -708,13 +715,18 @@ class StreamingClient:
             prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
             completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
             # Handle both raw API response fields and pre-processed _create_usage fields
-            cache_read = (usage.get("cache_read") 
+            cache_read = (usage.get("cache_read")
                         or usage.get("prompt_tokens_details", {}).get("cached_tokens")
-                        or usage.get("cache_read_input_tokens") 
+                        or usage.get("cache_read_input_tokens")
                         or usage.get("prompt_cache_hit_tokens") or 0)
-            cache_creation = (usage.get("cache_creation") 
-                            or usage.get("cache_creation_input_tokens") 
+            cache_creation = (usage.get("cache_creation")
+                            or usage.get("cache_creation_input_tokens")
                             or usage.get("prompt_cache_miss_tokens") or 0)
+
+            # Compute cache miss if not provided (prompt - cached = non-cached portion)
+            if cache_read > 0 and cache_creation == 0:
+                cache_creation = max(0, prompt_tokens - cache_read)
+
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)
             self.stats.add_cache_read_tokens(cache_read)
