@@ -5,10 +5,7 @@ from unittest.mock import patch, MagicMock
 import sys
 from io import StringIO
 
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
-
 from aicoder.utils.stream_utils import read_stdin_as_string
-
 
 class TestReadStdinAsString:
     """Test read_stdin_as_string function."""

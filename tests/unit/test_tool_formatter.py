@@ -5,10 +5,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.tool_formatter import ToolFormatter
-
 
 class TestFormatForAi:
     """Test format_for_ai function."""
@@ -28,7 +26,6 @@ class TestFormatForAi:
         with pytest.raises(KeyError):
             ToolFormatter.format_for_ai(result)
 
-
 class TestFormatForDisplay:
     """Test format_for_display function."""
 
@@ -46,7 +43,6 @@ class TestFormatForDisplay:
         result = {"tool": "test", "detailed": "info"}
         with pytest.raises(KeyError):
             ToolFormatter.format_for_display(result)
-
 
 class TestFormatPreview:
     """Test format_preview function."""
@@ -72,7 +68,6 @@ class TestFormatPreview:
         result = ToolFormatter.format_preview({})
         assert "content" in result.lower() or result.count("\n") >= 0
 
-
 class TestFormatLabel:
     """Test _format_label function."""
 
@@ -91,7 +86,6 @@ class TestFormatLabel:
         """Test adds colon at end."""
         result = ToolFormatter._format_label("key")
         assert result.endswith(":")
-
 
 class TestFormatValueForAi:
     """Test _format_value_for_ai function."""
@@ -133,7 +127,6 @@ class TestFormatValueForAi:
         result = ToolFormatter._format_value_for_ai({"key": "value"})
         assert "key" in result
         assert "value" in result
-
 
 class TestFormatValue:
     """Test _format_value function."""

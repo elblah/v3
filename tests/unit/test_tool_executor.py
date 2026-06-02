@@ -3,10 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.tool_executor import ToolExecutor
-
 
 class TestToolExecutorBasics:
     """Test ToolExecutor basic initialization."""
@@ -32,7 +30,6 @@ class TestToolExecutorBasics:
         executor = ToolExecutor(mock_tool_manager, mock_message_history, mock_plugin_system)
 
         assert executor.plugin_system == mock_plugin_system
-
 
 class TestToolExecutorGuidanceMode:
     """Test ToolExecutor guidance mode functionality."""
@@ -63,7 +60,6 @@ class TestToolExecutorGuidanceMode:
         executor._guidance_mode = True
         executor.clear_guidance_mode()
         assert executor.is_guidance_mode() is False
-
 
 class TestToolExecutorParseArguments:
     """Test ToolExecutor argument parsing."""
@@ -119,7 +115,6 @@ class TestToolExecutorParseArguments:
         result = executor._parse_tool_arguments(None)
         assert result == {}
 
-
 class TestToolExecutorHandleToolNotFound:
     """Test ToolExecutor tool not found handling."""
 
@@ -136,7 +131,6 @@ class TestToolExecutorHandleToolNotFound:
         assert "unknown_tool" in result["content"]
         # Adds user message (not system message) for tool not found error
         mock_message_history.add_user_message.assert_called_once()
-
 
 class TestToolExecutorShouldShowPreview:
     """Test ToolExecutor preview display logic."""
@@ -174,7 +168,6 @@ class TestToolExecutorShouldShowPreview:
         # Method returns None/falsy when no generatePreview key
         result = executor._should_show_preview(tool_def, {})
         assert not result
-
 
 class TestToolExecutorPreviewDisplay:
     """Test ToolExecutor preview display handling."""
@@ -222,7 +215,6 @@ class TestToolExecutorPreviewDisplay:
             assert isinstance(result, dict)
             assert result["tool_call_id"] == "call_123"
             assert result["content"] == "Sensitive content"
-
 
 class TestToolExecutorApproval:
     """Test ToolExecutor approval logic."""
@@ -300,7 +292,6 @@ class TestToolExecutorApproval:
                         mock_set.assert_called_once_with(True)
                         assert result is True
 
-
 class TestToolExecutorExecuteToolCalls:
     """Test ToolExecutor execute_tool_calls."""
 
@@ -351,7 +342,6 @@ class TestToolExecutorExecuteToolCalls:
         # Only first tool should execute
         assert mock_exec.call_count == 1
 
-
 class TestToolExecutorExecuteTool:
     """Test ToolExecutor _execute_tool method."""
 
@@ -387,7 +377,6 @@ class TestToolExecutorExecuteTool:
 
         assert result["tool_call_id"] == "call_123"
         assert "Tool failed" in result["content"]
-
 
 class TestToolExecutorDisplayResult:
     """Test ToolExecutor display_tool_result."""
@@ -440,7 +429,6 @@ class TestToolExecutorDisplayResult:
                 # Should print only friendly
                 mock_log.print.assert_called_once()
 
-
 class TestToolExecutorPluginHooks:
     """Test ToolExecutor plugin hook integration."""
 
@@ -458,7 +446,6 @@ class TestToolExecutorPluginHooks:
             executor.execute_tool_calls([{"id": "1", "function": {"name": "read_file"}}])
 
         mock_plugin_system.call_hooks.assert_called_once_with("after_tool_results", tool_results)
-
 
 class TestToolExecutorSingleToolCall:
     """Test ToolExecutor _execute_single_tool_call."""

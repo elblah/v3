@@ -8,10 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
-
 from aicoder.core.plugin_system import PluginContext, PluginSystem
-
 
 class TestPluginContext:
     """Test PluginContext class"""
@@ -167,7 +164,6 @@ class TestPluginContext:
 
         # Should not raise
         ctx.register_completer(dummy_completer)
-
 
 class TestPluginSystem:
     """Test PluginSystem class"""
@@ -336,7 +332,6 @@ class TestPluginSystem:
         # Should not raise
         ps._register_completer(dummy_completer)
 
-
 class TestLoadPlugins:
     """Test plugin loading functionality"""
 
@@ -423,7 +418,6 @@ sys.path.insert(0, '{tmpdir}')
             # Should not raise - errors are caught internally
             ps.load_plugins()
 
-
 class TestGetPluginTools:
     """Test get_plugin_tools method"""
 
@@ -453,7 +447,6 @@ class TestGetPluginTools:
         tools = ps.get_plugin_tools()
         assert tools == {}
 
-
 class TestGetPluginCommands:
     """Test get_plugin_commands method"""
 
@@ -481,7 +474,6 @@ class TestGetPluginCommands:
         ps = PluginSystem()
         cmds = ps.get_plugin_commands()
         assert cmds == {}
-
 
 class TestCallHooks:
     """Test hook calling functionality"""
@@ -544,7 +536,6 @@ class TestCallHooks:
         result = ps.call_hooks("test_event")
 
         assert "success" in result or result is not None
-
 
 class TestCallHooksWithReturn:
     """Test call_hooks_with_return method"""
@@ -620,7 +611,6 @@ class TestCallHooksWithReturn:
 
         assert result == "start_success"
 
-
 class TestCleanup:
     """Test plugin cleanup functionality"""
 
@@ -661,7 +651,6 @@ class TestCleanup:
         ps.cleanup()
 
         handler.assert_called_once()
-
 
 class TestPluginLoadingWithCreatePlugin:
     """Test plugin loading with create_plugin function"""
@@ -730,7 +719,6 @@ def create_plugin(ctx):
 
             # Should not crash
             assert len(ps.cleanup_handlers) == 0
-
 
 class TestPluginsAllowFiltering:
     """Test PLUGINS_ALLOW filtering for plugin loading"""

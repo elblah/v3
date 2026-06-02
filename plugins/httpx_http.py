@@ -153,6 +153,10 @@ def create_plugin(ctx):
     """Install httpx fetch as replacement - deferred until first HTTP call"""
     global _httpx_installed
     
+    # Don't patch during tests
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    
     # Check if disabled via env var
     if os.environ.get("PERF_DISABLE", "0") == "1":
         return

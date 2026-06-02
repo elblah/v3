@@ -3,10 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.session_manager import SessionManager
-
 
 class TestSessionManagerBasics:
     """Test SessionManager basic initialization."""
@@ -41,7 +39,6 @@ class TestSessionManagerBasics:
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
         assert manager.is_processing is False
-
 
 class TestSessionManagerValidateToolCalls:
     """Test SessionManager tool call validation."""
@@ -250,7 +247,6 @@ class TestSessionManagerValidateToolCalls:
         assert len(result) == 1
         assert result[0]["id"] == "1"
 
-
 class TestSessionManagerHandleEmptyResponse:
     """Test SessionManager empty response handling."""
 
@@ -309,7 +305,6 @@ class TestSessionManagerHandleEmptyResponse:
         assert call_args["content"] == "Hello!"
         assert call_args.get("reasoning_content") == "Let me think..."
 
-
 class TestSessionManagerForceCompaction:
     """Test SessionManager force compaction."""
 
@@ -333,7 +328,6 @@ class TestSessionManagerForceCompaction:
 
         # Should not raise exception
         manager._force_compaction()
-
 
 class TestSessionManagerPerformAutoCompaction:
     """Test SessionManager auto compaction."""
@@ -375,7 +369,6 @@ class TestSessionManagerPerformAutoCompaction:
         mock_app.message_history.compact_memory.assert_not_called()
         # Hook should be called
         mock_app.plugin_system.call_hooks.assert_called_once_with("before_auto_compaction")
-
 
 class TestSessionManagerEnsureToolCallsHaveResponses:
     """Test SessionManager ensure tool calls have responses."""
@@ -464,7 +457,6 @@ class TestSessionManagerEnsureToolCallsHaveResponses:
         # Should insert missing response for tool 2
         assert len(mock_app.message_history.messages) == 5
 
-
 class TestSessionManagerHandleProcessingError:
     """Test SessionManager error handling."""
 
@@ -476,7 +468,6 @@ class TestSessionManagerHandleProcessingError:
         with patch('aicoder.core.session_manager.LogUtils') as mock_log:
             manager._handle_processing_error(Exception("Test error"))
             mock_log.error.assert_called_once()
-
 
 class TestSessionManagerProcessWithAi:
     """Test SessionManager main processing workflow."""

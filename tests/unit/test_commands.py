@@ -7,7 +7,6 @@ import tempfile
 import json
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.commands.base import CommandContext, CommandResult
 from aicoder.core.commands.debug import DebugCommand
@@ -21,7 +20,6 @@ from aicoder.core.commands.save import SaveCommand
 from aicoder.core.commands.load import LoadCommand
 from aicoder.core.commands.stats import StatsCommand
 
-
 class MockMessageHistory:
     """Mock MessageHistory for testing."""
     def __init__(self):
@@ -33,11 +31,9 @@ class MockMessageHistory:
     def set_messages(self, messages):
         self._messages = messages
 
-
 class MockInputHandler:
     """Mock InputHandler for testing."""
     pass
-
 
 class MockStats:
     """Mock Stats for testing."""
@@ -46,7 +42,6 @@ class MockStats:
 
     def print_stats(self):
         pass
-
 
 @pytest.fixture
 def mock_context():
@@ -61,7 +56,6 @@ def mock_context():
         stats=MockStats(),
         command_handler=mock_command_handler
     )
-
 
 class TestDebugCommand:
     """Test DebugCommand."""
@@ -132,7 +126,6 @@ class TestDebugCommand:
             assert result.should_quit is False
             mock_config.set_debug.assert_called_with(False)
 
-
 class TestDetailCommand:
     """Test DetailCommand."""
 
@@ -183,7 +176,6 @@ class TestDetailCommand:
             result = cmd.execute(["on"])
             assert result.should_quit is False
             mock_config.set_detail_mode.assert_called_with(True)
-
 
 class TestYoloCommand:
     """Test YoloCommand."""
@@ -239,7 +231,6 @@ class TestYoloCommand:
             cmd = YoloCommand(mock_context)
             result = cmd.execute([])
             assert result.should_quit is False
-
 
 class TestSandboxCommand:
     """Test SandboxCommand."""
@@ -297,7 +288,6 @@ class TestSandboxCommand:
             assert result.should_quit is False
             mock_config.set_sandbox_disabled.assert_called_with(True)
 
-
 class TestStatsCommand:
     """Test StatsCommand."""
 
@@ -327,7 +317,6 @@ class TestStatsCommand:
             result = cmd.execute([])
             assert result.should_quit is False
             mock_context.stats.print_stats.assert_called_once()
-
 
 class TestHelpCommand:
     """Test HelpCommand."""
@@ -380,7 +369,6 @@ class TestHelpCommand:
             result = cmd.execute([])
             assert result.should_quit is False
             assert result.run_api_call is False
-
 
 class TestMemoryCommand:
     """Test MemoryCommand."""
@@ -437,7 +425,6 @@ class TestMemoryCommand:
                                 assert result.should_quit is False
                                 assert result.run_api_call is False
 
-
 class TestEditCommand:
     """Test EditCommand - extended tests."""
 
@@ -482,7 +469,6 @@ class TestEditCommand:
                             result = cmd.execute([])
                             assert result.should_quit is False
                             assert result.run_api_call is False
-
 
 class TestSaveCommand:
     """Test SaveCommand."""
@@ -546,7 +532,6 @@ class TestSaveCommand:
                     assert result.should_quit is False
                     assert result.run_api_call is False
                     mock_write.assert_called_once()
-
 
 class TestLoadCommand:
     """Test LoadCommand."""

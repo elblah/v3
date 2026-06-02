@@ -4,11 +4,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 import sys
 
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
-
 from aicoder.core.commands.quit import QuitCommand
 from aicoder.core.commands.base import CommandResult
-
 
 class TestQuitCommand:
     """Test QuitCommand class."""

@@ -7,8 +7,6 @@ import tempfile
 from unittest.mock import patch, MagicMock
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
-
 
 class TestSavePrompt:
     """Test save_prompt function."""
@@ -128,7 +126,6 @@ class TestSavePrompt:
             # Should not raise
             save_prompt("Test prompt")
 
-
 class TestReadHistory:
     """Test read_history function."""
 
@@ -223,7 +220,6 @@ class TestReadHistory:
         with patch('aicoder.core.prompt_history._HISTORY_PATH', "/nonexistent/file"):
             result = read_history()
             assert result == []
-
 
 class TestHistoryPathInitialization:
     """Test history path initialization."""

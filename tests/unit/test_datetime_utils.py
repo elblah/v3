@@ -6,14 +6,11 @@ import sys
 from datetime import datetime
 from unittest.mock import patch
 
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
-
 from aicoder.utils.datetime_utils import (
     create_file_timestamp,
     create_timestamp_filename,
     get_current_iso_datetime
 )
-
 
 class TestCreateFileTimestamp:
     """Test create_file_timestamp function."""
@@ -56,7 +53,6 @@ class TestCreateFileTimestamp:
         time_part = timestamp.split('T')[1]
         # Should match HH-MM-SS format
         assert re.match(r'^\d{2}-\d{2}-\d{2}$', time_part)
-
 
 class TestCreateTimestampFilename:
     """Test create_timestamp_filename function."""
@@ -120,7 +116,6 @@ class TestCreateTimestampFilename:
         filename = create_timestamp_filename("test", "txt")
         filename_timestamp = filename[5:-4]  # Extract timestamp from filename
         assert filename_timestamp == timestamp
-
 
 class TestGetCurrentIsoDatetime:
     """Test get_current_iso_datetime function."""

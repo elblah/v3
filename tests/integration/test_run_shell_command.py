@@ -11,10 +11,8 @@ import time
 import pytest
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.tools.internal.run_shell_command import execute, execute_with_process_group
-
 
 class TestRunShellCommand:
     """Test shell command execution."""
@@ -174,7 +172,6 @@ class TestRunShellCommand:
         result = execute({"command": "echo `date +%Y`"})
         assert result["tool"] == "run_shell_command"
 
-
 class TestProcessGroup:
     """Test process group handling."""
 
@@ -202,7 +199,6 @@ class TestProcessGroup:
         })
         # Should timeout
         assert "timed out" in result["friendly"] or result["returncode"] != 0
-
 
 class TestEdgeCases:
     """Test edge cases."""
@@ -250,11 +246,9 @@ class TestEdgeCases:
         result = execute({"command": "echo $(echo $(echo nested))"})
         assert "nested" in result["detailed"]
 
-
 def echo_check(text):
     """Helper to echo text and return result."""
     return execute({"command": f"echo {text}"})
-
 
 class TestTimeoutEdgeCases:
     """Test timeout edge cases."""
@@ -280,7 +274,6 @@ class TestTimeoutEdgeCases:
         for _ in range(3):
             result = execute({"command": "echo test", "timeout": 5})
             assert result["tool"] == "run_shell_command"
-
 
 class TestConcurrentExecution:
     """Test concurrent command execution."""

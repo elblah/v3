@@ -4,10 +4,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.core.compaction_service import CompactionService, MessageGroup
-
 
 class TestMessageGroup:
     """Test MessageGroup dataclass."""
@@ -22,7 +20,6 @@ class TestMessageGroup:
         assert len(group.messages) == 1
         assert group.is_summary is False
         assert group.is_user_turn is True
-
 
 class TestCompactionServiceUnit:
     """Unit tests for CompactionService core logic."""

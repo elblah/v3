@@ -5,10 +5,8 @@ import tempfile
 import pytest
 
 import sys
-sys.path.insert(0, '/home/blah/storage/ai-worktree-storage/feat_test_coverage__20260117_062928')
 
 from aicoder.utils.jsonl_utils import read_file, write_file
-
 
 class TestJsonlReadFile:
     """Test read_file function."""
@@ -104,7 +102,6 @@ class TestJsonlReadFile:
         result = read_file(temp_path)
         assert result == []
 
-
 class TestJsonlWriteFile:
     """Test write_file function."""
 
@@ -157,7 +154,6 @@ class TestJsonlWriteFile:
             with open(path, "r") as f:
                 content = f.read()
             assert content == ""
-
 
 class TestJsonlRoundTrip:
     """Test round-trip read/write."""
