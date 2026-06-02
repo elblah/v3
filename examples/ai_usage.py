@@ -168,7 +168,7 @@ def get_time_range(period: str) -> tuple[datetime, datetime]:
 def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
     """Parse a stats.log file, return entries within time range."""
     entries = []
-    # New format (8 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_read|cache_creation
+    # New format (8 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss
     # Old format (6 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
     for line in filepath.read_text().splitlines():
         if not line:
@@ -199,7 +199,7 @@ def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
 def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | None):
     """Parse central_stats.log, return entries within time range."""
     entries = []
-    # New format (9 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_read|cache_creation
+    # New format (9 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss
     # Old format (7 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
     # Legacy format (6 fields): timestamp|url|model|prompt|completion|elapsed
     if not filepath.exists():
@@ -209,7 +209,7 @@ def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | 
             continue
         pipe_count = line.count("|")
         if pipe_count == 8:
-            # new: project|timestamp|url|model|prompt|completion|elapsed|cache_read|cache_create
+            # new: project|timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss
             parts = line.split("|")
             ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8]
         elif pipe_count == 6:
@@ -340,8 +340,8 @@ def main():
             print(f"        Requests:       {d['n']:,}")
             print(f"        Input Tokens:   {d['p']:,}")
             print(f"        Output Tokens:  {d['c']:,}")
-            print(f"        Cache Read:     {d['cr']:,}")
-            print(f"        Cache Create:   {d['cc']:,}")
+            print(f"        Cache Hit:      {d['cr']:,}")
+            print(f"        Cache Miss:     {d['cc']:,}")
             print(f"        Avg Req Time:   {avg:.2f}s")
             print(f"        Output tok/s:   {tps:.1f}\n")
             total["n"] += d["n"]
@@ -356,8 +356,8 @@ def main():
     print(f"    Total Requests:      {total['n']:,}")
     print(f"    Total Input Tokens:  {total['p']:,}")
     print(f"    Total Output Tokens: {total['c']:,}")
-    print(f"    Cache Read:          {total['cr']:,}")
-    print(f"    Cache Create:        {total['cc']:,}")
+    print(f"    Cache Hit:           {total['cr']:,}")
+    print(f"    Cache Miss:          {total['cc']:,}")
     print(f"    Total Time:          {total['t']:.2f}s")
     print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s")
     total_toks = total["c"]  # output tokens only
