@@ -5,12 +5,12 @@ Logs each AI API request to:
 - .aicoder/stats.log (local, per-project)
 - $TMP/stats_logger.fifo (optional, for central aggregation)
 
-Format: <timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>|<cache_hit>|<cache_miss>
+Format: <timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>|<cache_hit>|<cache_miss>|<cost>
 """
 
 import os
 import sys
-from datetime import datetime, UTC
+from datetime import datetime
 from aicoder.core.config import Config
 
 _token_estimator = None
@@ -41,11 +41,6 @@ def _write_to_fifo(line):
 def create_plugin(ctx):
     """Plugin entry point"""
 
-    # Track last token counts to calculate deltas
-    last_prompt_tokens = 0
-    last_completion_tokens = 0
-    last_cache_read_tokens = 0
-    last_cache_creation_tokens = 0
     # Store estimated completion tokens from message content
     estimated_completion_tokens = 0
 
@@ -65,30 +60,27 @@ def create_plugin(ctx):
 
     def _log_api_request(has_tool_calls: bool):
         """Log API request to stats.log"""
-        nonlocal last_prompt_tokens, last_completion_tokens, estimated_completion_tokens, last_cache_read_tokens, last_cache_creation_tokens
-
+        nonlocal estimated_completion_tokens
         stats = ctx.app.stats
 
         if not stats:
             return
 
-        # Calculate delta from last request
-        prompt_tokens = stats.prompt_tokens - last_prompt_tokens
-        completion_tokens = stats.completion_tokens - last_completion_tokens
-        cache_read = stats.cache_read_tokens - last_cache_read_tokens
-        cache_creation = stats.cache_creation_tokens - last_cache_creation_tokens
+        # Use per-request values directly from stats (set by update_token_stats from API usage)
+        # When API reports usage: last_* has actual API values
+        # When API doesn't report: last_* are 0, we fall back to estimation
+        prompt_tokens = stats.last_prompt_tokens
+        completion_tokens = stats.last_completion_tokens
+        cache_read = stats.last_cache_read_tokens
+        cache_creation = stats.last_cache_creation_tokens
+        cost = stats.last_cost
 
-        # Update last counts for next request
-        last_prompt_tokens = stats.prompt_tokens
-        last_completion_tokens = stats.completion_tokens
-        last_cache_read_tokens = stats.cache_read_tokens
-        last_cache_creation_tokens = stats.cache_creation_tokens
-
-        # If prompt delta is zero, use current prompt size (already properly estimated)
+        # Fallback: if API didn't report tokens, use estimated prompt size
+        # (only for prompt - completion should stay 0 if unknown)
         if prompt_tokens == 0 and stats.current_prompt_size > 0:
-            prompt_tokens = max(1, stats.current_prompt_size)
+            prompt_tokens = stats.current_prompt_size
 
-        # If completion delta is zero but we have an estimate, use it
+        # If completion is 0 but we have estimated completion tokens stored, use it
         if completion_tokens == 0 and estimated_completion_tokens > 0:
             completion_tokens = estimated_completion_tokens
 
@@ -105,8 +97,8 @@ def create_plugin(ctx):
         # Format timestamp (UTC) - naive for consistency
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
 
-        # Format log line: timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss
-        log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}|{cache_read}|{cache_creation}\n"
+        # Format log line: timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss|cost
+        log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}|{cache_read}|{cache_creation}|{cost}\n"
 
         # Ensure .aicoder dir exists
         aicoder_dir = os.path.join(os.getcwd(), ".aicoder")

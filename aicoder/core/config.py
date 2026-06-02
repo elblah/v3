@@ -825,6 +825,9 @@ class Config:
                 f"  Auto-compaction enabled (context: {Config.context_size()} tokens, triggers at {Config.context_compact_percentage()}%)"
             )
 
+        if not Config.streaming_enabled():
+            LogUtils.success("  Non-streaming mode enabled")
+
     @staticmethod
     def reset() -> None:
         """
