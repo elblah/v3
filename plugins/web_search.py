@@ -75,6 +75,7 @@ def create_plugin(ctx):
     # Generic blocking indicators - provider-agnostic
     BLOCKING_INDICATORS = (
         "error-lite@duckduckgo.com",  # DDG specific error
+        "Too Many Requests",  # Rate limit response
         "Please complete the following challenge",  # CAPTCHA/challenge page
         "verify you are human",
         "Please solve the challenge below to continue",
