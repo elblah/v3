@@ -184,7 +184,7 @@ search (grep), shell command execution, and more via API request."""
 
         # Append additional content from AICODER_SYSTEM_PROMPT_APPEND
         append_content = Config.system_prompt_append()
-        if append_content:
+        if append_content and sys.stdout.isatty():
             LogUtils.info("Appending AICODER_SYSTEM_PROMPT_APPEND to system prompt")
             prompt += "\n\n" + append_content
 
