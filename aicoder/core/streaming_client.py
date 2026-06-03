@@ -668,7 +668,8 @@ class StreamingClient:
             if isinstance(usage, dict):
                 prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
                 completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
-                cache_read = (usage.get("prompt_tokens_details", {}).get("cached_tokens")
+                prompt_details = usage.get("prompt_tokens_details") or {}
+                cache_read = (prompt_details.get("cached_tokens")
                             or usage.get("cache_read_input_tokens")
                             or usage.get("prompt_cache_hit_tokens") or 0)
                 cache_creation = usage.get("cache_creation_input_tokens") or usage.get("prompt_cache_miss_tokens") or 0
@@ -677,7 +678,8 @@ class StreamingClient:
             else:
                 prompt_tokens = getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0
                 completion_tokens = getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
-                cache_read = (getattr(usage, "prompt_tokens_details", {}).get("cached_tokens", 0)
+                prompt_details = getattr(usage, "prompt_tokens_details", None) or {}
+                cache_read = (prompt_details.get("cached_tokens", 0)
                             or getattr(usage, "cache_read_input_tokens", 0)
                             or getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
                 cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or getattr(usage, "prompt_cache_miss_tokens", 0) or 0
@@ -709,11 +711,12 @@ class StreamingClient:
         # Cost: prefer upstream_inference_cost, fall back to cost field
         cost = (usage_data.get("cost_details", {}).get("upstream_inference_cost")
                or usage_data.get("cost") or 0)
+        prompt_details = usage_data.get("prompt_tokens_details") or {}
         return {
             "prompt_tokens": usage_data.get("prompt_tokens") or usage_data.get("input_tokens") or 0,
             "completion_tokens": usage_data.get("completion_tokens") or usage_data.get("output_tokens") or 0,
             "total_tokens": usage_data.get("total_tokens") or 0,
-            "cache_read": (usage_data.get("prompt_tokens_details", {}).get("cached_tokens")
+            "cache_read": (prompt_details.get("cached_tokens")
                          or usage_data.get("cache_read_input_tokens")
                          or usage_data.get("prompt_cache_hit_tokens") or 0),
             "cache_creation": usage_data.get("cache_creation_input_tokens") or usage_data.get("prompt_cache_miss_tokens") or 0,
@@ -725,8 +728,9 @@ class StreamingClient:
             prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
             completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
             # Handle both raw API response fields and pre-processed _create_usage fields
+            prompt_details = usage.get("prompt_tokens_details") or {}
             cache_read = (usage.get("cache_read")
-                        or usage.get("prompt_tokens_details", {}).get("cached_tokens")
+                        or prompt_details.get("cached_tokens")
                         or usage.get("cache_read_input_tokens")
                         or usage.get("prompt_cache_hit_tokens") or 0)
             cache_creation = (usage.get("cache_creation")
