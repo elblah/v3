@@ -9,7 +9,7 @@ Environment Variables:
 - WEB_SEARCH_PROVIDERS: Semicolon-separated list of search providers
   Format: "ProviderName,URL;Provider2Name,URL2;"
   The URL should include the query parameter placeholder, the plugin appends the encoded query
-  Default: DuckDuckGo only
+  Default: None (must be configured)
 """
 
 import os
@@ -41,13 +41,11 @@ def create_plugin(ctx):
 
     # Parse search providers from environment variable
     # Format: "Name1,URL1;Name2,URL2;"
-    DEFAULT_PROVIDER = ("DuckDuckGo", "https://lite.duckduckgo.com/lite/?q=")
-
     def parse_providers() -> list[Tuple[str, str]]:
         """Parse WEB_SEARCH_PROVIDERS env var into list of (name, url) tuples"""
         providers_str = os.environ.get("WEB_SEARCH_PROVIDERS", "").strip()
         if not providers_str:
-            return [DEFAULT_PROVIDER]
+            return None  # Not configured
 
         providers = []
         for part in providers_str.split(";"):
@@ -60,7 +58,7 @@ def create_plugin(ctx):
             if name and url:
                 providers.append((name, url))
 
-        return providers if providers else [DEFAULT_PROVIDER]
+        return providers if providers else None
 
     SEARCH_PROVIDERS = parse_providers()
 
@@ -74,7 +72,7 @@ def create_plugin(ctx):
 
     # Generic blocking indicators - provider-agnostic
     BLOCKING_INDICATORS = (
-        "error-lite@duckduckgo.com",  # DDG specific error
+        "error-lite@",  # DDG specific error
         "Too Many Requests",  # Rate limit response
         "Please complete the following challenge",  # CAPTCHA/challenge page
         "verify you are human",
@@ -167,6 +165,18 @@ def create_plugin(ctx):
                 "tool": "web_search",
                 "friendly": "Error: Query cannot be empty",
                 "detailed": "Query cannot be empty",
+            }
+
+        if SEARCH_PROVIDERS is None:
+            example = "WEB_SEARCH_PROVIDERS=MySearch,https://search.example.com/search?q="
+            return {
+                "tool": "web_search",
+                "friendly": "Web search not configured",
+                "detailed": (
+                    "Plugin not configured. Set the WEB_SEARCH_PROVIDERS environment variable.\n\n"
+                    f"Example format:\n  export {example}\n\n"
+                    "Format: 'Name,URL;Name2,URL2;' - the URL should include a query parameter placeholder"
+                ),
             }
 
         # Check cache first
