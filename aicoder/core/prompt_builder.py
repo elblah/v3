@@ -173,7 +173,7 @@ search (grep), shell command execution, and more via API request."""
         from .config import Config
 
         env_prompt = Config.system_prompt()
-        if env_prompt:
+        if env_prompt and sys.stdout.isatty():
             LogUtils.info("Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
             options.override_prompt = env_prompt
         else:

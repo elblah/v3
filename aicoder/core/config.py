@@ -784,6 +784,9 @@ class Config:
         Print configuration info at startup
 
         """
+        if not sys.stdout.isatty():
+            return
+
         # Original behavior: use green for configuration messages
         LogUtils.success("Configuration:")
 
