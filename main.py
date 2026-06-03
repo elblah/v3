@@ -26,9 +26,9 @@ def main():
     try:
         app.initialize()
         
-        # Calculate and display startup time
+        # Calculate and display startup time (only in TTY)
         start_time_str = os.environ.get("AICODER_START_TIME")
-        if start_time_str:
+        if start_time_str and sys.stdout.isatty():
             try:
                 # Convert EPOCHREALTIME (seconds.microseconds) to float
                 start_time = float(start_time_str)

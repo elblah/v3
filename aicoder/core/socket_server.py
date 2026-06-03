@@ -132,10 +132,11 @@ class SocketServer:
             self.server_thread = threading.Thread(target=self._server_loop, daemon=True)
             self.server_thread.start()
 
-            # Always print socket path (simple log line)
-            LogUtils.print(
-                f"[Socket] {self.socket_path}"
-            )
+            # Print socket path only in TTY
+            if sys.stdout.isatty():
+                LogUtils.print(
+                    f"[Socket] {self.socket_path}"
+                )
 
         except Exception as e:
             # Print socket path on error for troubleshooting

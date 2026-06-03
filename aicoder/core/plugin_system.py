@@ -210,7 +210,7 @@ class PluginSystem:
         if not plugins_dir_to_use:
             return
 
-        if source_name == "global":
+        if source_name == "global" and sys.stdout.isatty():
             LogUtils.print(f"[i] Loading plugins from global directory: {self.global_plugins_dir}")
 
         # Get plugin files sorted numerically then alphabetically
