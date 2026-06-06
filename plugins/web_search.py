@@ -261,13 +261,16 @@ def create_plugin(ctx):
         if not raw and cache_key in _cache:
             content = _cache[cache_key]
             lines = content.split("\n")
+            total = len(lines)
+            max_page = (total + DEFAULT_LINES_PER_PAGE - 1) // DEFAULT_LINES_PER_PAGE
             start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
             end_idx = page * DEFAULT_LINES_PER_PAGE
             paginated = "\n".join(lines[start_idx:end_idx])
+            footer = f"\n[page {page}/{max_page}]" + (f" | more: page={min(page+1, max_page)}" if max_page > 1 else "")
             return {
                 "tool": "get_url_content",
-                "friendly": f"Fetched {url} (page {page}, cached)",
-                "detailed": paginated,
+                "friendly": f"Fetched {url} (page {page}/{max_page}, cached)",
+                "detailed": paginated + footer,
             }
 
         try:
@@ -284,19 +287,24 @@ def create_plugin(ctx):
             if raw:
                 # Paginate by character ranges
                 chars_per_page = DEFAULT_LINES_PER_PAGE * 80  # ~80 chars per line average
+                total = len(content)
+                max_page = (total + chars_per_page - 1) // chars_per_page
                 start_idx = (page - 1) * chars_per_page
                 end_idx = page * chars_per_page
                 paginated = content[start_idx:end_idx]
             else:
                 lines = content.split("\n")
+                total = len(lines)
+                max_page = (total + DEFAULT_LINES_PER_PAGE - 1) // DEFAULT_LINES_PER_PAGE
                 start_idx = (page - 1) * DEFAULT_LINES_PER_PAGE
                 end_idx = page * DEFAULT_LINES_PER_PAGE
                 paginated = "\n".join(lines[start_idx:end_idx])
 
+            footer = f"\n[page {page}/{max_page}]" + (f" | more: page={min(page+1, max_page)}" if max_page > 1 else "")
             return {
                 "tool": "get_url_content",
-                "friendly": f"Fetched {url} (page {page}{', raw HTML' if raw else ''})",
-                "detailed": paginated,
+                "friendly": f"Fetched {url} (page {page}/{max_page}{', raw HTML' if raw else ''})",
+                "detailed": paginated + footer,
             }
         except Exception as e:
             return {
