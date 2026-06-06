@@ -35,7 +35,10 @@ def _write_to_fifo(line):
         os.write(fd, line.encode())
         os.close(fd)
     except Exception as e:
-        print(f"[stats_logger] fifo write failed: {e} | line={line.strip()}", file=sys.stderr)
+        err_msg = f"fifo write failed: {e}"
+        print(f"[stats_logger] {err_msg} | line={line.strip()}", file=sys.stderr)
+        if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
+            os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
 
 
 def create_plugin(ctx):
