@@ -340,6 +340,7 @@ class AnthropicClient:
         
         # Update stats on success
         if self.stats:
+            log_debug(f"*** streaming stats: increment_api_success, add_api_time")
             self.stats.increment_api_success()
             self.stats.add_api_time(time.time() - start_time)
             # Update token stats from accumulated usage
@@ -399,6 +400,7 @@ class AnthropicClient:
 
         # Update stats on success
         if self.stats:
+            log_debug(f"*** non-stream stats block 1: increment_api_success, add_api_time")
             self.stats.increment_api_success()
             self.stats.add_api_time(time.time() - start_time)
             # Update token stats from usage
@@ -418,10 +420,6 @@ class AnthropicClient:
                     self.stats.add_completion_tokens(output_tokens)
                 self.stats.add_cache_read_tokens(cache_read)
                 self.stats.add_cache_creation_tokens(cache_creation)
-        if self.stats:
-            self.stats.increment_api_success()
-            self.stats.add_api_time(time.time() - start_time)
-
         # Yield same format as streaming content chunks (with choices wrapper)
         yield {
             "choices": [{

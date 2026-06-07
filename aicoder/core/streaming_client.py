@@ -248,6 +248,7 @@ class StreamingClient:
     def _update_stats_on_success(self, start_time: float) -> None:
         """Update stats on success -"""
         if self.stats:
+            log_debug(f"*** _update_stats_on_success: increment_api_success, add_api_time")
             self.stats.increment_api_success()
             self.stats.add_api_time((time.time() - start_time))
 
