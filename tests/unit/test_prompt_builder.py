@@ -252,8 +252,9 @@ class TestPromptBuilderBuildSystemPrompt:
                     with patch('aicoder.core.config.Config') as mock_config:
                         mock_config.system_prompt.return_value = "Env prompt"
                         mock_config.system_prompt_append.return_value = None
-                        with patch('builtins.print'):
-                            prompt = PromptBuilder.build_system_prompt()
+                        with patch.object(sys.stdout, 'isatty', return_value=True):
+                            with patch('builtins.print'):
+                                prompt = PromptBuilder.build_system_prompt()
 
                         assert "Env prompt" in prompt
         finally:

@@ -372,8 +372,9 @@ class TestConfigValidation:
 class TestConfigStartupInfo:
     """Tests for startup info display"""
 
-    def test_print_startup_info_runs(self, capsys):
+    def test_print_startup_info_runs(self, capsys, monkeypatch):
         """Test that print_startup_info runs without error"""
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         # Should not raise
         config.Config.print_startup_info()
         captured = capsys.readouterr()
@@ -381,6 +382,7 @@ class TestConfigStartupInfo:
 
     def test_print_startup_info_shows_endpoint(self, monkeypatch, capsys):
         """Test that startup info shows API endpoint"""
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         monkeypatch.setenv("API_BASE_URL", "https://example.com/v1")
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         config.Config.print_startup_info()
@@ -389,6 +391,7 @@ class TestConfigStartupInfo:
 
     def test_print_startup_info_shows_model(self, monkeypatch, capsys):
         """Test that startup info shows model"""
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         monkeypatch.setenv("API_MODEL", "test-model")
         monkeypatch.delenv("OPENAI_MODEL", raising=False)
         config.Config.print_startup_info()
