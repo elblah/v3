@@ -31,6 +31,11 @@ Cache behavior:
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import json
+try:
+    import orjson
+    json_loads = orjson.loads
+except ImportError:
+    json_loads = json.loads
 import os
 from pathlib import Path
 from typing import List, Dict, Any
@@ -257,7 +262,7 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
         return None
 
     try:
-        entry = json.loads(line)
+        entry = json_loads(line)
         ts = entry["ts"].replace("_", "T")
         dt = datetime.fromisoformat(ts)
         if start and (dt < start or dt > end):
