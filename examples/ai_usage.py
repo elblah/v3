@@ -5,7 +5,7 @@ Finds all .aicoder/stats.log files and aggregates usage statistics.
 Uses a persistent cache (no expiration). Run `update` to refresh cache.
 
 Usage:
-    python ai_usage.py [24h|week|month|year]                 # Preset periods
+    python ai_usage.py [today|yesterday|24h|week|month|year] # Preset periods
     python ai_usage.py hours <N> | days <N> | minutes <N>    # Custom durations
     python ai_usage.py YYYY-MM-DD YYYY-MM-DD                 # Date range
     python ai_usage.py update                                # Scan & update cache
@@ -19,6 +19,7 @@ Notes:
     - Default period is 24h (rolling).
     - Stats are loaded from central log (~/.aicoder/central_stats.log) by default.
     - LOCAL=1 uses per-project .aicoder/stats.log instead.
+    - TZ=+8 sets timezone offset (useful for matching provider dashboards).
 
 Cache behavior:
     - Cache persists indefinitely (no automatic expiration)
@@ -213,16 +214,41 @@ def find_stats_files() -> List[Path]:
     return files
 
 
+def _get_tz_offset() -> timedelta:
+    """Parse TZ env var (e.g. '+8', '-5', '+5:30') into timedelta offset from UTC."""
+    tz = os.environ.get("TZ", "")
+    if not tz:
+        return timedelta(0)
+    # Handle format like "+8", "-5", "+5:30", "+08:00"
+    sign = 1 if tz.startswith("+") else -1 if tz.startswith("-") else 0
+    if sign == 0:
+        return timedelta(0)
+    tz = tz[1:]  # strip sign
+    parts = tz.split(":")
+    hours = int(parts[0])
+    minutes = int(parts[1]) if len(parts) > 1 else 0
+    return timedelta(hours=hours, minutes=minutes) * sign
+
+
 def get_time_range(period: str) -> tuple[datetime, datetime]:
-    """Return (start, end) datetime for a period in UTC."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    delta = {
-        "24h": timedelta(days=1),
-        "week": timedelta(weeks=1),
-        "month": timedelta(days=30),
-        "year": timedelta(days=365),
-    }.get(period)
-    return (now - delta, now) if delta else (None, None)
+    """Return (start, end) datetime for a period in local timezone (set via TZ env var)."""
+    tz_offset = _get_tz_offset()
+    now = (datetime.now(timezone.utc) + tz_offset).replace(tzinfo=None)
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == "today":
+        return (today_midnight, now)
+    elif period == "yesterday":
+        yesterday_midnight = today_midnight - timedelta(days=1)
+        return (yesterday_midnight, today_midnight)
+    else:
+        delta = {
+            "24h": timedelta(days=1),
+            "week": timedelta(weeks=1),
+            "month": timedelta(days=30),
+            "year": timedelta(days=365),
+        }.get(period)
+        return (now - delta, now) if delta else (None, None)
 
 
 def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict | None:
@@ -282,7 +308,7 @@ def main():
         sys.exit(0)
     elif "--help" in args or "-h" in args or "help" in args:
         print("Usage:")
-        print("  ai_usage.py [24h|week|month|year]                        # Time period")
+        print("  ai_usage.py [today|yesterday|24h|week|month|year]         # Time period")
         print("  ai_usage.py hours <N> | days <N> | minutes <N>           # Custom periods")
         print("  ai_usage.py YYYY-MM-DD YYYY-MM-DD                        # Date range")
         print("  ai_usage.py update         # Scan all dirs below, update cache")
@@ -326,7 +352,7 @@ def main():
         start, end = get_time_range(period)
         if not start:
             print(f"Error: Unknown period '{period}'")
-            print("Usage: ai_usage.py [24h|week|month|year|minutes <N>|hours <N>|days <N>|<start_date> <end_date>]")
+            print("Usage: ai_usage.py [today|yesterday|24h|week|month|year|minutes <N>|hours <N>|days <N>|<start_date> <end_date>]")
             sys.exit(1)
         label = period
 
@@ -362,7 +388,15 @@ def main():
         agg[e["url"]][e["model"]]["cost"] += e.get("cost", 0.0)
 
     # Report
-    print(f"\n=== AI Usage Report ({label}) ===\n")
+    print(f"\n{'='*60}")
+    print(f"  AI Usage Report: {label}")
+    print(f"{'='*60}")
+    if start and end:
+        tz_name = os.environ.get("TZ", "UTC")
+        now = (datetime.now(timezone.utc) + _get_tz_offset()).replace(tzinfo=None)
+        print(f"  Now:      {now.strftime('%Y-%m-%d %H:%M:%S')} (TZ={tz_name})")
+        print(f"  Range:    {start.strftime('%Y-%m-%d %H:%M:%S')} → {end.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}\n")
     total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0}
 
     for url in sorted(agg):
