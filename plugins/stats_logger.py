@@ -3,123 +3,100 @@ Stats Logger Plugin
 
 Logs each AI API request to:
 - .aicoder/stats.log (local, per-project)
-- $TMP/stats_logger.fifo (optional, for central aggregation)
+- stats_server via Unix socket (for central aggregation)
 
-Format: <timestamp>|<base_url>|<model>|<prompt_tokens>|<completion_tokens>|<elapsed_seconds>|<cache_hit>|<cache_miss>|<cost>
+Format: JSONL (one JSON object per line)
 """
 
+import json
 import os
 import sys
 from datetime import datetime
 from aicoder.core.config import Config
 
-_token_estimator = None
-
-def _get_token_estimator():
-    global _token_estimator
-    if _token_estimator is None:
-        from aicoder.core.token_estimator import _estimate_weighted_tokens
-        _token_estimator = _estimate_weighted_tokens
-    return _token_estimator
-
-# Central FIFO path (optional external listener)
-FIFO_PATH = os.path.join(os.environ.get("TMP", "/tmp"), "stats_logger.fifo")
+SOCKET_PATH = os.path.join(os.environ.get("TMP", "/tmp"), "stats_server.sock")
 
 
-def _write_to_fifo(line):
-    """Write to FIFO non-blocking. Log failure if write fails."""
-    if not os.path.exists(FIFO_PATH):
-        return
+def _write_to_central(line):
+    """Write to stats_server via Unix socket. Returns True on success."""
+    import socket
     try:
-        fd = os.open(FIFO_PATH, os.O_WRONLY | os.O_NONBLOCK)
-        os.write(fd, line.encode())
-        os.close(fd)
-    except Exception as e:
-        err_msg = f"fifo write failed: {e}"
-        print(f"[stats_logger] {err_msg} | line={line.strip()}", file=sys.stderr)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(2.0)
+        sock.connect(SOCKET_PATH)
+        sock.sendall(line.encode())
+        # Read response
+        response = sock.recv(64).decode().strip()
+        sock.close()
+        if response == "ok":
+            return True
+        else:
+            err_msg = f"central server responded: {response}"
+            print(f"[stats_logger] {err_msg}", file=sys.stderr)
+            if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
+                os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
+            return False
+    except FileNotFoundError:
+        # Socket doesn't exist - server not running
+        return False
+    except (socket.timeout, ConnectionRefusedError, OSError) as e:
+        err_msg = f"central write failed: {e}"
+        print(f"[stats_logger] {err_msg}", file=sys.stderr)
         if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
             os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
+        return False
 
 
 def create_plugin(ctx):
     """Plugin entry point"""
+    session_id = None
 
-    # Store estimated completion tokens from message content
-    estimated_completion_tokens = 0
-
-    def _on_assistant_message(assistant_message):
-        """Hook after assistant message is added - estimate completion tokens if needed"""
-        nonlocal estimated_completion_tokens
+    def _on_usage_data(usage):
+        """Hook when usage data is received from API"""
+        nonlocal session_id
+        if session_id is None:
+            import uuid
+            session_id = str(uuid.uuid4())
 
         stats = ctx.app.stats
         if not stats:
             return
 
-        # If API didn't return completion tokens, estimate from message content
-        if stats.completion_tokens == 0 and assistant_message.get("content"):
-            content = assistant_message["content"]
-            # Use proper token estimation
-            estimated_completion_tokens = _get_token_estimator()(content)
-
-    def _log_api_request(has_tool_calls: bool):
-        """Log API request to stats.log"""
-        nonlocal estimated_completion_tokens
-        stats = ctx.app.stats
-
-        if not stats:
-            return
-
-        # Use per-request values directly from stats (set by update_token_stats from API usage)
-        # When API reports usage: last_* has actual API values
-        # When API doesn't report: last_* are 0, we fall back to estimation
-        prompt_tokens = stats.last_prompt_tokens
-        completion_tokens = stats.last_completion_tokens
-        cache_read = stats.last_cache_read_tokens
-        cache_creation = stats.last_cache_creation_tokens
-        cost = stats.last_cost
-
-        # Fallback: if API didn't report tokens, use estimated prompt size
-        # (only for prompt - completion should stay 0 if unknown)
-        if prompt_tokens == 0 and stats.current_prompt_size > 0:
-            prompt_tokens = stats.current_prompt_size
-
-        # If completion is 0 but we have estimated completion tokens stored, use it
-        if completion_tokens == 0 and estimated_completion_tokens > 0:
-            completion_tokens = estimated_completion_tokens
-
-        # Reset estimate after using it
-        estimated_completion_tokens = 0
-
-        # Get model and endpoint from config
+        # Get metadata
+        cwd = os.getcwd()
+        api_provider = os.environ.get("API_PROVIDER", "").lower() or "openai"
         model = Config.model()
         base_url = Config.base_url() or Config.api_endpoint()
-
-        # Get elapsed time from stats
         elapsed = stats.last_api_time
-
-        # Format timestamp (UTC) - naive for consistency
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
 
-        # Format log line: timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss|cost
-        log_line = f"{timestamp}|{base_url}|{model}|{prompt_tokens}|{completion_tokens}|{elapsed:.2f}|{cache_read}|{cache_creation}|{cost}\n"
+        # Build JSONL entry
+        entry = {
+            "ts": timestamp,
+            "session": session_id,
+            "cwd": cwd,
+            "api_provider": api_provider,
+            "url": base_url,
+            "model": model,
+            "elapsed": round(elapsed, 2),
+            "usage": usage,
+        }
+
+        json_line = json.dumps(entry, separators=(",", ":"))
 
         # Ensure .aicoder dir exists
-        aicoder_dir = os.path.join(os.getcwd(), ".aicoder")
+        aicoder_dir = os.path.join(cwd, ".aicoder")
         os.makedirs(aicoder_dir, exist_ok=True)
 
-        # Append to stats.log
+        # Append to local stats.log
         log_path = os.path.join(aicoder_dir, "stats.log")
         with open(log_path, "a") as f:
-            f.write(log_line)
+            f.write(json_line + "\n")
 
-        # Also write to central FIFO if present
-        fifo_line = f"{os.getcwd()}|{log_line}"
-        _write_to_fifo(fifo_line)
+        # Send to central server
+        _write_to_central(json_line + "\n")
 
-    # Register hook when assistant message is added (to estimate completion tokens)
-    ctx.register_hook("after_assistant_message_added", _on_assistant_message)
-
-    # Register hook to log after each AI response
-    ctx.register_hook("after_ai_processing", _log_api_request)
+    # Register hook for usage data (fires for ALL API calls including compaction)
+    ctx.register_hook("after_usage_data", _on_usage_data)
 
     return {}

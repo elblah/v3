@@ -24,18 +24,11 @@ class Stats:
         self.compactions = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
-        self.cache_read_tokens = 0
-        self.cache_creation_tokens = 0
         self.last_prompt_tokens = 0
         self.last_completion_tokens = 0
-        self.last_cache_read_tokens = 0
-        self.last_cache_creation_tokens = 0
-        self.last_cost = 0.0
-        self.cost = 0.0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
-        self.usage_infos: List[Dict[str, Any]] = []
 
     def increment_api_requests(self) -> None:
         """
@@ -96,21 +89,6 @@ class Stats:
         self.completion_tokens += tokens
         self.last_completion_tokens = tokens
 
-    def add_cache_read_tokens(self, tokens: int) -> None:
-        """Add cache read tokens"""
-        self.cache_read_tokens += tokens
-        self.last_cache_read_tokens = tokens
-
-    def add_cache_creation_tokens(self, tokens: int) -> None:
-        """Add cache creation tokens"""
-        self.cache_creation_tokens += tokens
-        self.last_cache_creation_tokens = tokens
-
-    def add_cost(self, cost: float) -> None:
-        """Add cost to accumulated total"""
-        self.cost += cost
-        self.last_cost = cost
-
     def set_current_prompt_size(self, size: int, estimated: bool = False) -> None:
         """
         Set current prompt size
@@ -125,15 +103,6 @@ class Stats:
         
         """
         self.last_user_prompt = prompt
-
-    def add_usage_info(self, usage: Dict[str, Any]) -> None:
-        """
-        Add usage info
-        
-        """
-        import time
-
-        self.usage_infos.append({"time": int(time.time() * 1000), "usage": usage})
 
     def increment_user_interactions(self) -> None:
         """
@@ -161,18 +130,10 @@ class Stats:
         LogUtils.print("--- Session ---")
         LogUtils.print(f"  Prompt Tokens: {self.prompt_tokens:,}")
         LogUtils.print(f"  Completion Tokens: {self.completion_tokens:,}")
-        LogUtils.print(f"  Cache Hit: {self.cache_read_tokens:,}")
-        LogUtils.print(f"  Cache Miss: {self.cache_creation_tokens:,}")
-        if self.cost > 0:
-            LogUtils.print(f"  Cost: ${self.cost:.6f}")
 
         LogUtils.print("--- Last Request ---")
         LogUtils.print(f"  Last Prompt: {self.last_prompt_tokens:,}")
         LogUtils.print(f"  Last Completion: {self.last_completion_tokens:,}")
-        LogUtils.print(f"  Last Cache Hit: {self.last_cache_read_tokens:,}")
-        LogUtils.print(f"  Last Cache Miss: {self.last_cache_creation_tokens:,}")
-        if self.last_cost > 0:
-            LogUtils.print(f"  Last Cost: ${self.last_cost:.6f}")
 
         if self.current_prompt_size > 0:
             estimated = " (estimated)" if self.current_prompt_size_estimated else ""
@@ -195,15 +156,8 @@ class Stats:
         self.compactions = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
-        self.cache_read_tokens = 0
-        self.cache_creation_tokens = 0
-        self.cost = 0.0
-        self.last_cost = 0.0
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
-        self.usage_infos = []
         self.last_prompt_tokens = 0
         self.last_completion_tokens = 0
-        self.last_cache_read_tokens = 0
-        self.last_cache_creation_tokens = 0
