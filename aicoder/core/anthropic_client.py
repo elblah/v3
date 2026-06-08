@@ -345,20 +345,17 @@ class AnthropicClient:
             self.stats.add_api_time(time.time() - start_time)
             # Update token stats from accumulated usage
             if message_usage:
-                # Anthropic: input_tokens = non-cached only, cache_read_input_tokens = cache hit
                 input_tokens = message_usage.get("input_tokens") or 0
                 output_tokens = message_usage.get("output_tokens") or 0
                 cache_read = message_usage.get("cache_read_input_tokens") or 0
-                cache_creation = message_usage.get("cache_creation_input_tokens") or 0
-                # For Anthropic, input_tokens IS the cache miss
-                if cache_read > 0 and cache_creation == 0:
-                    cache_creation = input_tokens
                 total_prompt = input_tokens + cache_read
                 if total_prompt or output_tokens:
                     self.stats.add_prompt_tokens(total_prompt)
                     self.stats.add_completion_tokens(output_tokens)
-                self.stats.add_cache_read_tokens(cache_read)
-                self.stats.add_cache_creation_tokens(cache_creation)
+
+        # Fire usage hook AFTER stats are updated (elapsed is set)
+        if message_usage and self._plugin_system:
+            self._plugin_system.call_hooks("after_usage_data", message_usage)
 
         yield {
             "content": full_content,
@@ -406,20 +403,19 @@ class AnthropicClient:
             # Update token stats from usage
             usage = data.get("usage")
             if usage:
-                # Anthropic: input_tokens = non-cached only, cache_read_input_tokens = cache hit
                 input_tokens = usage.get("input_tokens") or 0
                 output_tokens = usage.get("output_tokens") or 0
                 cache_read = usage.get("cache_read_input_tokens") or 0
-                cache_creation = usage.get("cache_creation_input_tokens") or 0
-                # For Anthropic, input_tokens IS the cache miss
-                if cache_read > 0 and cache_creation == 0:
-                    cache_creation = input_tokens
                 total_prompt = input_tokens + cache_read
                 if total_prompt or output_tokens:
                     self.stats.add_prompt_tokens(total_prompt)
                     self.stats.add_completion_tokens(output_tokens)
-                self.stats.add_cache_read_tokens(cache_read)
-                self.stats.add_cache_creation_tokens(cache_creation)
+
+        # Fire usage hook AFTER stats are updated (elapsed is set)
+        usage = data.get("usage")
+        if usage and self._plugin_system:
+            self._plugin_system.call_hooks("after_usage_data", usage)
+
         # Yield same format as streaming content chunks (with choices wrapper)
         yield {
             "choices": [{

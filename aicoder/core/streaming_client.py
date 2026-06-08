@@ -25,6 +25,7 @@ class StreamingClient:
         self.message_history = message_history
         self._recovery_attempted = False
         self._plugin_system = None
+        self._last_raw_usage = None
         # Pending state for Alibaba SDK streaming tool calls
         self._pending_tool_name = None
         self._pending_tool_id = None
@@ -151,6 +152,12 @@ class StreamingClient:
                     yield from self._handle_non_streaming_response(response)
 
                 self._update_stats_on_success(start_time)
+
+                # Fire usage hook AFTER stats are updated (elapsed is set)
+                if self._last_raw_usage and self._plugin_system:
+                    self._plugin_system.call_hooks("after_usage_data", self._last_raw_usage)
+                    self._last_raw_usage = None
+
                 return  # Success - exit retry loop
 
             except Exception as error:
@@ -515,15 +522,19 @@ class StreamingClient:
                                 self._pending_tool_index = None
                                 self._pending_tool_args = None
 
-                        # Create chunk dict
+                        # Store raw usage (hook fires after streaming completes)
+                        raw_usage = chunk_data.get("usage")
                         chunk = {
                             "id": chunk_data.get("id"),
                             "object": chunk_data.get("object"),
                             "created": chunk_data.get("created"),
                             "model": chunk_data.get("model"),
                             "choices": choices,
-                            "usage": self._create_usage(chunk_data.get("usage")),
+                            "usage": self._create_usage(raw_usage),
                         }
+
+                        if raw_usage:
+                            self._last_raw_usage = raw_usage
 
                         # Handle message_stop (end of Alibaba stream)
                         if chunk_data.get("type") == "message_stop":
@@ -610,6 +621,7 @@ class StreamingClient:
                 usage = data.get("usage")
                 if usage:
                     self._update_stats_from_usage(usage)
+                    self._last_raw_usage = usage
 
                 yield chunk
                 return
@@ -661,40 +673,18 @@ class StreamingClient:
                 return False
 
     def _update_stats_from_usage(self, usage: Dict[str, Any]) -> None:
-        """Update stats from usage.
-        OpenAI: prompt_tokens = total (includes cached), cached_tokens = cache hit
-        """
+        """Update basic stats from usage"""
         if self.stats and usage:
             # Handle both dict and object types
             if isinstance(usage, dict):
                 prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
                 completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
-                prompt_details = usage.get("prompt_tokens_details") or {}
-                cache_read = (prompt_details.get("cached_tokens")
-                            or usage.get("cache_read_input_tokens")
-                            or usage.get("prompt_cache_hit_tokens") or 0)
-                cache_creation = usage.get("cache_creation_input_tokens") or usage.get("prompt_cache_miss_tokens") or 0
-                cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
-                       or usage.get("cost") or 0)
             else:
                 prompt_tokens = getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0
                 completion_tokens = getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
-                prompt_details = getattr(usage, "prompt_tokens_details", None) or {}
-                cache_read = (prompt_details.get("cached_tokens", 0)
-                            or getattr(usage, "cache_read_input_tokens", 0)
-                            or getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
-                cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or getattr(usage, "prompt_cache_miss_tokens", 0) or 0
-                cost = 0
-
-            # OpenAI: prompt_tokens includes cached, compute cache miss if not provided
-            if cache_read > 0 and cache_creation == 0:
-                cache_creation = max(0, prompt_tokens - cache_read)
 
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)
-            self.stats.add_cache_read_tokens(cache_read)
-            self.stats.add_cache_creation_tokens(cache_creation)
-            self.stats.add_cost(cost)
 
     # Methods for colorization (from original Python version)
     def process_with_colorization(self, content: str) -> str:
@@ -728,24 +718,6 @@ class StreamingClient:
         if self.stats and usage:
             prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
             completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
-            # Handle both raw API response fields and pre-processed _create_usage fields
-            prompt_details = usage.get("prompt_tokens_details") or {}
-            cache_read = (usage.get("cache_read")
-                        or prompt_details.get("cached_tokens")
-                        or usage.get("cache_read_input_tokens")
-                        or usage.get("prompt_cache_hit_tokens") or 0)
-            cache_creation = (usage.get("cache_creation")
-                            or usage.get("cache_creation_input_tokens")
-                            or usage.get("prompt_cache_miss_tokens") or 0)
-            cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
-                   or usage.get("cost") or 0)
-
-            # Compute cache miss if not provided (prompt - cached = non-cached portion)
-            if cache_read > 0 and cache_creation == 0:
-                cache_creation = max(0, prompt_tokens - cache_read)
 
             self.stats.add_prompt_tokens(prompt_tokens)
             self.stats.add_completion_tokens(completion_tokens)
-            self.stats.add_cache_read_tokens(cache_read)
-            self.stats.add_cache_creation_tokens(cache_creation)
-            self.stats.add_cost(cost)

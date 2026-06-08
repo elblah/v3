@@ -29,11 +29,57 @@ Cache behavior:
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any
 
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
+
+
+def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
+    """Extract prompt, completion, cache_read, cache_creation, cost from raw usage object.
+
+    Returns dict with: prompt, completion, cache_read, cache_create, cost
+    """
+    if provider == "anthropic":
+        # Anthropic: input_tokens = non-cached only, cache_read_input_tokens = cache hit
+        input_tokens = usage.get("input_tokens") or 0
+        output_tokens = usage.get("output_tokens") or 0
+        cache_read = usage.get("cache_read_input_tokens") or 0
+        cache_creation = usage.get("cache_creation_input_tokens") or 0
+        # input_tokens IS the cache miss
+        if cache_read > 0 and cache_creation == 0:
+            cache_creation = input_tokens
+        prompt = input_tokens + cache_read
+        return {
+            "prompt": prompt,
+            "completion": output_tokens,
+            "cache_read": cache_read,
+            "cache_create": cache_creation,
+            "cost": 0,
+        }
+    else:
+        # OpenAI and others
+        prompt = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+        completion = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        cache_read = (prompt_details.get("cached_tokens")
+                     or usage.get("cache_read_input_tokens")
+                     or usage.get("prompt_cache_hit_tokens") or 0)
+        cache_creation = usage.get("cache_creation_input_tokens") or usage.get("prompt_cache_miss_tokens") or 0
+        # prompt_tokens includes cached, compute cache miss if not provided
+        if cache_read > 0 and cache_creation == 0:
+            cache_creation = max(0, prompt - cache_read)
+        cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
+               or usage.get("cost") or 0)
+        return {
+            "prompt": prompt,
+            "completion": completion,
+            "cache_read": cache_read,
+            "cache_create": cache_creation,
+            "cost": cost,
+        }
 
 
 def get_cache_file() -> Path:
@@ -165,94 +211,50 @@ def get_time_range(period: str) -> tuple[datetime, datetime]:
     return (now - delta, now) if delta else (None, None)
 
 
-def parse_stats(filepath: Path, start: datetime | None, end: datetime | None):
+def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict | None:
+    """Parse a single JSONL stats.log line."""
+    if not line or not line.startswith("{"):
+        return None
+
+    try:
+        entry = json.loads(line)
+        ts = entry["ts"].replace("_", "T")
+        dt = datetime.fromisoformat(ts)
+        if start and (dt < start or dt > end):
+            return None
+        provider = entry.get("api_provider", "openai")
+        usage = entry.get("usage", {})
+        parsed = parse_usage(usage, provider)
+        return {
+            "url": entry.get("url", ""),
+            "model": entry.get("model", ""),
+            "session": entry.get("session", ""),
+            "prompt": parsed["prompt"],
+            "completion": parsed["completion"],
+            "elapsed": entry.get("elapsed", 0),
+            "cache_read": parsed["cache_read"],
+            "cache_create": parsed["cache_create"],
+            "cost": parsed["cost"],
+        }
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+
+def parse_stats(filepath: Path, start: datetime | None, end: datetime | None) -> List[Dict]:
     """Parse a stats.log file, return entries within time range."""
     entries = []
-    # New format (9 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss|cost
-    # Old format (8 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss
-    # Older format (6 fields): timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
     for line in filepath.read_text().splitlines():
-        if not line:
-            continue
-        parts = line.split("|")
-        if len(parts) == 9:
-            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create, cost = parts
-        elif len(parts) == 8:
-            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = parts
-            cost = 0.0
-        elif len(parts) == 6:
-            ts, url, model, p_tok, c_tok, elapsed = parts
-            cache_read = cache_create = 0
-            cost = 0.0
-        else:
-            continue
-        try:
-            ts = ts.replace("_", "T")
-            dt = datetime.fromisoformat(ts)
-            if start and (dt < start or dt > end):
-                continue
-            entries.append({
-                "url": url, "model": model,
-                "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
-                "cache_read": int(cache_read), "cache_create": int(cache_create),
-                "cost": float(cost),
-            })
-        except ValueError:
-            continue
+        entry = _parse_line(line, start, end)
+        if entry:
+            entries.append(entry)
     return entries
 
 
-def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | None):
+def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | None) -> List[Dict]:
     """Parse central_stats.log, return entries within time range."""
-    entries = []
-    # New format (9 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed|cache_hit|cache_miss
-    # Old format (7 fields): project_path|timestamp|base_url|model|prompt_tokens|completion_tokens|elapsed
-    # Legacy format (6 fields): timestamp|url|model|prompt|completion|elapsed
     if not filepath.exists():
-        return entries
-    for line in filepath.read_text().splitlines():
-        if not line:
-            continue
-        parts = line.split("|")
-        parts_count = len(parts)
-        if parts_count == 10:
-            # new with cost: project|timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss|cost
-            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create, cost = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8], parts[9]
-        elif parts_count == 9:
-            # new: project|timestamp|url|model|prompt|completion|elapsed|cache_hit|cache_miss
-            ts, url, model, p_tok, c_tok, elapsed, cache_read, cache_create = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8]
-            cost = 0.0
-        elif parts_count == 7:
-            # old migrated: project|timestamp|url|model|prompt|completion|elapsed
-            ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
-            cache_read = cache_create = 0
-            cost = 0.0
-        elif parts_count == 6:
-            # legacy: project|timestamp|url|model|prompt|completion|elapsed
-            ts, url, model, p_tok, c_tok, elapsed = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]
-            cache_read = cache_create = 0
-            cost = 0.0
-        elif parts_count == 5:
-            # legacy: timestamp|url|model|prompt|completion|elapsed
-            ts, url, model, p_tok, c_tok, elapsed = parts
-            cache_read = cache_create = 0
-            cost = 0.0
-        else:
-            continue
-        try:
-            ts = ts.replace("_", "T")
-            dt = datetime.fromisoformat(ts)
-            if start and (dt < start or dt > end):
-                continue
-            entries.append({
-                "url": url, "model": model,
-                "prompt": int(p_tok), "completion": int(c_tok), "elapsed": float(elapsed),
-                "cache_read": int(cache_read), "cache_create": int(cache_create),
-                "cost": float(cost),
-            })
-        except ValueError:
-            continue
-    return entries
+        return []
+    return parse_stats(filepath, start, end)
 
 
 def main():

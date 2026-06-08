@@ -1,3 +1,6 @@
+# Compiled binaries
+examples/stats_server/stats_server
+
 # Python cache files
 __pycache__/
 *.py[cod]
