@@ -38,25 +38,21 @@ CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
 
 
 def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
-    """Extract prompt, completion, cache_read, cache_creation, cost from raw usage object.
+    """Extract prompt, completion, cache_read, cache_miss, cost from raw usage object.
 
-    Returns dict with: prompt, completion, cache_read, cache_create, cost
+    Returns dict with: prompt, completion, cache_read, cache_miss, cost
     """
     if provider == "anthropic":
         # Anthropic: input_tokens = non-cached only, cache_read_input_tokens = cache hit
         input_tokens = usage.get("input_tokens") or 0
         output_tokens = usage.get("output_tokens") or 0
         cache_read = usage.get("cache_read_input_tokens") or 0
-        cache_creation = usage.get("cache_creation_input_tokens") or 0
-        # input_tokens IS the cache miss
-        if cache_read > 0 and cache_creation == 0:
-            cache_creation = input_tokens
         prompt = input_tokens + cache_read
         return {
             "prompt": prompt,
             "completion": output_tokens,
             "cache_read": cache_read,
-            "cache_create": cache_creation,
+            "cache_miss": input_tokens,
             "cost": 0,
         }
     else:
@@ -67,17 +63,15 @@ def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
         cache_read = (prompt_details.get("cached_tokens")
                      or usage.get("cache_read_input_tokens")
                      or usage.get("prompt_cache_hit_tokens") or 0)
-        cache_creation = usage.get("cache_creation_input_tokens") or usage.get("prompt_cache_miss_tokens") or 0
-        # prompt_tokens includes cached, compute cache miss if not provided
-        if cache_read > 0 and cache_creation == 0:
-            cache_creation = max(0, prompt - cache_read)
+        # prompt_tokens includes cached, compute miss if not provided
+        cache_miss = max(0, prompt - cache_read) if cache_read > 0 else prompt
         cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
                or usage.get("cost") or 0)
         return {
             "prompt": prompt,
             "completion": completion,
             "cache_read": cache_read,
-            "cache_create": cache_creation,
+            "cache_miss": cache_miss,
             "cost": cost,
         }
 
@@ -233,7 +227,7 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
             "completion": parsed["completion"],
             "elapsed": entry.get("elapsed", 0),
             "cache_read": parsed["cache_read"],
-            "cache_create": parsed["cache_create"],
+            "cache_miss": parsed["cache_miss"],
             "cost": parsed["cost"],
         }
     except (json.JSONDecodeError, KeyError, ValueError):
@@ -335,7 +329,7 @@ def main():
             sys.exit(0)
 
     # Aggregate: url -> model -> stats
-    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0, "cost": 0.0}))
+    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0}))
     for e in entries:
         if e["model"] == "test-model":
             continue
@@ -344,12 +338,12 @@ def main():
         agg[e["url"]][e["model"]]["c"] += e["completion"]
         agg[e["url"]][e["model"]]["t"] += e["elapsed"]
         agg[e["url"]][e["model"]]["cr"] += e.get("cache_read", 0)
-        agg[e["url"]][e["model"]]["cc"] += e.get("cache_create", 0)
+        agg[e["url"]][e["model"]]["cm"] += e.get("cache_miss", 0)
         agg[e["url"]][e["model"]]["cost"] += e.get("cost", 0.0)
 
     # Report
     print(f"\n=== AI Usage Report ({label}) ===\n")
-    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cc": 0, "cost": 0.0}
+    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0}
 
     for url in sorted(agg):
         print(url)
@@ -363,7 +357,7 @@ def main():
             print(f"        Input Tokens:   {d['p']:,}")
             print(f"        Output Tokens:  {d['c']:,}")
             print(f"        Cache Hit:      {d['cr']:,}")
-            print(f"        Cache Miss:     {d['cc']:,}")
+            print(f"        Cache Miss:     {d['cm']:,}")
             if d["cost"] > 0:
                 print(f"        Cost:           ${d['cost']:.6f}")
             print(f"        Avg Req Time:   {avg:.2f}s")
@@ -373,7 +367,7 @@ def main():
             total["c"] += d["c"]
             total["t"] += d["t"]
             total["cr"] += d["cr"]
-            total["cc"] += d["cc"]
+            total["cm"] += d["cm"]
             total["cost"] += d["cost"]
 
     print("-" * 50)
@@ -382,7 +376,7 @@ def main():
     print(f"    Total Input Tokens:  {total['p']:,}")
     print(f"    Total Output Tokens: {total['c']:,}")
     print(f"    Cache Hit:           {total['cr']:,}")
-    print(f"    Cache Miss:          {total['cc']:,}")
+    print(f"    Cache Miss:          {total['cm']:,}")
     print(f"    Total Time:          {total['t']:.2f}s")
     print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s")
     total_toks = total["c"]  # output tokens only
