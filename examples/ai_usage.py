@@ -41,34 +41,54 @@ def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
     """Extract prompt, completion, cache_read, cache_miss, cost from raw usage object.
 
     Returns dict with: prompt, completion, cache_read, cache_miss, cost
+
+    IMPORTANT: Providers define "input_tokens" differently:
+    - Anthropic: input_tokens = NON-CACHED only (cache miss). Total = input_tokens + cache_read_input_tokens
+    - OpenAI:    prompt_tokens = TOTAL input (cached + non-cached). Miss = prompt_tokens - cached_tokens
+
+    This is NOT a bug. Each provider has different semantics for what counts as "input".
     """
     if provider == "anthropic":
-        # Anthropic: input_tokens = non-cached only, cache_read_input_tokens = cache hit
+        # Anthropic raw usage fields:
+        #   input_tokens               = tokens NOT in cache (cache miss, paid at full price)
+        #   cache_read_input_tokens    = tokens read from cache (cache hit, discounted)
+        #   cache_creation_input_tokens = tokens written to cache (one-time write cost)
+        #   output_tokens              = generated tokens
+        #
+        # Total input = input_tokens + cache_read_input_tokens
+        # We store input_tokens as cache_miss since it represents non-cached tokens.
         input_tokens = usage.get("input_tokens") or 0
         output_tokens = usage.get("output_tokens") or 0
         cache_read = usage.get("cache_read_input_tokens") or 0
         prompt = input_tokens + cache_read
         return {
-            "prompt": prompt,
+            "prompt": prompt,      # Total input (cached + non-cached)
             "completion": output_tokens,
             "cache_read": cache_read,
-            "cache_miss": input_tokens,
+            "cache_miss": input_tokens,  # Same as input_tokens for Anthropic
             "cost": 0,
         }
     else:
-        # OpenAI and others
+        # OpenAI raw usage fields:
+        #   prompt_tokens                    = TOTAL input tokens (cached + non-cached)
+        #   prompt_tokens_details.cached_tokens = tokens read from cache (cache hit)
+        #   completion_tokens                = generated tokens
+        #
+        # Cached tokens are INCLUDED in prompt_tokens, not separate.
+        # To get non-cached (miss): prompt_tokens - cached_tokens
         prompt = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
         completion = usage.get("completion_tokens") or usage.get("output_tokens") or 0
         prompt_details = usage.get("prompt_tokens_details") or {}
+        # Try OpenAI field first, then OpenAI-compatible providers using Anthropic-style names
         cache_read = (prompt_details.get("cached_tokens")
                      or usage.get("cache_read_input_tokens")
                      or usage.get("prompt_cache_hit_tokens") or 0)
-        # prompt_tokens includes cached, compute miss if not provided
+        # prompt_tokens already includes cached, so subtract to get miss
         cache_miss = max(0, prompt - cache_read) if cache_read > 0 else prompt
         cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
                or usage.get("cost") or 0)
         return {
-            "prompt": prompt,
+            "prompt": prompt,      # Total input (cached + non-cached)
             "completion": completion,
             "cache_read": cache_read,
             "cache_miss": cache_miss,
