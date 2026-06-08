@@ -32,7 +32,7 @@ def _write_to_central(line):
             return True
         else:
             err_msg = f"central server responded: {response}"
-            print(f"[stats_logger] {err_msg}", file=sys.stderr)
+            print(f"\n[stats_logger] {err_msg}\n  line: {line.strip()}", file=sys.stderr)
             if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
                 os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
             return False
@@ -41,7 +41,7 @@ def _write_to_central(line):
         return False
     except (socket.timeout, ConnectionRefusedError, OSError) as e:
         err_msg = f"central write failed: {e}"
-        print(f"[stats_logger] {err_msg}", file=sys.stderr)
+        print(f"\n[stats_logger] {err_msg}\n  line: {line.strip()}", file=sys.stderr)
         if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
             os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
         return False
@@ -81,6 +81,11 @@ def create_plugin(ctx):
             "elapsed": round(elapsed, 2),
             "usage": usage,
         }
+
+        # Add optional tag
+        tag = os.environ.get("STATS_TAG", "")
+        if tag:
+            entry["tag"] = tag
 
         json_line = json.dumps(entry, separators=(",", ":"))
 
