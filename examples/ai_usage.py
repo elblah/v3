@@ -424,6 +424,7 @@ def main():
             total["cm"] += d["cm"]
             total["cost"] += d["cost"]
 
+    n = total["n"]
     print("-" * 50)
     print("TOTAL SUMMARY")
     print(f"    Total Requests:      {total['n']:,}")
@@ -431,10 +432,13 @@ def main():
     print(f"    Total Output Tokens: {total['c']:,}")
     print(f"    Cache Hit:           {total['cr']:,}")
     print(f"    Cache Miss:          {total['cm']:,}")
+    print(f"    Avg Input/Request:   {total['p'] / n:,.0f}")
+    print(f"    Avg Output/Request:  {total['c'] / n:,.0f}")
+    print(f"    Avg Cache Hit/Req:   {total['cr'] / n:,.0f}")
+    print(f"    Avg Cache Miss/Req:  {total['cm'] / n:,.0f}")
     print(f"    Total Time:          {total['t']:.2f}s")
-    print(f"    Avg Time/Request:    {total['t'] / total['n']:.2f}s")
-    total_toks = total["c"]  # output tokens only
-    print(f"    Total Output tok/s:  {total_toks / total['t']:.1f}")
+    print(f"    Avg Time/Request:    {total['t'] / n:.2f}s")
+    print(f"    Total Output tok/s:  {total['c'] / total['t']:.1f}")
     if total["cost"] > 0:
         print(f"    Total Cost:          ${total['cost']:.6f}\n")
     else:
