@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
+FILTER_TAG = os.environ.get("FILTER_TAG")
 
 
 def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
@@ -263,6 +264,15 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
 
     try:
         entry = json_loads(line)
+        # Filter by tag if FILTER_TAG env var is set
+        if FILTER_TAG is not None:
+            entry_tag = entry.get("tag")
+            if FILTER_TAG == "":
+                # Match entries with no tag or empty tag
+                if entry_tag:
+                    return None
+            elif entry_tag != FILTER_TAG:
+                return None
         ts = entry["ts"].replace("_", "T")
         dt = datetime.fromisoformat(ts)
         if start and (dt < start or dt > end):
