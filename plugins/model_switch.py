@@ -31,6 +31,7 @@ MODEL_VARIABLES = [
     'API_MODEL', 'OPENAI_MODEL',
     'API_KEY', 'OPENAI_API_KEY',
     'API_BASE_URL', 'OPENAI_BASE_URL',
+    'API_ENDPOINT',  # Must reset - takes priority over API_BASE_URL in Config.api_endpoint()
     'TEMPERATURE', 'MAX_TOKENS', 'TOP_K', 'TOP_P',
     'CONTEXT_SIZE',
     'FREQUENCY_PENALTY', 'PRESENCE_PENALTY', 'REPETITION_PENALTY', 'STOP_SEQUENCES',
@@ -40,6 +41,9 @@ MODEL_VARIABLES = [
 # Module-level state for previous config (closure-based storage)
 _previous_config: Dict[str, str] = {}
 _previous_config_lock = threading.Lock()
+
+# App reference for client swapping
+_app = None
 
 
 def _get_current_config() -> Dict[str, str]:
@@ -77,6 +81,42 @@ def _apply_config(config: Dict[str, str]) -> None:
     for key, value in config.items():
         if value and value.strip():
             os.environ[key] = value
+
+
+def _swap_api_client_if_needed(old_provider: str, new_provider: str) -> bool:
+    """Swap API client if provider changed. Returns True if swapped."""
+    global _app
+    
+    if not _app:
+        return False
+    
+    old_provider = old_provider.lower()
+    new_provider = new_provider.lower()
+    
+    if old_provider == new_provider:
+        return False
+    
+    # Import the appropriate client class
+    if new_provider == "anthropic":
+        from aicoder.core.anthropic_client import AnthropicClient as NewClient
+    else:
+        from aicoder.core.streaming_client import StreamingClient as NewClient
+    
+    # Create new client instance
+    new_client = NewClient(_app.stats, _app.tool_manager)
+    new_client.set_plugin_system(_app.plugin_system)
+    
+    # Rewire all references
+    old_client = _app.streaming_client
+    _app.streaming_client = new_client
+    _app.stream_processor.streaming_client = new_client
+    _app.session_manager.streaming_client = new_client
+    _app.message_history.set_api_client(new_client)
+    _app.compaction_service.streaming_client = new_client
+    _app.compaction_service.api_client = new_client
+    
+    success(f"Swapped API client: {type(old_client).__name__} -> {type(new_client).__name__}")
+    return True
 
 
 def _execute_selector(bin_path: str) -> tuple[int, str, str]:
@@ -172,6 +212,7 @@ def _handle_model_command(args_str: str) -> Optional[str]:
 
     # Take atomic snapshot of current environment
     current_config = _get_current_config()
+    old_provider = current_config.get('API_PROVIDER', '').lower()
 
     # Reset ALL model variables first
     _reset_model_variables()
@@ -179,8 +220,20 @@ def _handle_model_command(args_str: str) -> Optional[str]:
     # Apply new config
     _apply_config(new_config)
 
+    # Auto-construct API_ENDPOINT from base_url if not explicitly set
+    new_provider = new_config.get('API_PROVIDER', '').lower()
+    base_url = os.environ.get('API_BASE_URL', '').rstrip('/')
+    if base_url and not os.environ.get('API_ENDPOINT'):
+        if new_provider == 'anthropic':
+            os.environ['API_ENDPOINT'] = f"{base_url}/messages"
+        else:
+            os.environ['API_ENDPOINT'] = f"{base_url}/chat/completions"
+
     # Store previous config
     _set_previous_config(current_config)
+
+    # Swap API client if provider changed
+    _swap_api_client_if_needed(old_provider, new_provider)
 
     # Show result
     model_name = new_config.get('API_MODEL') or new_config.get('OPENAI_MODEL') or 'unknown'
@@ -199,11 +252,25 @@ def _handle_model_back_command(args_str: str) -> Optional[str]:
 
     # Take snapshot of current for next toggle
     current_config = _get_current_config()
+    old_provider = current_config.get('API_PROVIDER', '').lower()
 
     # Reset and restore
     _reset_model_variables()
     _apply_config(previous_config)
+
+    # Auto-construct API_ENDPOINT from base_url if not explicitly set
+    new_provider = previous_config.get('API_PROVIDER', '').lower()
+    base_url = os.environ.get('API_BASE_URL', '').rstrip('/')
+    if base_url and not os.environ.get('API_ENDPOINT'):
+        if new_provider == 'anthropic':
+            os.environ['API_ENDPOINT'] = f"{base_url}/messages"
+        else:
+            os.environ['API_ENDPOINT'] = f"{base_url}/chat/completions"
+
     _set_previous_config(current_config)
+
+    # Swap API client if provider changed
+    _swap_api_client_if_needed(old_provider, new_provider)
 
     model_name = previous_config.get('API_MODEL') or previous_config.get('OPENAI_MODEL') or 'unknown'
     success(f"Toggled back to model: {model_name}")
@@ -340,6 +407,10 @@ def _show_model_info() -> None:
 def create_plugin(ctx: 'PluginContext') -> Optional[Dict[str, Callable]]:
     """Create the model switch plugin"""
     from aicoder.core.config import Config
+    
+    # Store app reference for client swapping
+    global _app
+    _app = ctx.app
 
     # Register commands
     ctx.register_command('model', _handle_model_command, 'Switch AI model using external selector')
