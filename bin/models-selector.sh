@@ -27,7 +27,8 @@ if [[ "$@" =~ --list ]]; then
         "API_KEY=$API_KEY" \
         "API_PROVIDER=$API_PROVIDER" \
         > "$AICODER_MODEL_CURRENT_FILE"
-    sleep 1
+    #sleep 1
+    exit
 fi
 
 tmux display-popup -E "$SCRIPT_FILE --list"
@@ -36,7 +37,4 @@ if [ "$ret" != 0 ]; then
     exit 1
 fi
 cat $AICODER_MODEL_CURRENT_FILE
-(
-    sleep 1
-    tmux run-shell -b "rm -f '$AICODER_MODEL_CURRENT_FILE'"
-) &
+rm -f '$AICODER_MODEL_CURRENT_FILE'
