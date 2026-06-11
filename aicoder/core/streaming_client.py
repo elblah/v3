@@ -1,6 +1,7 @@
 """Streaming API client for AI requests"""
 
 import json
+import sys
 import time
 import itertools
 import os
@@ -379,6 +380,21 @@ class StreamingClient:
             if not response:
                 raise Exception("No response body for streaming")
 
+            thinking_printed = False
+
+            def _show_thinking():
+                nonlocal thinking_printed
+                if not thinking_printed:
+                    sys.stdout.write(f"{Config.colors['dim']}thinking...{Config.colors['reset']}")
+                    sys.stdout.flush()
+                    thinking_printed = True
+
+            def _clear_thinking():
+                nonlocal thinking_printed
+                if thinking_printed:
+                    sys.stdout.write("\r\x1b[K")
+                    sys.stdout.flush()
+                    thinking_printed = False
 
             raw_response = ""
 
@@ -427,6 +443,13 @@ class StreamingClient:
                             for choice_dict in chunk_data["choices"]:
                                 choice = choice_dict
                                 choices.append(choice)
+
+                            # Show thinking indicator if any reasoning field present
+                            for c in choices:
+                                delta = c.get("delta", {})
+                                if any(delta.get(f) and delta.get(f).strip() for f in ("reasoning_content", "reasoning", "reasoning_text")):
+                                    _show_thinking()
+                                    break
                         else:
                             # Alibaba SDK format: check content_block.type
                             content_block = chunk_data.get("content_block", {})
@@ -524,6 +547,14 @@ class StreamingClient:
 
                         # Store raw usage (hook fires after streaming completes)
                         raw_usage = chunk_data.get("usage")
+
+                        # Clear thinking indicator once real content or tool call arrives
+                        if thinking_printed and any(
+                            c.get("delta", {}).get("content") or c.get("delta", {}).get("tool_calls")
+                            for c in choices
+                        ):
+                            _clear_thinking()
+
                         chunk = {
                             "id": chunk_data.get("id"),
                             "object": chunk_data.get("object"),
