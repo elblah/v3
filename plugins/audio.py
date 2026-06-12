@@ -77,30 +77,48 @@ def parse_audio_references(text: str) -> tuple[str, List[str]]:
     return cleaned, audio_paths
 
 
+def transform_user_input(user_input: str) -> Optional[Any]:
+    """Transform user input containing @audio references.
+    Returns dict (multimodal message) or None (no audio found).
+    """
+    clean_text, audio_paths = parse_audio_references(user_input)
+    if not audio_paths:
+        return None
+
+    valid = [p for p in audio_paths if os.path.exists(p)]
+    missing = [p for p in audio_paths if not os.path.exists(p)]
+
+    if not valid:
+        # Return error text as string
+        return f"{clean_text} {' '.join(f'[Audio not found: {p}]' for p in missing)}".strip()
+
+    content = [{"type": "text", "text": clean_text}] if clean_text else []
+    for path in valid:
+        try:
+            content.append(create_audio_content_part(path))
+        except Exception as e:
+            content.append({"type": "text", "text": f"[Error loading audio {path}: {e}]"})
+
+    if missing:
+        content.append({"type": "text", "text": " ".join(f"[Audio not found: {p}]" for p in missing)})
+
+    return {"role": "user", "content": content}
+
+
 def create_plugin(ctx) -> Dict[str, Any]:
     def after_user_prompt_hook(user_input: str) -> Optional[str]:
-        clean_text, audio_paths = parse_audio_references(user_input)
-        if not audio_paths:
-            return None
+        result = transform_user_input(user_input)
 
-        valid = [p for p in audio_paths if os.path.exists(p)]
-        missing = [p for p in audio_paths if not os.path.exists(p)]
+        if result is None:
+            return None  # No audio, use normal processing
 
-        if not valid:
-            return {"role": "user", "content": f"{clean_text} {' '.join(f'[Audio not found: {p}]' for p in missing)}"}
+        # If result is a dict (multimodal message), add it and suppress original
+        if isinstance(result, dict):
+            ctx.app.add_plugin_message(result)
+            return ""  # Suppress original input
 
-        content = [{"type": "text", "text": clean_text}] if clean_text else []
-        for path in valid:
-            try:
-                content.append(create_audio_content_part(path))
-            except Exception as e:
-                content.append({"type": "text", "text": f"[Error loading audio {path}: {e}]"})
-
-        if missing:
-            content.append({"type": "text", "text": " ".join(f"[Audio not found: {p}]" for p in missing)})
-
-        ctx.app.add_plugin_message({"role": "user", "content": content})
-        return ""
+        # If result is a string (error), return it
+        return result
 
     ctx.register_hook("after_user_prompt", after_user_prompt_hook)
     return {"name": "audio"}
