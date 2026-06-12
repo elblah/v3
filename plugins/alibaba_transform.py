@@ -12,6 +12,7 @@ Matches sample-qwen.json structure:
 - cache_control on last 2 messages
 """
 
+import copy
 import os
 from aicoder.core.config import Config
 
@@ -34,6 +35,8 @@ def create_plugin(ctx):
 
 def transform_alibaba(data):
     """Transform for Alibaba/Qwen cache format - matches sample-qwen.json structure"""
+    # Work on a deep copy to avoid mutating original message history
+    data = copy.deepcopy(data)
     messages = data.get("messages", [])
     if not messages:
         return data
