@@ -104,13 +104,17 @@ def create_plugin(ctx):
 
         import subprocess
         try:
+            # Use bytes mode and decode manually for better encoding handling
             result = subprocess.run(
                 ["lynx", "-dump", "-nolist", url],
                 capture_output=True,
-                text=True,
                 timeout=30
             )
-            content = result.stdout
+            # Try UTF-8 first, then latin-1, replace errors
+            try:
+                content = result.stdout.decode("utf-8", errors="replace")
+            except Exception:
+                content = result.stdout.decode("latin-1", errors="replace")
 
             # Detect if provider is blocking the request
             if detect_blocking(content):
