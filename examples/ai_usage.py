@@ -440,17 +440,25 @@ def main():
             total["cost"] += d["cost"]
 
     n = total["n"]
+    # Number of days in range for per-day averages
+    day_secs = (end - start).total_seconds() / 86400 if start and end and end > start else 1
     print("-" * 50)
     print("TOTAL SUMMARY")
     print(f"    Total Requests:      {total['n']:,}")
     print(f"    Total Input Tokens:  {total['p']:,}")
     print(f"    Total Output Tokens: {total['c']:,}")
-    print(f"    Cache Hit:           {total['cr']:,}")
-    print(f"    Cache Miss:          {total['cm']:,}")
+    pct_hit = total['cr'] / total['p'] * 100 if total['p'] else 0
+    pct_miss = total['cm'] / total['p'] * 100 if total['p'] else 0
+    print(f"    Cache Hit:           {total['cr']:,} ({pct_hit:.1f}%)")
+    print(f"    Cache Miss:          {total['cm']:,} ({pct_miss:.1f}%)")
     print(f"    Avg Input/Request:   {total['p'] / n:,.0f}")
     print(f"    Avg Output/Request:  {total['c'] / n:,.0f}")
     print(f"    Avg Cache Hit/Req:   {total['cr'] / n:,.0f}")
     print(f"    Avg Cache Miss/Req:  {total['cm'] / n:,.0f}")
+    print(f"    Avg Input/Day:       {total['p'] / day_secs:,.0f}")
+    print(f"    Avg Output/Day:      {total['c'] / day_secs:,.0f}")
+    print(f"    Avg Cache Hit/Day:   {total['cr'] / day_secs:,.0f}")
+    print(f"    Avg Cache Miss/Day:  {total['cm'] / day_secs:,.0f}")
     print(f"    Total Time:          {total['t']:.2f}s")
     print(f"    Avg Time/Request:    {total['t'] / n:.2f}s")
     print(f"    Total Output tok/s:  {total['c'] / total['t']:.1f}")
