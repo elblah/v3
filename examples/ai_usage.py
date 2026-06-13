@@ -275,6 +275,8 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
                 return None
         ts = entry["ts"].replace("_", "T")
         dt = datetime.fromisoformat(ts)
+        # Log timestamps are UTC; convert to local time for comparison
+        dt = dt + _get_tz_offset()
         if start and (dt < start or dt > end):
             return None
         provider = entry.get("api_provider", "openai")
