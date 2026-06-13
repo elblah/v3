@@ -19,6 +19,19 @@ DEFAULT_TIMEOUT = Config.default_shell_timeout()
 _active_proc: Optional[subprocess.Popen] = None
 
 
+def _get_cleared_env() -> Optional[Dict[str, str]]:
+    """Get environment with vars from AICODER_SHELL_CLEAR_VARS removed."""
+    clear_vars = os.environ.get("AICODER_SHELL_CLEAR_VARS")
+    if not clear_vars:
+        return None
+    
+    vars_to_clear = [v.strip() for v in clear_vars.split(",") if v.strip()]
+    if not vars_to_clear:
+        return None
+    
+    return {k: v for k, v in os.environ.items() if k not in vars_to_clear}
+
+
 def _kill_process_group(proc: subprocess.Popen) -> None:
     """Kill entire process group"""
     try:
@@ -39,6 +52,9 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
     """Execute command with proper process group termination"""
     global _active_proc
 
+    # Get env with cleared vars (or None to inherit parent env)
+    clean_env = _get_cleared_env()
+
     # Create process group for the entire process tree
     proc = subprocess.Popen(
         ["bash", "-c", command],
@@ -50,6 +66,7 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
         encoding="utf-8",
         errors="replace",
         cwd=cwd,
+        env=clean_env,
     )
 
     _active_proc = proc
