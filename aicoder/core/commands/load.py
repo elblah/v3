@@ -40,7 +40,13 @@ class LoadCommand(BaseCommand):
 
         # Handle no args: prefer session.json if exists, else load last
         if filename is None:
-            if file_exists("session.json"):
+            session_exists = file_exists("session.json")
+            last_exists = file_exists("last") or file_exists(".aicoder/last-session.json")
+
+            if session_exists and last_exists:
+                LogUtils.error("Both session.json and last-session.json exist. Use '/load session.json' or '/load last' to specify.")
+                return CommandResult(should_quit=False, run_api_call=False)
+            elif session_exists:
                 filename = "session.json"
             elif file_exists("last"):
                 filename = "last"
