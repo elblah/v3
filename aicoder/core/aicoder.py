@@ -33,7 +33,7 @@ from aicoder.core.session_manager import SessionManager  # noqa: E402
 from aicoder.core.prompt_builder import PromptBuilder  # noqa: E402
 from aicoder.core.socket_server import SocketServer  # noqa: E402
 from aicoder.core.plugin_system import PluginSystem  # noqa: E402
-from aicoder.utils.log import LogUtils, LogOptions  # noqa: E402
+from aicoder.utils.log import LogUtils  # noqa: E402
 from aicoder.utils.stdin_utils import read_stdin_as_string  # noqa: E402
 
 
@@ -448,12 +448,11 @@ class AICoder:
         """Setup signal handlers for graceful shutdown (Ctrl+Alt+Del, system shutdown, kill)"""
 
         def _handle_terminate(signum, frame):
-            """Handle termination signals - notify plugins and save session"""
+            """Handle termination signals - notify plugins then exit"""
             try:
-                self.plugin_system.call_hooks("on_shutdown", signum)
+                self.plugin_system.call_hooks("on_sigterm", signum)
             except Exception:
                 pass
-            self.save_session()
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, _handle_terminate)
