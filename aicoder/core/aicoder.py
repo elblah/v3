@@ -243,6 +243,10 @@ class AICoder:
             except KeyboardInterrupt:
                 continue
             except EOFError:
+                try:
+                    self.plugin_system.call_hooks("on_eof_error_readline", 0)
+                except Exception:
+                    pass
                 continue
             except Exception as e:
                 LogUtils.error(f"Error: {e}")
@@ -445,15 +449,21 @@ class AICoder:
         self.save_session()
 
     def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers for graceful shutdown (Ctrl+Alt+Del, system shutdown, kill)"""
+        """Setup signal handlers for graceful shutdown"""
 
-        def _handle_terminate(signum, frame):
-            """Handle termination signals - notify plugins then exit"""
+        def _handle_sigterm(signum, frame):
             try:
                 self.plugin_system.call_hooks("on_sigterm", signum)
             except Exception:
                 pass
             sys.exit(0)
 
-        signal.signal(signal.SIGTERM, _handle_terminate)
-        signal.signal(signal.SIGHUP, _handle_terminate)
+        def _handle_sighup(signum, frame):
+            try:
+                self.plugin_system.call_hooks("on_sighup", signum)
+            except Exception:
+                pass
+            # Don't exit — EOFError from dead PTY will handle it
+
+        signal.signal(signal.SIGTERM, _handle_sigterm)
+        signal.signal(signal.SIGHUP, _handle_sighup)
