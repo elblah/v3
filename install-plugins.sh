@@ -28,7 +28,7 @@ elif [[ "$@" =~ --default ]]; then
         git_aware.py goal.py httpx_http.py initial_prompt.py loop_detector.py
         luna_theme.py mdfmt.py model_switch.py notify_prompt.py orjson_fast.py
         presets.py prompt_reloader.py ralph.py ruff.py session-autosaver.py
-        shell.py skills.py snippets.py stats_logger.py timeit.py
+        shell.py shutdown_recovery.py skills.py snippets.py stats_logger.py timeit.py
         tools_manager.py tts_reader.py vision.py web_search.py
     )
     sels=""
