@@ -14,6 +14,7 @@ from aicoder.utils.json_utils import write_file
 
 def create_plugin(ctx):
     RECOVERY_DIR = ".aicoder"
+    _saved = False
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -26,10 +27,12 @@ def create_plugin(ctx):
         """Load a session file via /load command"""
         ctx.app.command_handler.handle_command(f"/load {path}")
 
-    # ── on_sigterm hook ──────────────────────────────────────────────────
-
-    def on_sigterm(signum):
-        """Save recovery session on SIGTERM/SIGHUP"""
+    def _save_recovery():
+        """Save recovery session (only once)"""
+        nonlocal _saved
+        if _saved:
+            return
+        _saved = True
         try:
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             path = os.path.join(RECOVERY_DIR, f"session_recovery_{ts}.json")
@@ -39,7 +42,20 @@ def create_plugin(ctx):
         except Exception:
             pass
 
+    # ── hooks ───────────────────────────────────────────────────────────
+
+    def on_sigterm(signum):
+        _save_recovery()
+
+    def on_sighup(signum):
+        _save_recovery()
+
+    def on_eof_error_readline(signum):
+        _save_recovery()
+
     ctx.register_hook("on_sigterm", on_sigterm)
+    ctx.register_hook("on_sighup", on_sighup)
+    ctx.register_hook("on_eof_error_readline", on_eof_error_readline)
 
     # ── /load-recovery command (alias /lr) ───────────────────────────────
 
