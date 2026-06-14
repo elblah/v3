@@ -10,7 +10,6 @@ import glob
 from datetime import datetime
 
 from aicoder.utils.json_utils import write_file
-from aicoder.utils.log import LogUtils
 
 
 def create_plugin(ctx):
@@ -27,21 +26,20 @@ def create_plugin(ctx):
         """Load a session file via /load command"""
         ctx.app.command_handler.handle_command(f"/load {path}")
 
-    # ── on_shutdown hook ─────────────────────────────────────────────────
+    # ── on_sigterm hook ──────────────────────────────────────────────────
 
-    def on_shutdown(signum):
-        """Save recovery session on termination signal"""
+    def on_sigterm(signum):
+        """Save recovery session on SIGTERM/SIGHUP"""
         try:
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             path = os.path.join(RECOVERY_DIR, f"session_recovery_{ts}.json")
             os.makedirs(RECOVERY_DIR, exist_ok=True)
             msgs = ctx.app.message_history.get_messages()
             write_file(path, msgs)
-            LogUtils.print(f"\n[!] Recovery session saved: {path}")
-        except Exception as e:
-            LogUtils.print(f"\n[!] Recovery save failed: {e}")
+        except Exception:
+            pass
 
-    ctx.register_hook("on_shutdown", on_shutdown)
+    ctx.register_hook("on_sigterm", on_sigterm)
 
     # ── /load-recovery command (alias /lr) ───────────────────────────────
 
@@ -91,8 +89,8 @@ def create_plugin(ctx):
             for f in files:
                 try:
                     os.remove(f)
-                except OSError as e:
-                    LogUtils.error(f"Failed to delete {f}: {e}")
+                except OSError:
+                    pass
             return f"Deleted {count} recovery file(s)."
 
         else:
@@ -107,7 +105,3 @@ def create_plugin(ctx):
 
     ctx.register_command("load-recovery", cmd_load_recovery, "Load recovery session")
     ctx.register_command("lr", cmd_load_recovery, "Alias for /load-recovery")
-
-    from aicoder.core.config import Config
-    if Config.debug():
-        LogUtils.debug("[+] Shutdown recovery plugin loaded")
