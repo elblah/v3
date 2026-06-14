@@ -8,6 +8,7 @@ import os
 import time
 import json
 import atexit
+import signal
 from typing import Dict, Any
 
 from aicoder.core.config import Config
@@ -444,7 +445,16 @@ class AICoder:
         self.save_session()
 
     def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers - only preserve original KeyboardInterrupt behavior"""
-        # Only need to ensure default SIGINT (Ctrl+C) behavior is preserved
-        # All other shutdown methods (commands, socket, etc.) handle their own cleanup
-        pass  # No signal handlers - let system defaults handle signals
+        """Setup signal handlers for graceful shutdown (Ctrl+Alt+Del, system shutdown, kill)"""
+
+        def _handle_terminate(signum, frame):
+            """Handle termination signals - notify plugins and save session"""
+            try:
+                self.plugin_system.call_hooks("on_shutdown", signum)
+            except Exception:
+                pass
+            self.save_session()
+            os._exit(0)
+
+        signal.signal(signal.SIGTERM, _handle_terminate)
+        signal.signal(signal.SIGHUP, _handle_terminate)
