@@ -454,7 +454,7 @@ class AICoder:
             except Exception:
                 pass
             self.save_session()
-            os._exit(0)
+            sys.exit(0)
 
         signal.signal(signal.SIGTERM, _handle_terminate)
         signal.signal(signal.SIGHUP, _handle_terminate)
