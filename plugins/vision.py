@@ -363,6 +363,7 @@ def create_plugin(ctx) -> Dict[str, Any]:
             return
 
         import subprocess
+        print("Launching Flameshot...")
         result = subprocess.run(["flameshot", "gui", "--path", screenshot_path])
         if result.returncode != 0 or not os.path.exists(screenshot_path):
             print("Screenshot cancelled.")
