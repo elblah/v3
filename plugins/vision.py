@@ -342,4 +342,49 @@ def create_plugin(ctx) -> Dict[str, Any]:
             format_arguments=format_read_image_args
         )
 
+    # Screenshot command
+    def has_x11_access():
+        """Check if X11 display is accessible."""
+        import subprocess
+        result = subprocess.run(["xset", "q"], capture_output=True)
+        return result.returncode == 0
+
+    def _handle_screenshot(args: str):
+        """Handle /screenshot and /ss commands."""
+        screenshot_path = "/tmp/screenshot.png"
+
+        if not has_x11_access():
+            print("Error: No X11 access. Run 'xhost +' on your host.")
+            return
+
+        import shutil
+        if not shutil.which("flameshot"):
+            print("Error: flameshot not found.")
+            return
+
+        import subprocess
+        result = subprocess.run(["flameshot", "gui", "--path", screenshot_path])
+        if result.returncode != 0 or not os.path.exists(screenshot_path):
+            print("Screenshot cancelled.")
+            return
+
+        try:
+            image_part = create_image_content_part(screenshot_path)
+            ctx.app.add_plugin_message({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Screenshot taken:"},
+                    image_part
+                ]
+            })
+            print("Screenshot added to conversation.")
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            if os.path.exists(screenshot_path):
+                os.remove(screenshot_path)
+
+    ctx.register_command("screenshot", _handle_screenshot, "Take a screenshot with flameshot")
+    ctx.register_command("ss", _handle_screenshot, "Alias for /screenshot")
+
     return {}
