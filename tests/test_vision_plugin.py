@@ -212,6 +212,7 @@ def test_plugin_integration():
     mock_ctx = type('MockCtx', (), {})()
     mock_ctx.register_hook = lambda name, fn: None
     mock_ctx.register_tool = lambda name, fn, description, parameters, auto_approved=False, format_arguments=None, generate_preview=None: None
+    mock_ctx.register_command = lambda name, fn, description=None: None
     mock_ctx.app = MockApp()
 
     result = create_plugin(mock_ctx)

@@ -24,7 +24,6 @@ def test_stats_initialization():
     assert stats.current_prompt_size == 0
     assert stats.current_prompt_size_estimated == False
     assert stats.last_user_prompt == ""
-    assert stats.usage_infos == []
 
 
 def test_incrementers():
@@ -86,13 +85,6 @@ def test_setters():
     stats.set_last_user_prompt("Hello world")
     assert stats.last_user_prompt == "Hello world"
 
-    # Test usage info
-    usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-    stats.add_usage_info(usage)
-    assert len(stats.usage_infos) == 1
-    assert stats.usage_infos[0]["usage"] == usage
-    assert "time" in stats.usage_infos[0]
-
 
 def test_reset():
     """Test reset functionality"""
@@ -102,9 +94,6 @@ def test_reset():
     stats.increment_api_requests()
     stats.add_api_time(1.0)
     stats.set_last_user_prompt("test")
-    stats.add_usage_info(
-        {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-    )
 
     # Reset
     stats.reset()
@@ -113,7 +102,6 @@ def test_reset():
     assert stats.api_requests == 0
     assert stats.api_time_spent == 0
     assert stats.last_user_prompt == ""
-    assert stats.usage_infos == []
 
 
 def test_print_stats(capsys):
