@@ -13,6 +13,9 @@ from aicoder.utils.log import LogUtils
 class ContextBar:
     """Context bar component for displaying context usage"""
 
+    _DIM = Config.colors['dim']
+    _SEP = f"{_DIM} - "
+
     def __init__(self):
         self.plugin_system = None
 
@@ -84,14 +87,14 @@ class ContextBar:
             hook_results = self.plugin_system.call_hooks("on_context_bar") or []
             for result in hook_results:
                 if result:
-                    suffix += f" - {result}"
+                    suffix += f"{self._SEP}{result}{Config.colors['reset']}"
 
         if time_str and api_time_str:
-            return f"{context_bar}{Config.colors['dim']} - {time_str} - {api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
+            return f"{context_bar}{self._SEP}{time_str}{self._SEP}{api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
         elif time_str:
-            return f"{context_bar}{Config.colors['dim']} - {time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
+            return f"{context_bar}{self._SEP}{time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
         elif api_time_str:
-            return f"{context_bar}{Config.colors['dim']} - {api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
+            return f"{context_bar}{self._SEP}{api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
 
         return f"{context_bar}{suffix}{Config.colors['reset']}"
 
