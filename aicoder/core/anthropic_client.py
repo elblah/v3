@@ -364,8 +364,6 @@ class AnthropicClient:
             "done": True
         }
 
-    # TODO: Anthropic non-streaming tool_calls are not being yielded
-    # accumulated_tool_calls is built but never included in the output
     def _handle_non_streaming_response(self, response: Response, start_time: float) -> Generator[Dict[str, Any], None, None]:
         data = response.json()
         
@@ -417,11 +415,16 @@ class AnthropicClient:
             self._plugin_system.call_hooks("after_usage_data", usage)
 
         # Yield same format as streaming content chunks (with choices wrapper)
+        # Convert tool_calls to list with numeric index for stream_processor compatibility
+        tool_calls_list = [
+            {**tc, "index": i} for i, tc in enumerate(accumulated_tool_calls.values())
+        ]
         yield {
             "choices": [{
                 "delta": {
                     "content": full_content,
-                    "reasoning_content": accumulated_reasoning
+                    "reasoning_content": accumulated_reasoning,
+                    "tool_calls": tool_calls_list
                 }
             }],
             "done": True
