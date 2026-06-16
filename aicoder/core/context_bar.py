@@ -87,7 +87,7 @@ class ContextBar:
             hook_results = self.plugin_system.call_hooks("on_context_bar") or []
             for result in hook_results:
                 if result:
-                    suffix += f"{self._SEP}{result}{Config.colors['reset']}"
+                    suffix += f"{self._SEP}{Config.colors['reset']}{result}{Config.colors['reset']}"
 
         if time_str and api_time_str:
             return f"{context_bar}{self._SEP}{time_str}{self._SEP}{api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
