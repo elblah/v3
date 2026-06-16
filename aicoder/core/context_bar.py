@@ -87,11 +87,11 @@ class ContextBar:
                     suffix += f" - {result}"
 
         if time_str and api_time_str:
-            return f"{context_bar}{Config.colors['dim']} - {time_str} - {api_time_str}{suffix}{Config.colors['reset']}"
+            return f"{context_bar}{Config.colors['dim']} - {time_str} - {api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
         elif time_str:
-            return f"{context_bar}{Config.colors['dim']} - {time_str}{suffix}{Config.colors['reset']}"
+            return f"{context_bar}{Config.colors['dim']} - {time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
         elif api_time_str:
-            return f"{context_bar}{Config.colors['dim']} - {api_time_str}{suffix}{Config.colors['reset']}"
+            return f"{context_bar}{Config.colors['dim']} - {api_time_str}{Config.colors['reset']}{suffix}{Config.colors['reset']}"
 
         return f"{context_bar}{suffix}{Config.colors['reset']}"
 
