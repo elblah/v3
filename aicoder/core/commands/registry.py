@@ -78,6 +78,7 @@ class CommandRegistry:
         from .new import NewCommand
         from .debug import DebugCommand
         from .thinking import ThinkingCommand
+        from .context_size import ContextSizeCommand
 
         commands = [
             HelpCommand(self.context),
@@ -95,6 +96,7 @@ class CommandRegistry:
             NewCommand(self.context),
             DebugCommand(self.context),
             ThinkingCommand(self.context),
+            ContextSizeCommand(self.context),
         ]
 
         for command in commands:
