@@ -59,6 +59,7 @@ class AICoder:
 
         # Plugin system (ultra-fast)
         self.plugin_system = PluginSystem(plugins_dir=".aicoder/plugins")
+        self.context_bar.set_plugin_system(self.plugin_system)
 
         # Extracted components (need to be initialized after core services)
         self.tool_executor = ToolExecutor(self.tool_manager, self.message_history, self.plugin_system)

@@ -14,7 +14,11 @@ class ContextBar:
     """Context bar component for displaying context usage"""
 
     def __init__(self):
-        pass
+        self.plugin_system = None
+
+    def set_plugin_system(self, plugin_system):
+        """Set plugin system reference for hooks"""
+        self.plugin_system = plugin_system
 
     def format_context_bar(self, stats, message_history) -> str:
         """
@@ -75,14 +79,21 @@ class ContextBar:
         else:
             api_time_str = None
 
-        if time_str and api_time_str:
-            return f"{context_bar}{Config.colors['dim']} - {time_str} - {api_time_str}{Config.colors['reset']}"
-        elif time_str:
-            return f"{context_bar}{Config.colors['dim']} - {time_str}{Config.colors['reset']}"
-        elif api_time_str:
-            return f"{context_bar}{Config.colors['dim']} - {api_time_str}{Config.colors['reset']}"
+        suffix = ""
+        if self.plugin_system:
+            hook_results = self.plugin_system.call_hooks("on_context_bar") or []
+            for result in hook_results:
+                if result:
+                    suffix += f" - {result}"
 
-        return f"{context_bar}{Config.colors['reset']}"
+        if time_str and api_time_str:
+            return f"{context_bar}{Config.colors['dim']} - {time_str} - {api_time_str}{suffix}{Config.colors['reset']}"
+        elif time_str:
+            return f"{context_bar}{Config.colors['dim']} - {time_str}{suffix}{Config.colors['reset']}"
+        elif api_time_str:
+            return f"{context_bar}{Config.colors['dim']} - {api_time_str}{suffix}{Config.colors['reset']}"
+
+        return f"{context_bar}{suffix}{Config.colors['reset']}"
 
     def get_current_hour(self) -> Optional[str]:
         """Get current hour string"""

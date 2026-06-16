@@ -50,6 +50,19 @@ def create_plugin(ctx):
         else:
             print("[*] Git aware: Not a git repository")
 
+    def _is_repo_dirty():
+        """Check if repo has uncommitted changes"""
+        try:
+            result = _get_subprocess().run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0 and result.stdout.strip()
+        except:
+            return False
+
     def on_before_user_prompt():
         """Hook: Add git context to system prompt before user prompt"""
         if not _cached_git_branch:
@@ -74,8 +87,20 @@ Git Repository:
 """
         system_msg["content"] = original_content + git_context
 
-    # Register hook
+    def on_context_bar():
+        """Hook: Add git status to context bar"""
+        if not _cached_git_branch:
+            return None
+
+        dirty = _is_repo_dirty()
+        if dirty:
+            return f"{Config.colors['yellow']}{Config.colors['bold']}Git{Config.colors['reset']}"
+        return f"{Config.colors['dim']}Git{Config.colors['reset']}"
+
+    # Register hooks
     ctx.register_hook("before_user_prompt", on_before_user_prompt)
+    ctx.register_hook("on_context_bar", on_context_bar)
 
     if Config.debug():
         print("  - before_user_prompt hook (git awareness)")
+        print("  - on_context_bar hook (git status)")
