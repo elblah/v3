@@ -94,8 +94,8 @@ Git Repository:
 
         dirty = _is_repo_dirty()
         if dirty:
-            return f"{Config.colors['yellow']}{Config.colors['bold']}Git{Config.colors['reset']}"
-        return f"{Config.colors['dim']}Git{Config.colors['reset']}"
+            return f"{Config.colors['yellow']}{Config.colors['bold']}Git"
+        return f"{Config.colors['dim']}Git"
 
     # Register hooks
     ctx.register_hook("before_user_prompt", on_before_user_prompt)
