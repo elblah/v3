@@ -550,13 +550,32 @@ class Config:
         return int(os.environ.get("TOTAL_TIMEOUT_EXTENSION", "30"))
 
     # Context and Memory Configuration
+    _default_context_size = int(os.environ.get("CONTEXT_SIZE", "128000"))
+    _context_size = _default_context_size
+
     @staticmethod
     def context_size() -> int:
         """
         Get context size
         
         """
-        return int(os.environ.get("CONTEXT_SIZE", "128000"))
+        return Config._context_size
+
+    @staticmethod
+    def default_context_size() -> int:
+        """
+        Get default context size (from env var)
+        
+        """
+        return Config._default_context_size
+
+    @staticmethod
+    def set_context_size(size: int) -> None:
+        """
+        Set context size at runtime
+        
+        """
+        Config._context_size = size
 
     @staticmethod
     def context_compact_percentage() -> int:
