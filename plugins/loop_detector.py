@@ -39,8 +39,24 @@ _YELLOW = "\033[93m"
 _RESET = "\033[0m"
 
 
-def _fingerprint(content: str) -> str:
-    return hashlib.md5(content.encode()).hexdigest()
+def _fingerprint(msg: dict) -> str:
+    """Fingerprint entire message including text and tool calls"""
+    # Extract text content
+    content = msg.get("content", "")
+    
+    # Extract tool calls if present
+    tool_calls = msg.get("tool_calls", [])
+    
+    # Build fingerprint parts
+    parts = [f"text:{content}"]
+    
+    if tool_calls:
+        # Sort tool calls for deterministic fingerprinting
+        for tc in sorted(tool_calls, key=lambda x: str(x)):
+            parts.append(f"tool:{tc}")
+    
+    combined = "|".join(parts)
+    return hashlib.md5(combined.encode()).hexdigest()
 
 
 def _count_repeats() -> int:
@@ -76,8 +92,7 @@ def after_assistant_message_added(msg: dict) -> None:
     """Track fingerprints"""
     if not _enabled:
         return
-    content = msg.get("content", "")
-    fp = _fingerprint(content)
+    fp = _fingerprint(msg)
     _history.append(fp)
     if len(_history) > _max_history:
         _history.pop(0)
