@@ -83,6 +83,9 @@ class ContextSizeCommand(BaseCommand):
         old_size = current_size
         Config.set_context_size(new_size)
 
+        # Notify plugins of context size change
+        self.context.command_handler.plugin_system.call_hooks("on_context_size_changed", new_size)
+
         # Show confirmation
         LogUtils.success(f"Context size changed: {self._format_size(old_size)} → {self._format_size(new_size)}")
 

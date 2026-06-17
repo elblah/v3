@@ -40,6 +40,13 @@ def create_plugin(ctx):
 
     # Track last compaction size to avoid re-triggering
     _last_compact_size = 0
+    _threshold_pct = threshold_pct  # store for recalculation
+
+    def _on_context_size_changed(new_size):
+        """Update threshold when context size changes via /cs"""
+        nonlocal _last_compact_size
+        _last_compact_size = 0  # Reset to allow re-trigger at new threshold
+        LogUtils.print(f"[compact_strategy] Context size changed to {new_size:,}, threshold now {int(new_size * (_threshold_pct / 100)):,} tokens")
 
     def _on_after_ai_processing(has_tool_calls=None):
         nonlocal _last_compact_size
@@ -93,8 +100,9 @@ def create_plugin(ctx):
             LogUtils.warn("[!] compact_strategy: No KEEP_MESSAGES or KEEP_PERCENT set")
             return
 
-    # Register hook
+    # Register hooks
     ctx.register_hook("after_ai_processing", _on_after_ai_processing)
+    ctx.register_hook("on_context_size_changed", _on_context_size_changed)
 
     if Config.debug():
         LogUtils.print("[+] compact_strategy plugin loaded")
