@@ -4,11 +4,28 @@ Extracted from AICoder class for better separation of concerns
 """
 
 import json
+import readline
 from typing import Dict, Any, List, Union
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.core.tool_formatter import ToolFormatter
+
+
+def _set_approval_history():
+    """Clear readline history and add only approval options"""
+    saved = [readline.get_history_item(i) for i in range(1, readline.get_current_history_length() + 1)]
+    readline.clear_history()
+    for opt in ["yolo", "no", "yes"]:
+        readline.add_history(opt)
+    return saved
+
+
+def _restore_history(saved):
+    """Restore readline history from saved list"""
+    readline.clear_history()
+    for item in saved:
+        readline.add_history(item)
 
 
 class ToolExecutor:
@@ -187,6 +204,8 @@ class ToolExecutor:
                     pass
 
         try:
+            saved_history = _set_approval_history()
+            
             while True:
                 approval = input("Approve [Y/n]: ").strip().lower()
                 
@@ -198,6 +217,7 @@ class ToolExecutor:
                 
                 # Handle yolo command
                 if approval == 'yolo':
+                    _restore_history(saved_history)
                     Config.set_yolo_mode(True)
                     LogUtils.success('[*] YOLO mode ENABLED')
                     return True
@@ -220,6 +240,9 @@ class ToolExecutor:
                 # Invalid input - show error and re-prompt
                 LogUtils.error("Invalid option. Valid: Y, n, a, d, yes, no (append + for guidance mode)")
             
+            # Restore readline history
+            _restore_history(saved_history)
+            
             # User denied
             if canonical_answer not in ['y', 'yes']:
                 LogUtils.error('[x] Tool execution cancelled.')
@@ -238,6 +261,8 @@ class ToolExecutor:
             return True
             
         except (EOFError, KeyboardInterrupt):
+            # Restore readline history on error
+            _restore_history(saved_history)
             LogUtils.error('[x] Tool execution cancelled.')
             LogUtils.print()  # Blank line before context bar
             return False
