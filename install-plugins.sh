@@ -23,7 +23,7 @@ elif [[ "$@" =~ --default ]]; then
     # Hardcoded list of plugins currently installed on this computer
     DEFAULT_PLUGINS=(
         a11y.py alibaba_transform.py anthropic_prompt_cache.py audio.py
-        auto_next_prompt.py auto_pruner.py bg_jobs.py clipboard.py
+        auto_next_prompt.py auto_pruner.py autoexec.py bg_jobs.py clipboard.py
         command_completer.py compact_strategy.py copy.py empty_retry.py
         git_aware.py goal.py httpx_http.py initial_prompt.py loop_detector.py
         luna_theme.py mdfmt.py model_switch.py notify_prompt.py orjson_fast.py
