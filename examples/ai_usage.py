@@ -340,16 +340,21 @@ def main():
     # Parse time range
     if len(args) >= 2 and args[0] in ("hours", "days", "minutes"):
         try:
-            n = int(args[1])
             if args[0] == "hours":
-                delta = timedelta(hours=n)
-                label = f"last {n} hours"
+                # Support hours:minutes format (e.g., "4:20" = 4h 20m)
+                if ':' in args[1]:
+                    parts = args[1].split(':')
+                    delta = timedelta(hours=int(parts[0]), minutes=int(parts[1]))
+                    label = f"last {parts[0]}h {parts[1]}m"
+                else:
+                    delta = timedelta(hours=int(args[1]))
+                    label = f"last {args[1]} hours"
             elif args[0] == "days":
-                delta = timedelta(days=n)
-                label = f"last {n} days"
+                delta = timedelta(days=int(args[1]))
+                label = f"last {args[1]} days"
             else:
-                delta = timedelta(minutes=n)
-                label = f"last {n} minutes"
+                delta = timedelta(minutes=int(args[1]))
+                label = f"last {args[1]} minutes"
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             start = now - delta
             end = now
