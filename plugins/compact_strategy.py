@@ -21,8 +21,7 @@ import os
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
-colors = Config.colors
-CS = colors["bold"] + colors["yellow"]  # compact_strategy prefix color
+
 
 
 def create_plugin(ctx):
@@ -49,7 +48,8 @@ def create_plugin(ctx):
         """Update threshold when context size changes via /cs"""
         nonlocal _last_compact_size
         _last_compact_size = 0  # Reset to allow re-trigger at new threshold
-        LogUtils.print(f"{CS}[compact_strategy] Context size changed to {new_size:,}, threshold now {int(new_size * (_threshold_pct / 100)):,} tokens{colors['reset']}")
+        c = Config.colors
+        LogUtils.print(f"{c['bold']}{c['yellow']}[compact_strategy] Context size changed to {new_size:,}, threshold now {int(new_size * (_threshold_pct / 100)):,} tokens{c['reset']}")
 
     def _on_after_ai_processing(has_tool_calls=None):
         nonlocal _last_compact_size
@@ -76,7 +76,8 @@ def create_plugin(ctx):
         if keep_messages:
             n = -int(keep_messages)
             msg_count = app.message_history.get_message_count()
-            LogUtils.print(f"{CS}[compact_strategy] Context {current_tokens}/{max_tokens} ({100*current_tokens/max_tokens:.0f}%) - keeping {keep_messages} msgs, compacting {max(0, msg_count - int(keep_messages))}{colors['reset']}")
+            c = Config.colors
+            LogUtils.print(f"{c['bold']}{c['yellow']}[compact_strategy] Context {current_tokens}/{max_tokens} ({100*current_tokens/max_tokens:.0f}%) - keeping {keep_messages} msgs, compacting {max(0, msg_count - int(keep_messages))}{c['reset']}")
             app.message_history.force_compact_messages(n)
         elif keep_percent:
             target_tokens = int(max_tokens * (int(keep_percent) / 100))
@@ -97,7 +98,8 @@ def create_plugin(ctx):
                 count += 1
 
             n = -count
-            LogUtils.print(f"{CS}[compact_strategy] Context {current_tokens}/{max_tokens} ({100*current_tokens/max_tokens:.0f}%) - keeping {keep_percent}% ({target_tokens} tokens, ~{count} msgs){colors['reset']}")
+            c = Config.colors
+            LogUtils.print(f"{c['bold']}{c['yellow']}[compact_strategy] Context {current_tokens}/{max_tokens} ({100*current_tokens/max_tokens:.0f}%) - keeping {keep_percent}% ({target_tokens} tokens, ~{count} msgs){c['reset']}")
             app.message_history.force_compact_messages(n)
         else:
             LogUtils.warn("[!] compact_strategy: No KEEP_MESSAGES or KEEP_PERCENT set")
