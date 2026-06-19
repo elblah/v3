@@ -107,8 +107,9 @@ class PluginSystem:
     Ultra-fast plugin loader
 
     Features:
-    - Prioritizes .aicoder/plugins/ if it exists (project-specific)
-    - Falls back to ~/.config/aicoder-v3/plugins/ for global plugins
+    - Loads both local and global plugins simultaneously
+    - Local .aicoder/plugins/ loaded first, overrides global if same name
+    - Global ~/.config/aicoder-v3/plugins/ as shared pool
     - Single file per plugin
     - Duck-typed: just create_plugin(context) function
     - Hook system for events
@@ -185,37 +186,10 @@ class PluginSystem:
         if self._app and self._app.input_handler:
             self._app.input_handler.register_completer(completer)
 
-    def load_plugins(self) -> None:
-        """
-        Load plugins from .aicoder/plugins/ or ~/.config/aicoder-v3/plugins/
-
-        Priority order:
-        1. Local .aicoder/plugins/ (if exists) - takes precedence
-        2. Global ~/.config/aicoder-v3/plugins/ (fallback)
-
-        Ultra-fast: returns immediately if no plugins directory exists.
-        """
-        # Determine which directory to use
-        plugins_dir_to_use = None
-        source_name = None
-
-        if os.path.exists(self.plugins_dir):
-            plugins_dir_to_use = self.plugins_dir
-            source_name = "local"
-        elif os.path.exists(self.global_plugins_dir):
-            plugins_dir_to_use = self.global_plugins_dir
-            source_name = "global"
-
-        # Fast exit - no plugins directory
-        if not plugins_dir_to_use:
-            return
-
-        if source_name == "global" and sys.stdout.isatty():
-            LogUtils.print(f"[i] Loading plugins from global directory: {self.global_plugins_dir}")
-
-        # Get plugin files sorted numerically then alphabetically
+    def _get_plugin_files(self, plugins_dir: str) -> List[tuple]:
+        """Get sorted plugin files from a directory, filtered by allow/deny"""
         plugin_files = []
-        for filename in os.listdir(plugins_dir_to_use):
+        for filename in os.listdir(plugins_dir):
             if filename.endswith(".py") and not filename.startswith("_"):
                 plugin_files.append(filename)
 
@@ -239,23 +213,40 @@ class PluginSystem:
         if denied_plugins:
             plugin_files = [f for f in plugin_files if Path(f).stem not in denied_plugins]
 
-        # Load each plugin
-        total_start = time.perf_counter()
-        if Config.debug():
-            for filename in plugin_files:
-                t0 = time.perf_counter()
-                self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
-                dt = time.perf_counter() - t0
-                print(f"[+] Loaded plugin: {Path(filename).stem} ({dt:.3f}s)")
-            total_dt = time.perf_counter() - total_start
-            print(f"[+] Plugins loaded in {total_dt:.3f}s")
-        else:
-            for filename in plugin_files:
-                self._load_single_plugin(os.path.join(plugins_dir_to_use, filename))
+        return [(Path(f).stem, os.path.join(plugins_dir, f)) for f in plugin_files]
 
-    def _load_single_plugin(self, plugin_path: str) -> None:
+    def load_plugins(self) -> None:
+        """
+        Load plugins from local .aicoder/plugins/ and global ~/.config/aicoder-v3/plugins/
+
+        - Local plugins loaded first
+        - Global plugins loaded second, skipping any already loaded locally (local overrides)
+        - Ultra-fast: returns immediately if no plugins directory exists
+        """
+        loaded_plugins: Dict[str, str] = {}  # plugin_name -> source
+
+        # 1. Load local plugins first
+        if os.path.exists(self.plugins_dir):
+            for plugin_name, plugin_path in self._get_plugin_files(self.plugins_dir):
+                self._load_single_plugin(plugin_path, plugin_name)
+                loaded_plugins[plugin_name] = "local"
+
+        # 2. Load global plugins, skip if already loaded locally
+        if os.path.exists(self.global_plugins_dir):
+            if sys.stdout.isatty():
+                LogUtils.print(f"[i] Loading global plugins from: {self.global_plugins_dir}")
+
+            for plugin_name, plugin_path in self._get_plugin_files(self.global_plugins_dir):
+                if plugin_name not in loaded_plugins:
+                    self._load_single_plugin(plugin_path, plugin_name)
+                    loaded_plugins[plugin_name] = "global"
+
+        # Debug timing
+        if Config.debug() and self.plugins:
+            print(f"[+] Loaded {len(self.plugins)} plugins: {', '.join(sorted(self.plugins))}")
+
+    def _load_single_plugin(self, plugin_path: str, plugin_name: str) -> None:
         """Load a single plugin file"""
-        plugin_name = Path(plugin_path).stem
         try:
             # Fast import using importlib
             spec = importlib.util.spec_from_file_location(
