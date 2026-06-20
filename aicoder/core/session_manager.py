@@ -55,6 +55,7 @@ class SessionManager:
                 streaming_result.get("reasoning_content", ""),
                 streaming_result.get("reasoning_field"),
                 streaming_result["accumulated_tool_calls"],
+                streaming_result.get("thinking_signature", ""),
             )
 
             self._handle_post_processing(has_tool_calls, status)
@@ -111,7 +112,7 @@ class SessionManager:
         return result
 
     def _validate_and_process_tool_calls(
-        self, full_response: str, reasoning_content: str, reasoning_field: str, accumulated_tool_calls: dict
+        self, full_response: str, reasoning_content: str, reasoning_field: str, accumulated_tool_calls: dict, thinking_signature: str = ""
     ) -> tuple[bool, str]:
         """Validate and process accumulated tool calls
         
@@ -122,7 +123,7 @@ class SessionManager:
                 - "validation_error": Tool calls had invalid JSON (error condition)
         """
         if not accumulated_tool_calls:
-            self._handle_empty_response(full_response, reasoning_content, reasoning_field)
+            self._handle_empty_response(full_response, reasoning_content, reasoning_field, thinking_signature)
             return False, "empty_response"
 
         valid_tool_calls = self._validate_tool_calls(accumulated_tool_calls)
@@ -157,6 +158,9 @@ class SessionManager:
         # Add reasoning with the provider's field name for continuity
         if reasoning_content and reasoning_field:
             assistant_message[reasoning_field] = reasoning_content
+            # Store signature for Anthropic-style APIs (required for multi-turn)
+            if thinking_signature:
+                assistant_message["thinking_signature"] = thinking_signature
 
         self.message_history.add_assistant_message(assistant_message)
 
@@ -196,7 +200,7 @@ class SessionManager:
         """Handle processing errors"""
         LogUtils.error(f"Processing error: {error}")
 
-    def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str) -> None:
+    def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str, thinking_signature: str = "") -> None:
         """Handle empty response from AI"""
         if full_response and full_response.strip() != "":
             # AI provided text response but no tools
@@ -205,6 +209,8 @@ class SessionManager:
             # Add reasoning with the provider's field name for continuity
             if reasoning_content and reasoning_field:
                 assistant_message[reasoning_field] = reasoning_content
+                if thinking_signature:
+                    assistant_message["thinking_signature"] = thinking_signature
 
             self.message_history.add_assistant_message(assistant_message)
             LogUtils.print("")
@@ -216,6 +222,8 @@ class SessionManager:
             # Add reasoning with the provider's field name for continuity
             if reasoning_content and reasoning_field:
                 assistant_message[reasoning_field] = reasoning_content
+                if thinking_signature:
+                    assistant_message["thinking_signature"] = thinking_signature
 
             self.message_history.add_assistant_message(assistant_message)
             LogUtils.print("")

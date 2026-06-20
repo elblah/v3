@@ -43,6 +43,7 @@ class StreamProcessor:
 
         # Track which reasoning field name the provider uses
         reasoning_field_name = None
+        thinking_signature = ""
 
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
@@ -81,9 +82,10 @@ class StreamProcessor:
                     # Different providers use different field names for reasoning:
                     # - GLM, llama.cpp: "reasoning_content"
                     # - Some OpenAI-compatible endpoints: "reasoning"
+                    # - Anthropic: "thinking"
                     # - Others: "reasoning_text"
                     # Use first non-empty field to avoid duplication (e.g., chutes.ai returns both)
-                    reasoning_fields = ["reasoning_content", "reasoning", "reasoning_text"]
+                    reasoning_fields = ["reasoning_content", "reasoning", "thinking", "reasoning_text"]
 
                     for field in reasoning_fields:
                         reasoning = delta.get(field)
@@ -95,6 +97,10 @@ class StreamProcessor:
                                 reasoning_field_name = field
                             # Only use the first non-empty field (avoid duplication)
                             break
+
+                    # Capture thinking signature for Anthropic-style APIs
+                    if delta.get("thinking_signature"):
+                        thinking_signature = delta.get("thinking_signature")
 
                     # Debug: log which reasoning field was detected
                     if Config.debug() and reasoning_field_name and accumulated_reasoning == reasoning:
@@ -132,6 +138,7 @@ class StreamProcessor:
                 "full_response": "",
                 "reasoning_content": "",
                 "reasoning_field": None,
+                "thinking_signature": "",
                 "accumulated_tool_calls": {},
                 "error": str(e)
             }
@@ -141,6 +148,7 @@ class StreamProcessor:
             "full_response": full_response,
             "reasoning_content": accumulated_reasoning,
             "reasoning_field": reasoning_field_name,
+            "thinking_signature": thinking_signature,
             "accumulated_tool_calls": accumulated_tool_calls,
         }
 

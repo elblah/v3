@@ -149,12 +149,49 @@ class AnthropicClient:
             elif msg.get("role") == "assistant" and msg.get("tool_calls"):
                 # Convert OpenAI assistant+tool_calls format to Anthropic format
                 content_blocks = []
+                # Add thinking block if present (with signature for Anthropic)
+                if msg.get("thinking") and msg.get("thinking_signature"):
+                    content_blocks.append({
+                        "type": "thinking",
+                        "thinking": msg.get("thinking"),
+                        "signature": msg.get("thinking_signature")
+                    })
+                elif msg.get("thinking"):
+                    # Fallback without signature (may fail for Anthropic)
+                    content_blocks.append({
+                        "type": "thinking",
+                        "thinking": msg.get("thinking")
+                    })
                 for tc in msg.get("tool_calls", []):
                     content_blocks.append({
                         "type": "tool_use",
                         "id": tc.get("id", ""),
                         "name": tc.get("function", {}).get("name", ""),
                         "input": json.loads(tc.get("function", {}).get("arguments", "{}") or "{}")
+                    })
+                if msg.get("content"):
+                    content_blocks.append({
+                        "type": "text",
+                        "text": msg.get("content")
+                    })
+                conversation.append({
+                    "role": "assistant",
+                    "content": content_blocks
+                })
+            elif msg.get("role") == "assistant" and msg.get("thinking"):
+                # Assistant with thinking but no tool_calls - format properly for Anthropic
+                content_blocks = []
+                # Add thinking block if present (with signature for Anthropic)
+                if msg.get("thinking_signature"):
+                    content_blocks.append({
+                        "type": "thinking",
+                        "thinking": msg.get("thinking"),
+                        "signature": msg.get("thinking_signature")
+                    })
+                else:
+                    content_blocks.append({
+                        "type": "thinking",
+                        "thinking": msg.get("thinking")
                     })
                 if msg.get("content"):
                     content_blocks.append({
@@ -209,6 +246,7 @@ class AnthropicClient:
         current_tool_input = ""
         thinking_printed = False
         message_usage = None
+        self._thinking_signature = ""
 
         def _show_thinking():
             nonlocal thinking_printed
@@ -303,9 +341,15 @@ class AnthropicClient:
                                     if not thinking_printed:
                                         _show_thinking()
                                     yield {
-                                        "choices": [{"delta": {"reasoning_content": thinking}}],
+                                        "choices": [{"delta": {"thinking": thinking}}],
                                         "done": False
                                     }
+                                    
+                                elif delta_type == "signature_delta":
+                                    # Capture signature for thinking block (required for multi-turn)
+                                    self._thinking_signature = delta.get("signature", "")
+                                    if Config.debug():
+                                        log_debug(f"*** Captured thinking signature: {self._thinking_signature[:20]}...")
                                     
                                 elif delta_type == "text_delta":
                                     _clear_thinking()
@@ -388,8 +432,15 @@ class AnthropicClient:
             self._plugin_system.call_hooks("after_usage_data", message_usage)
 
         yield {
-            "content": full_content,
-            "reasoning_content": accumulated_reasoning,
+            "choices": [{
+                "delta": {
+                    "content": full_content,
+                    "reasoning_content": accumulated_reasoning,
+                    "thinking_signature": self._thinking_signature,
+                },
+                "finish_reason": "stop",
+                "index": 0
+            }],
             "accumulated_tool_calls": accumulated_tool_calls,
             "done": True
         }
@@ -402,12 +453,14 @@ class AnthropicClient:
         accumulated_tool_calls = {}
 
         content = data.get('content', [])
+        thinking_signature = ""
         if isinstance(content, list):
             for block in content:
                 btype = block.get('type')
                 
                 if btype == 'thinking':
                     accumulated_reasoning = block.get('thinking', '')
+                    thinking_signature = block.get('signature', '')
                 elif btype == 'text':
                     full_content = block.get('text', '')
                 elif btype == 'tool_use':
@@ -454,6 +507,7 @@ class AnthropicClient:
                 "delta": {
                     "content": full_content,
                     "reasoning_content": accumulated_reasoning,
+                    "thinking_signature": thinking_signature,
                     "tool_calls": tool_calls_list
                 }
             }],
