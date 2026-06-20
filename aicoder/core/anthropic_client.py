@@ -226,30 +226,56 @@ class AnthropicClient:
         
         # Read incrementally and process per event
         event_data = ""
-        
-        while True:
+        line_count = 0
+        resp_log = None
+
+        if Config.debug():
+            log_debug("*** SSE streaming loop started")
+            try:
+                debug_dir = os.path.join(os.getcwd(), ".aicoder")
+                os.makedirs(debug_dir, exist_ok=True)
+                resp_log = open(os.path.join(debug_dir, "last-response.log"), "w")
+            except Exception as e:
+                log_debug(f"*** Failed to open response log: {e}")
+
+        try:
+          while True:
             line_bytes = response.readline()
             if not line_bytes:
+                if Config.debug():
+                    log_debug(f"*** SSE stream ended after {line_count} lines")
                 break
             
+            line_count += 1
             line = line_bytes.decode("utf-8")
-            
+
+            if resp_log:
+                resp_log.write(line_bytes.decode("utf-8", errors="replace"))
+                resp_log.flush()
+
+            if Config.debug():
+                log_debug(f"*** SSE raw line {line_count}: {repr(line_bytes)}")
+
             # Blank line = end of event block
             if line.strip() == "":
                 if event_data.strip():
-                    # Parse event data
+                    # Parse event data - handle both "data:" and "data: " (SSE spec allows optional space)
                     data_str = None
                     for ln in event_data.split("\n"):
                         ln = ln.strip()
-                        if ln.startswith("data: "):
-                            data_str = ln[6:]
+                        if ln.startswith("data:"):
+                            data_str = ln[5:].lstrip()
                             break
                     
                     if data_str:
                         try:
                             data = json.loads(data_str)
                             dtype = data.get("type", "")
-                            
+
+                            # Log every raw SSE event in debug mode
+                            if Config.debug():
+                                log_debug(f"*** SSE event: {json.dumps(data)}")
+
                             # Capture usage from message_start event
                             if dtype == "message_start":
                                 msg = data.get("message", {})
@@ -338,7 +364,10 @@ class AnthropicClient:
                 continue
             
             event_data += line
-        
+        finally:
+            if resp_log:
+                resp_log.close()
+
         # Update stats on success
         if self.stats:
             log_debug(f"*** streaming stats: increment_api_success, add_api_time")
