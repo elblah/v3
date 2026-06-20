@@ -122,8 +122,9 @@ class AnthropicClient:
         api_key = Config.api_key()
         return {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
+            "x-api-key": api_key,
             "anthropic-version": "2023-06-01",
+            "User-Agent": "Mozilla/5.0",
         }
 
     def _prepare_request_data(self, messages: List[Dict[str, Any]], max_tokens: int, send_tools: bool, stream: bool = False) -> Dict[str, Any]:
