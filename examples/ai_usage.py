@@ -407,7 +407,10 @@ def main():
         agg[e["url"]][e["model"]]["t"] += e["elapsed"]
         agg[e["url"]][e["model"]]["cr"] += e.get("cache_read", 0)
         agg[e["url"]][e["model"]]["cm"] += e.get("cache_miss", 0)
-        agg[e["url"]][e["model"]]["cost"] += e.get("cost", 0.0)
+        cost = e.get("cost", 0.0)
+        if isinstance(cost, dict):
+            cost = cost.get("usd", 0.0)
+        agg[e["url"]][e["model"]]["cost"] += cost
 
     # Report
     print(f"\n{'='*60}")
@@ -428,12 +431,16 @@ def main():
             avg = d["t"] / d["n"]
             toks = d["c"]  # output tokens only for generation speed
             tps = toks / d["t"] if d["t"] > 0 else 0
+            # Cache percentages per model
+            total_input = d['cr'] + d['cm']
+            pct_hit = d['cr'] / total_input * 100 if total_input else 0
+            pct_miss = d['cm'] / total_input * 100 if total_input else 0
             print(f"    Model: {model}")
             print(f"        Requests:       {d['n']:,}")
             print(f"        Input Tokens:   {d['p']:,}")
             print(f"        Output Tokens:  {d['c']:,}")
-            print(f"        Cache Hit:      {d['cr']:,}")
-            print(f"        Cache Miss:     {d['cm']:,}")
+            print(f"        Cache Hit:      {d['cr']:,} ({pct_hit:.1f}%)")
+            print(f"        Cache Miss:     {d['cm']:,} ({pct_miss:.1f}%)")
             if d["cost"] > 0:
                 print(f"        Cost:           ${d['cost']:.6f}")
             print(f"        Avg Req Time:   {avg:.2f}s")
