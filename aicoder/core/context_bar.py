@@ -133,10 +133,26 @@ class ContextBar:
 
     def print_context_bar(self, stats, message_history) -> None:
         """Print context bar (for AI prompt)"""
+        # Fire before_context_bar hook with context="ai"
+        if self.plugin_system:
+            self.plugin_system.call_hooks("on_before_context_bar", "ai")
+
         context_bar = self.format_context_bar(stats, message_history)
         LogUtils.print(context_bar)
 
+        # Fire after_context_bar hook with context="ai"
+        if self.plugin_system:
+            self.plugin_system.call_hooks("on_after_context_bar", "ai")
+
     def print_context_bar_for_user(self, stats, message_history) -> None:
         """Print context bar for user prompt (with newline before)"""
+        # Fire before_context_bar hook with context="user"
+        if self.plugin_system:
+            self.plugin_system.call_hooks("on_before_context_bar", "user")
+
         context_bar = self.format_context_bar(stats, message_history)
         LogUtils.print(f"\n{context_bar}")
+
+        # Fire after_context_bar hook with context="user"
+        if self.plugin_system:
+            self.plugin_system.call_hooks("on_after_context_bar", "user")

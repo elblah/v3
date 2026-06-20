@@ -178,8 +178,8 @@ class AICoder:
         if not PromptBuilder.is_initialized():
             PromptBuilder.initialize()
 
-        # Build and add system prompt
-        system_prompt = PromptBuilder.build_system_prompt()
+        # Build and add system prompt (includes plugin contributions)
+        system_prompt = PromptBuilder.build_complete_system_prompt(self.plugin_system)
         self.message_history.add_system_message(system_prompt)
 
     def run(self) -> None:

@@ -189,3 +189,17 @@ search (grep), shell command execution, and more via API request."""
             prompt += "\n\n" + append_content
 
         return prompt
+
+    @classmethod
+    def build_complete_system_prompt(cls, plugin_system=None) -> str:
+        """Build complete system prompt including plugin contributions"""
+        prompt = cls.build_system_prompt()
+
+        # Collect additional content from plugins
+        if plugin_system:
+            hook_results = plugin_system.call_hooks("on_system_prompt_append") or []
+            additional_parts = [r for r in hook_results if r and isinstance(r, str)]
+            if additional_parts:
+                prompt += "\n" + "\n".join(additional_parts)
+
+        return prompt
