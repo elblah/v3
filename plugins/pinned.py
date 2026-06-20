@@ -73,11 +73,11 @@ def create_plugin(ctx):
         # - User path: \n before context bar
         # Plugin must adapt spacing based on context
         if context == "user":
-            # User path: context bar adds \n before, add \n before Last
-            LogUtils.print(f"\n{Config.colors['yellow']}Last: {display_text}{Config.colors['reset']}")
+            # User path: context bar adds \n before, add \n before Pinned
+            LogUtils.print(f"\n{Config.colors['yellow']}Pinned: {display_text}{Config.colors['reset']}")
         else:
-            # AI path: no \n from context bar, add \n after Last
-            LogUtils.print(f"{Config.colors['yellow']}Last: {display_text}{Config.colors['reset']}\n")
+            # AI path: no \n from context bar, add \n after Pinned
+            LogUtils.print(f"{Config.colors['yellow']}Pinned: {display_text}{Config.colors['reset']}\n")
 
     def pinned_command(args):
         """Handle /pinned commands"""
