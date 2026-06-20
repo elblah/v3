@@ -431,10 +431,11 @@ class AnthropicClient:
         if message_usage and self._plugin_system:
             self._plugin_system.call_hooks("after_usage_data", message_usage)
 
+        # Final yield - content already streamed via deltas, so don't include it
+        # to avoid double-printing. Include reasoning and signature for storage.
         yield {
             "choices": [{
                 "delta": {
-                    "content": full_content,
                     "reasoning_content": accumulated_reasoning,
                     "thinking_signature": self._thinking_signature,
                 },
