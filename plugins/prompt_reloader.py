@@ -103,7 +103,7 @@ def create_plugin(ctx):
         # Rebuild system prompt (clear cache first to force re-read of template)
         PromptBuilder._default_prompt_template = None
         PromptBuilder.initialize()
-        prompt = PromptBuilder.build_system_prompt()
+        prompt = PromptBuilder.build_complete_system_prompt(app.plugin_system)
 
         # Update system message in conversation
         msgs = app.message_history.messages
@@ -120,8 +120,8 @@ def create_plugin(ctx):
         PromptBuilder._default_prompt_template = None
         PromptBuilder.initialize()
 
-        # Rebuild
-        prompt = PromptBuilder.build_system_prompt()
+        # Rebuild (includes plugin contributions)
+        prompt = PromptBuilder.build_complete_system_prompt(app.plugin_system)
 
         # Update system message
         msgs = app.message_history.messages
