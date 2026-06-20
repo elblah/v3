@@ -85,7 +85,7 @@ class StreamingClient:
                 endpoint = Config.api_endpoint()
 
                 self._log_request_details(endpoint, config, request_data, attempt_num)
-                headers = self._build_headers()
+                headers = self._build_headers(stream)
 
                 self._log_api_config_debug(config)
 
@@ -349,13 +349,14 @@ class StreamingClient:
 
         return formatted
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self, stream: bool = True) -> Dict[str, str]:
         """Build request headers -"""
         headers = {
             "Content-Type": "application/json",
-            "Accept": "text/event-stream",
             "User-Agent": "Mozilla/5.0",
         }
+        if stream:
+            headers["Accept"] = "text/event-stream"
 
         # Add API key if available
         api_key = Config.api_key()
