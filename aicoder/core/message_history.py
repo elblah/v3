@@ -168,10 +168,14 @@ class MessageHistory:
         assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
 
         # Preserve reasoning field with whatever name the provider uses
-        for field in ["reasoning_content", "reasoning", "reasoning_text"]:
+        for field in ["reasoning_content", "reasoning", "reasoning_text", "thinking"]:
             if message.get(field):
                 assistant_message[field] = message.get(field)
                 break  # Only preserve first found
+
+        # Preserve thinking signature for Anthropic-style APIs (required for multi-turn)
+        if message.get("thinking_signature"):
+            assistant_message["thinking_signature"] = message.get("thinking_signature")
 
         # Cache tokens immediately on creation (performance optimization)
         from .token_estimator import cache_message

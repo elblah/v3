@@ -340,7 +340,7 @@ class StreamingClient:
                 msg_dict["tool_call_id"] = msg["tool_call_id"]
 
             # Preserve reasoning with the same field name the provider uses
-            for field in ["reasoning_content", "reasoning", "reasoning_text"]:
+            for field in ["reasoning_content", "reasoning", "thinking", "reasoning_text"]:
                 if msg.get(field):
                     msg_dict[field] = msg[field]
                     break
@@ -448,7 +448,7 @@ class StreamingClient:
                             # Show thinking indicator if any reasoning field present
                             for c in choices:
                                 delta = c.get("delta", {})
-                                if any(delta.get(f) and delta.get(f).strip() for f in ("reasoning_content", "reasoning", "reasoning_text")):
+                                if any(delta.get(f) and delta.get(f).strip() for f in ("reasoning_content", "reasoning", "thinking", "reasoning_text")):
                                     _show_thinking()
                                     break
                         else:
@@ -498,7 +498,7 @@ class StreamingClient:
                         elif delta_type == "thinking_delta" and not choices:
                             thinking = delta.get("thinking", "")
                             if thinking:
-                                choice = {"delta": {"reasoning_content": thinking}}
+                                choice = {"delta": {"thinking": thinking}}
                                 choices = [choice]
 
                         # Handle content_block_start for tool_use (Alibaba SDK)
@@ -641,6 +641,7 @@ class StreamingClient:
                                 # Include reasoning fields (same list as streaming handler)
                                 "reasoning_content": message.get("reasoning_content"),
                                 "reasoning": message.get("reasoning"),
+                                "thinking": message.get("thinking"),
                                 "reasoning_text": message.get("reasoning_text"),
                             },
                             "finish_reason": choice.get("finish_reason"),
