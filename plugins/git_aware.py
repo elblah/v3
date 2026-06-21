@@ -116,7 +116,7 @@ def create_plugin(ctx):
             return """Git Plugin
 
 Usage:
-    /git commit-ai          - Gather git info and ask AI to commit
+    /git ca (or commit-ai)  - Gather git info and ask AI to commit
     /git status             - Show git status
     /git diff               - Show git diff
     /git log [n]            - Show last n commits (default: 5)
@@ -126,6 +126,8 @@ The commit-ai command saves API calls by gathering all git context
 and sending it to the AI in a single prompt."""
 
         subcommand = args[0]
+        if subcommand in ("ca", "cai"):
+            subcommand = "commit-ai"
 
         if subcommand == "commit-ai":
             info = _gather_commit_info()
