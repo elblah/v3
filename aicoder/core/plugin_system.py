@@ -224,12 +224,17 @@ class PluginSystem:
         - Ultra-fast: returns immediately if no plugins directory exists
         """
         loaded_plugins: Dict[str, str] = {}  # plugin_name -> source
+        total_start = time.perf_counter()
 
         # 1. Load local plugins first
         if os.path.exists(self.plugins_dir):
             for plugin_name, plugin_path in self._get_plugin_files(self.plugins_dir):
+                t0 = time.perf_counter()
                 self._load_single_plugin(plugin_path, plugin_name)
+                dt = time.perf_counter() - t0
                 loaded_plugins[plugin_name] = "local"
+                if Config.debug():
+                    print(f"[+] Loaded plugin: {plugin_name} ({dt:.3f}s)")
 
         # 2. Load global plugins, skip if already loaded locally
         if os.path.exists(self.global_plugins_dir):
@@ -238,12 +243,17 @@ class PluginSystem:
 
             for plugin_name, plugin_path in self._get_plugin_files(self.global_plugins_dir):
                 if plugin_name not in loaded_plugins:
+                    t0 = time.perf_counter()
                     self._load_single_plugin(plugin_path, plugin_name)
+                    dt = time.perf_counter() - t0
                     loaded_plugins[plugin_name] = "global"
+                    if Config.debug():
+                        print(f"[+] Loaded plugin: {plugin_name} ({dt:.3f}s)")
 
         # Debug timing
         if Config.debug() and self.plugins:
-            print(f"[+] Loaded {len(self.plugins)} plugins: {', '.join(sorted(self.plugins))}")
+            total_dt = time.perf_counter() - total_start
+            print(f"[+] Plugins loaded in {total_dt:.3f}s ({len(self.plugins)} plugins)")
 
     def _load_single_plugin(self, plugin_path: str, plugin_name: str) -> None:
         """Load a single plugin file"""
