@@ -116,23 +116,33 @@ def create_plugin(ctx):
             return """Git Plugin
 
 Usage:
-    /git ca (or commit-ai)  - Gather git info and ask AI to commit
+    /git ca (or commit-ai)  - Gather git info and ask AI to commit (max 15k chars)
     /git status             - Show git status
     /git diff               - Show git diff
     /git log [n]            - Show last n commits (default: 5)
     /git branch             - Show current branch
 
 The commit-ai command saves API calls by gathering all git context
-and sending it to the AI in a single prompt."""
+and sending it to the AI in a single prompt. Refuses if context > 15k chars."""
 
         subcommand = args[0]
         if subcommand in ("ca", "cai"):
             subcommand = "commit-ai"
 
         if subcommand == "commit-ai":
+            # Refuse if context too big - could blow past context limit
+            MAX_COMMIT_CONTEXT = 15000  # chars
             info = _gather_commit_info()
             if info is None:
                 return "Nothing to commit - working tree is clean."
+
+            if len(info) > MAX_COMMIT_CONTEXT:
+                c = Config.colors
+                return (
+                    f"{c['red']}[X] Git context too large ({len(info):,} chars){c['reset']}\n"
+                    f"{c['yellow']}[i] Try staging fewer files with: git add <files>{c['reset']}\n"
+                    f"{c['dim']}Max size: {MAX_COMMIT_CONTEXT:,} chars, got: {len(info):,} chars{c['reset']}"
+                )
 
             prompt = f"""Please commit the following changes. Here is the git context:
 
