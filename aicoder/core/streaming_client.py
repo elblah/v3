@@ -659,6 +659,16 @@ class StreamingClient:
                 yield chunk
                 return
 
+    @staticmethod
+    def _parse_http_status(error_msg: str) -> int:
+        """Parse HTTP status code from error message like 'HTTP 429: Too Many Requests'"""
+        if error_msg.startswith("HTTP "):
+            try:
+                return int(error_msg.split()[1])
+            except (IndexError, ValueError):
+                pass
+        return 0
+
     def _handle_attempt_error(
         self,
         error: Exception,
@@ -669,6 +679,7 @@ class StreamingClient:
     ) -> bool:
         """Handle attempt error"""
         error_msg = str(error) if error else "Unknown error"
+        status = self._parse_http_status(error_msg)
 
         # Check if context is too large and attempt auto-recovery (once per request)
         if self.message_history and self.stats and not throw_on_error:
@@ -681,6 +692,17 @@ class StreamingClient:
                 self.message_history.force_compact_rounds(1)
                 log_info("[*] Retrying request after compaction...")
                 return True  # Retry with compacted context
+
+        # Don't retry if HTTP status is known and not in retryable set
+        retryable = Config.retry_status_codes()
+        if status != 0 and status not in retryable:
+            log_warn(f"Not retrying HTTP {status} (not in retryable codes: {sorted(retryable)})")
+            if self.stats:
+                self.stats.increment_api_errors()
+                self.stats.add_api_time((time.time() - start_time))
+            if throw_on_error:
+                raise Exception(error_msg)
+            return False
 
         # Display attempt count (unlimited mode doesn't show max)
         if max_retries == 0:

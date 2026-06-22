@@ -279,6 +279,18 @@ class Config:
         cls._runtime_max_backoff = value
 
     @staticmethod
+    def retry_status_codes() -> set:
+        """Get HTTP status codes that should be retried from AICODER_RETRY_STATUS_CODES env var.
+        Default: {429}. Format: comma-separated codes like '429,401,502,503'"""
+        raw = os.environ.get("AICODER_RETRY_STATUS_CODES", "429")
+        codes = set()
+        for part in raw.split(","):
+            part = part.strip()
+            if part.isdigit():
+                codes.add(int(part))
+        return codes or {429}
+
+    @staticmethod
     def sandbox_disabled() -> bool:
         """
         Check if sandbox is disabled
