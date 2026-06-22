@@ -10,6 +10,9 @@ from typing import List, Dict
 
 # Module state - set once at import time
 _HISTORY_PATH: str | None = None
+_MAX_HISTORY_LINES = int(os.environ.get("AICODER_HISTORY_MAX", 30))
+_SAVE_COUNT = 0
+_TRUNCATE_INTERVAL = 10  # truncate every 10 saves
 
 
 def _init_history_path() -> str | None:
@@ -31,6 +34,30 @@ def _init_history_path() -> str | None:
 _HISTORY_PATH = _init_history_path()
 
 
+def _truncate_if_needed() -> None:
+    """Truncate history file to keep only last N lines"""
+    if not _HISTORY_PATH:
+        return
+
+    try:
+        if not os.path.exists(_HISTORY_PATH):
+            return
+
+        with open(_HISTORY_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        if len(lines) <= _MAX_HISTORY_LINES:
+            return
+
+        # Keep only last N lines
+        trimmed_lines = lines[-_MAX_HISTORY_LINES:]
+
+        with open(_HISTORY_PATH, "w", encoding="utf-8") as f:
+            f.writelines(trimmed_lines)
+    except Exception:
+        pass
+
+
 def save_prompt(prompt: str) -> None:
     """
     Save a prompt to history (JSONL format)
@@ -50,6 +77,12 @@ def save_prompt(prompt: str) -> None:
     try:
         with open(_HISTORY_PATH, "a", encoding="utf-8") as f:
             f.write(line)
+
+        # Truncate on first save or every N saves
+        global _SAVE_COUNT
+        _SAVE_COUNT += 1
+        if _SAVE_COUNT == 1 or _SAVE_COUNT % _TRUNCATE_INTERVAL == 0:
+            _truncate_if_needed()
     except Exception:
         # Silent fail for history errors
         pass
