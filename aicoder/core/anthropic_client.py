@@ -112,6 +112,21 @@ class AnthropicClient:
 
             except Exception as e:
                 LogUtils.error(f"Exception: {e}")
+                # Don't retry if HTTP status is known and not in retryable set
+                error_msg = str(e) if e else ""
+                status = 0
+                if error_msg.startswith("HTTP "):
+                    try:
+                        status = int(error_msg.split()[1])
+                    except (IndexError, ValueError):
+                        pass
+                retryable = Config.retry_status_codes()
+                if status != 0 and status not in retryable:
+                    LogUtils.warn(f"Not retrying HTTP {status} (not in retryable codes: {sorted(retryable)})")
+                    if throw_on_error:
+                        raise
+                    yield {"error": str(e), "done": True}
+                    return
                 if max_retries > 0 and attempt_num >= max_retries:
                     if throw_on_error:
                         raise
