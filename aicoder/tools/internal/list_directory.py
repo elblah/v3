@@ -15,23 +15,28 @@ def validateArguments(args: Dict[str, Any]) -> None:
     path = args.get("path")
     if not path or path.strip() == "":
         args["path"] = "."
+    max_depth = args.get("max_depth")
+    if not max_depth or max_depth < 1:
+        args["max_depth"] = 1
 
 
 def formatArguments(args: Dict[str, Any]) -> str:
     """Format arguments for approval display"""
     path = args.get("path", ".")
     pattern = args.get("pattern")
+    depth = args.get("max_depth", 1)
     if pattern:
-        return f"Listing '{path}' matching: {pattern}"
+        return f"Listing '{path}' matching: {pattern} (depth {depth})"
     if path and path != ".":
-        return f"Listing directory: {path}"
-    return ""
+        return f"Listing directory: {path} (depth {depth})"
+    return f"Listing current dir (depth {depth})" if depth > 1 else ""
 
 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """List directory contents using os.walk with ignore dir filtering"""
     path = args.get("path", ".")
     pattern = args.get("pattern")
+    max_depth = args.get("max_depth", 1)
     MAX_FILES = 100
 
     try:
@@ -64,47 +69,91 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         files = []
 
         if pattern:
-            # Use pathlib.glob for pattern matching (iterator, handles **/ properly)
+            # Use os.scandir with depth limiting for pattern matching
             base = Path(resolved_path)
-            glob_pattern = pattern if pattern.startswith("**/") else "**/" + pattern
-            matches = base.glob(glob_pattern)  # recursive=True removed in Python 3.12+
+            base_depth = len(base.parts)
 
-            for f in matches:
-                # Skip directories
-                if not f.is_file():
-                    continue
-                # Check ignore patterns on filename
-                if any(f.name.endswith(p) for p in ignore_patterns):
-                    continue
-                # Check ignore dirs (all path parts)
-                if any(part in ignore_dirs for part in f.parts):
-                    continue
+            def _walk_with_depth(current_path, depth):
+                if depth >= max_depth:
+                    return
+                try:
+                    entries = list(os.scandir(current_path))
+                except OSError:
+                    return
 
-                files.append(str(f))
+                for entry in entries:
+                    if entry.is_file():
+                        # Check pattern
+                        if not _matches_pattern(entry.name, pattern):
+                            continue
+                        # Check ignore patterns
+                        if any(entry.name.endswith(p) for p in ignore_patterns):
+                            continue
+                        # Check ignore dirs
+                        rel_parts = Path(entry.path).relative_to(base).parts
+                        if any(part in ignore_dirs for part in rel_parts):
+                            continue
+                        files.append(entry.path)
+                        if len(files) >= MAX_FILES + 1:
+                            return
+                    elif entry.is_dir():
+                        # Check ignore dirs
+                        if entry.name in ignore_dirs:
+                            continue
+                        if not _show_hidden and entry.name.startswith("."):
+                            continue
+                        # Check pattern - list dir if it matches
+                        if _matches_pattern(entry.name, pattern):
+                            files.append(entry.path)
+                            if len(files) >= MAX_FILES + 1:
+                                return
+                        # Always recurse into dirs
+                        _walk_with_depth(entry.path, depth + 1)
+                        if len(files) >= MAX_FILES + 1:
+                            return
 
-                # Early exit - don't load all matches into memory
-                if len(files) >= MAX_FILES + 1:
-                    break
+            def _matches_pattern(filename, pattern):
+                """Simple pattern matching for *.py, test_*.json etc."""
+                import fnmatch
+                # Convert **/ pattern to standard glob
+                clean_pattern = pattern.replace("**/", "")
+                return fnmatch.fnmatch(filename, clean_pattern)
+
+            _show_hidden = True  # Show hidden for now
+            _walk_with_depth(resolved_path, 0)
         else:
-            # No pattern - use os.walk for listing with ignore dir filtering
-            for root, dirs, filenames in os.walk(resolved_path):
-                # Filter dirs in-place to skip them in recursion
-                dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            # No pattern - use custom walk with depth limiting and ignore dir filtering
+            base_depth = len(os.path.abspath(resolved_path).split(os.sep))
 
-                for filename in filenames:
-                    # Skip files matching ignore patterns
-                    if any(filename.endswith(p) for p in ignore_patterns):
-                        continue
+            def _walk_with_depth(current_path, depth):
+                if depth >= max_depth:
+                    return
+                try:
+                    entries = list(os.scandir(current_path))
+                except OSError:
+                    return
 
-                    full_path = os.path.join(root, filename)
-                    files.append(full_path)
+                for entry in entries:
+                    if entry.is_file():
+                        # Skip files matching ignore patterns
+                        if any(entry.name.endswith(p) for p in ignore_patterns):
+                            continue
+                        files.append(entry.path)
+                        if len(files) >= MAX_FILES + 1:
+                            return
+                    elif entry.is_dir():
+                        # Skip ignore dirs
+                        if entry.name in ignore_dirs:
+                            continue
+                        # List directory name (even if contents are filtered)
+                        files.append(entry.path)
+                        if len(files) >= MAX_FILES + 1:
+                            return
+                        _walk_with_depth(entry.path, depth + 1)
+                        if len(files) >= MAX_FILES + 1:
+                            return
 
-                    # Stop early if we have enough files
-                    if len(files) >= MAX_FILES + 1:
-                        break
-
-                if len(files) >= MAX_FILES + 1:
-                    break
+            _walk_with_depth(resolved_path, 0)
 
         actual_count = len(files)
         limited_files = files[:MAX_FILES]
@@ -241,6 +290,11 @@ TOOL_DEFINITION = {
             "pattern": {
                 "type": "string",
                 "description": "Optional glob pattern to filter files (e.g., '*.py', 'test_*.json')",
+            },
+            "max_depth": {
+                "type": "integer",
+                "description": "Maximum directory depth to list (default: 1 = current level only). max_depth=2 includes one level of subdirectories, etc.",
+                "default": 1
             }
         },
         "additionalProperties": False,
