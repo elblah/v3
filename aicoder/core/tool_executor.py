@@ -53,13 +53,19 @@ class ToolExecutor:
         try:
             tool_results = []
 
-            for tool_call in tool_calls:
+            for i, tool_call in enumerate(tool_calls):
                 result = self._execute_single_tool_call(tool_call)
                 if result:
                     tool_results.append(result)
 
                 # Stop if guidance mode was activated during tool approval
                 if self._guidance_mode:
+                    # Add cancelled results for remaining tools
+                    for j in range(i + 1, len(tool_calls)):
+                        tool_results.append({
+                            "tool_call_id": tool_calls[j].get("id", ""),
+                            "content": "Tool execution cancelled - guidance requested",
+                        })
                     break
 
             # Add all tool results to message history
