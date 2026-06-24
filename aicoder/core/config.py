@@ -205,7 +205,7 @@ class Config:
                 for pattern in patterns:
                     if pattern in model_lower:
                         return fmt
-        return None
+        return "openai"  # default to OpenAI format if no match
 
     @classmethod
     def get_effort_field(cls) -> str:
