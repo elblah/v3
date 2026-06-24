@@ -290,6 +290,13 @@ class StreamingClient:
             if Config.debug():
                 log_debug(f"*** Adding extra_body: {extra_body}")
 
+        # Add top-level thinking params (e.g., reasoning_effort for DeepSeek, reasoningEffort for GLM)
+        thinking_params = Config.thinking_params()
+        if thinking_params:
+            data.update(thinking_params)
+            if Config.debug():
+                log_debug(f"*** Adding thinking_params: {thinking_params}")
+
         # Transform hook for provider-specific formats (e.g., alibaba cache control)
         if self._plugin_system:
             data = self._plugin_system.call_hooks_with_return("transform_request", data) or data

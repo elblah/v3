@@ -132,10 +132,12 @@ class ThinkingCommand(BaseCommand):
         elif mode == "on":
             extra_body = {"thinking": {"type": "enabled"}}
             if effort:
-                extra_body["thinking"]["reasoning_effort"] = effort
-            # Default to preserving reasoning
-            extra_body["thinking"]["clear_thinking"] = clear_thinking if clear_thinking is not None else False
-            LogUtils.info(f'Sending extra_body: {extra_body}')
+                effort_field = Config.get_effort_field()
+                LogUtils.info(f'Sending top-level: {effort_field}="{effort}"')
+            if clear_thinking is not None:
+                LogUtils.info(f'Sending extra_body: {extra_body} (clear_thinking={clear_thinking})')
+            else:
+                LogUtils.info(f'Sending extra_body: {extra_body}')
         else:
             LogUtils.info('Sending extra_body: {"thinking": {"type": "disabled"}}')
 

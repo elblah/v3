@@ -5,7 +5,7 @@ Configuration module for AI Coder
 
 import os
 import sys
-from typing import Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from aicoder.utils.log import LogUtils
 
 
@@ -170,6 +170,52 @@ class Config:
                 raise ValueError(f"Invalid reasoning effort: {effort}. Valid values: {valid_list}")
         cls._reasoning_effort = effort.lower() if effort else None
 
+    # Reasoning format registry - maps provider to effort field name
+    # Can be extended for new providers
+    _reasoning_formats: Dict[str, Dict[str, Any]] = {
+        "deepseek": {"effort_field": "reasoning_effort"},
+        "glm": {"effort_field": "reasoningEffort"},
+        "openai": {"effort_field": "reasoning_effort"},
+    }
+
+    # Model name patterns for auto-detection
+    _reasoning_format_patterns: Dict[str, List[str]] = {
+        "deepseek": ["deepseek"],
+        "glm": ["glm", "zhipuai", "z.ai"],
+        "openai": ["gpt", "o1", "o3", "chatgpt"],
+    }
+
+    @classmethod
+    def get_reasoning_format(cls) -> Optional[str]:
+        """
+        Get reasoning format (deepseek, glm, etc.)
+        Priority: 1) REASONING_FORMAT env var override, 2) auto-detect from model name
+        """
+        # Check env var override first
+        env_format = os.environ.get("REASONING_FORMAT", "")
+        if env_format:
+            return env_format.lower()
+
+        # Auto-detect from model name
+        model = cls.model()
+        if model:
+            model_lower = model.lower()
+            for fmt, patterns in cls._reasoning_format_patterns.items():
+                for pattern in patterns:
+                    if pattern in model_lower:
+                        return fmt
+        return None
+
+    @classmethod
+    def get_effort_field(cls) -> str:
+        """
+        Get the effort field name for current format (e.g., reasoning_effort or reasoningEffort)
+        """
+        fmt = cls.get_reasoning_format()
+        if fmt and fmt in cls._reasoning_formats:
+            return cls._reasoning_formats[fmt]["effort_field"]
+        return "reasoning_effort"  # default
+
     @staticmethod
     def detail_mode() -> bool:
         """
@@ -213,8 +259,7 @@ class Config:
         """
         Get extra_body for thinking mode if configured
         Returns None for "default", otherwise returns thinking config
-        Includes reasoning_effort and clear_thinking when thinking is on
-        Defaults to preserving reasoning (clear_thinking=false) when thinking is enabled
+        Only includes thinking.type (effort goes to top level via thinking_params)
         """
         mode = Config.thinking()
         if mode == "default":
@@ -222,23 +267,29 @@ class Config:
         elif mode == "off":
             return {"thinking": {"type": "disabled"}}
         elif mode == "on":
-            thinking_config = {"type": "enabled"}
-
-            # Add reasoning_effort if set
-            effort = Config.reasoning_effort()
-            if effort:
-                thinking_config["reasoning_effort"] = effort
-
-            # Add clear_thinking (false = preserve reasoning, true = clear reasoning)
-            # Default to preserving reasoning for coding workflows
-            clear_thinking = Config.clear_thinking()
-            if clear_thinking is None:
-                thinking_config["clear_thinking"] = False  # Default: preserve
-            else:
-                thinking_config["clear_thinking"] = clear_thinking
-
-            return {"thinking": thinking_config}
+            return {"thinking": {"type": "enabled"}}
         return None
+
+    @classmethod
+    def thinking_params(cls) -> Optional[dict]:
+        """
+        Get thinking parameters for top-level request fields (e.g., reasoning_effort for DeepSeek)
+        Returns None if thinking is not "on" or no params are configured
+        """
+        mode = cls.thinking()
+        if mode != "on":
+            return None
+
+        params = {}
+        effort = cls.reasoning_effort()
+        if effort:
+            params[cls.get_effort_field()] = effort
+
+        clear_thinking = cls.clear_thinking()
+        if clear_thinking is not None:
+            params["clear_thinking"] = clear_thinking
+
+        return params if params else None
 
     # Retry Configuration
     _runtime_max_retries = None
@@ -840,6 +891,11 @@ class Config:
                 effort = Config.reasoning_effort()
                 if effort:
                     mode_text += f" (effort: {effort})"
+                fmt = Config.get_reasoning_format()
+                if fmt:
+                    override = os.environ.get("REASONING_FORMAT", "")
+                    suffix = ", override" if override else ""
+                    mode_text += f" (format: {fmt}{suffix})"
             LogUtils.success(mode_text)
 
         if os.environ.get("TEMPERATURE"):
