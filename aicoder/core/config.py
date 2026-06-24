@@ -172,17 +172,18 @@ class Config:
 
     # Reasoning format registry - maps provider to effort field name
     # Can be extended for new providers
+    # Set uses_extra_body=False for providers that only need top-level reasoning_effort
     _reasoning_formats: Dict[str, Dict[str, Any]] = {
-        "deepseek": {"effort_field": "reasoning_effort"},
-        "glm": {"effort_field": "reasoningEffort"},
-        "openai": {"effort_field": "reasoning_effort"},
+        "deepseek": {"effort_field": "reasoning_effort", "uses_extra_body": True},
+        "glm": {"effort_field": "reasoningEffort", "uses_extra_body": True},
+        "openai": {"effort_field": "reasoning_effort", "uses_extra_body": False},
     }
 
     # Model name patterns for auto-detection
     _reasoning_format_patterns: Dict[str, List[str]] = {
         "deepseek": ["deepseek"],
         "glm": ["glm", "zhipuai", "z.ai"],
-        "openai": ["gpt", "o1", "o3", "chatgpt"],
+        "openai": ["gpt", "o1", "o3", "o4", "chatgpt", "openai"],
     }
 
     @classmethod
@@ -254,19 +255,23 @@ class Config:
         """
         cls._thinking = mode
 
-    @staticmethod
-    def thinking_extra_body() -> dict:
+    @classmethod
+    def thinking_extra_body(cls) -> Optional[dict]:
         """
         Get extra_body for thinking mode if configured
         Returns None for "default", otherwise returns thinking config
-        Only includes thinking.type (effort goes to top level via thinking_params)
+        Only includes thinking.type if format uses extra_body (effort goes to top level via thinking_params)
         """
-        mode = Config.thinking()
+        mode = cls.thinking()
         if mode == "default":
             return None
         elif mode == "off":
             return {"thinking": {"type": "disabled"}}
         elif mode == "on":
+            fmt = cls.get_reasoning_format()
+            if fmt and fmt in cls._reasoning_formats:
+                if not cls._reasoning_formats[fmt].get("uses_extra_body", True):
+                    return None  # Format doesn't use extra_body
             return {"thinking": {"type": "enabled"}}
         return None
 
