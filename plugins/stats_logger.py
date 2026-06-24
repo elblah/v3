@@ -80,6 +80,7 @@ def create_plugin(ctx):
             "model": model,
             "elapsed": round(elapsed, 2),
             "usage": usage,
+            "origin": "v3",
         }
 
         # Add optional tag
