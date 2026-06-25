@@ -45,10 +45,14 @@ def create_plugin(ctx):
 
         return content
 
+    # Flag to avoid duplicate injection when prompt_reloader rebuilds prompt
+    _autoload_injected = []
+
     def on_autoload_write(path, _content):
         """Queue autoload.md for size check after tool results"""
         if path and path.endswith("autoload.md"):
             _pending_check.append(path)
+            _autoload_injected.clear()  # new content needs re-injection
 
     def on_tool_results(_tool_results):
         """Check autoload.md size after tool results"""
@@ -74,8 +78,12 @@ def create_plugin(ctx):
                     ctx.app.message_history.add_user_message(msg)
 
     def on_system_prompt_append():
-        """Inject autoload.md content into system prompt"""
+        """Inject autoload.md content into system prompt (once per content set)"""
+        if _autoload_injected:
+            return None
         autoload = get_autoload()
+        if autoload:
+            _autoload_injected.append(True)
         if autoload:
             instructions = (
                 "\n\n## Persistent Memory\n"
@@ -149,7 +157,9 @@ def create_plugin(ctx):
                 LogUtils.info("[memory] not initialized")
                 return
 
-            LogUtils.print("Remove all memory files? [y/N]: ", end="")
+            import sys
+            sys.stdout.write("Remove all memory files? [y/N]: ")
+            sys.stdout.flush()
             try:
                 answer = input().strip().lower()
             except (EOFError, KeyboardInterrupt):
