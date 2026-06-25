@@ -43,8 +43,8 @@ class MemoryCommand(BaseCommand):
         temp_file = create_temp_file(f"aicoder-memory-{random_suffix}", ".json")
 
         try:
-            # Get messages from history and write directly to JSON
-            messages = self.context.message_history.get_messages()
+            # Get messages from history (exclude system) and write directly to JSON
+            messages = self.context.message_history.get_chat_messages()
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(messages, f, indent=2, ensure_ascii=False)
 
@@ -72,7 +72,10 @@ class MemoryCommand(BaseCommand):
                 edited_messages = json.load(f)
 
             if isinstance(edited_messages, list):
-                # Replace messages directly - no special handling needed
+                # Preserve current system prompt, only replace chat messages
+                from aicoder.core.commands.load import LoadCommand
+                current = self.context.message_history.get_messages()
+                edited_messages = LoadCommand._preserve_system_prompt(edited_messages, current)
                 self.context.message_history.set_messages(edited_messages)
 
                 LogUtils.success(f"Reloaded {len(edited_messages)} messages from editor")

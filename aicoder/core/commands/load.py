@@ -31,6 +31,18 @@ class LoadCommand(BaseCommand):
     def get_aliases(self) -> List[str]:
         return ["l"]
 
+    @staticmethod
+    def _preserve_system_prompt(loaded_messages: list, current_messages: list) -> list:
+        """Preserve existing system prompt, replace the rest with loaded messages"""
+        system_msg = None
+        for msg in current_messages:
+            if msg.get("role") == "system":
+                system_msg = msg
+                break
+        if system_msg:
+            loaded_messages = [system_msg] + [m for m in loaded_messages if m.get("role") != "system"]
+        return loaded_messages
+
     def execute(self, args: List[str] = None) -> CommandResult:
         """Load session from file"""
         if args is None:
@@ -81,7 +93,8 @@ class LoadCommand(BaseCommand):
                 # Load JSONL format
                 messages = read_jsonl(filename)
                 if messages and isinstance(messages, list):
-                    self.context.message_history.set_messages(messages)
+                    loaded = self._preserve_system_prompt(messages, self.context.message_history.get_messages())
+                    self.context.message_history.set_messages(loaded)
                     LogUtils.success(f"Session loaded from {filename} (JSONL format)")
                 else:
                     LogUtils.error("Invalid JSONL session file format")
@@ -97,7 +110,8 @@ class LoadCommand(BaseCommand):
                 )
 
                 if messages and isinstance(messages, list):
-                    self.context.message_history.set_messages(messages)
+                    loaded = self._preserve_system_prompt(messages, self.context.message_history.get_messages())
+                    self.context.message_history.set_messages(loaded)
                     LogUtils.success(f"Session loaded from {filename} (JSON format)")
                 else:
                     LogUtils.error("Invalid JSON session file format")
