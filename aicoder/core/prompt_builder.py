@@ -25,7 +25,7 @@ class PromptContext:
         """Get current datetime string in UTC"""
         from datetime import datetime, timezone
 
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     def _get_system_info(self) -> str:
         """Get system information - lazy import to avoid 70ms startup cost"""

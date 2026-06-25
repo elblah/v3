@@ -218,6 +218,18 @@ class Config:
         return "reasoning_effort"  # default
 
     @staticmethod
+    def get_reasoning_field() -> Optional[str]:
+        """
+        Get reasoning field name override from env var AICODER_REASONING_FIELD
+        (or REASONING_FIELD for cross-compatibility with Lua).
+        Returns None if not set, allowing fallback to multi-field guessing.
+        """
+        val = os.environ.get("AICODER_REASONING_FIELD") or os.environ.get("REASONING_FIELD")
+        if val:
+            return val.strip()
+        return None
+
+    @staticmethod
     def detail_mode() -> bool:
         """
         Get detail mode state

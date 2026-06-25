@@ -227,6 +227,13 @@ class ToolExecutor:
                     Config.set_yolo_mode(True)
                     LogUtils.success('[*] YOLO mode ENABLED')
                     return True
+
+                # Handle detail command
+                if approval == 'detail':
+                    _restore_history(saved_history)
+                    Config.set_detail_mode(True)
+                    LogUtils.success('[*] Detail mode ENABLED')
+                    return True
                 
                 # Parse + modifier for guidance
                 has_guidance = approval.endswith('+')

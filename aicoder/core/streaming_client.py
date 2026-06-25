@@ -347,7 +347,9 @@ class StreamingClient:
                 msg_dict["tool_call_id"] = msg["tool_call_id"]
 
             # Preserve reasoning with the same field name the provider uses
-            for field in ["reasoning_content", "reasoning", "thinking", "reasoning_text"]:
+            override = Config.get_reasoning_field()
+            fields = [override] if override else []
+            for field in fields + ["reasoning_content", "reasoning", "thinking", "reasoning_text"]:
                 if msg.get(field):
                     msg_dict[field] = msg[field]
                     break
