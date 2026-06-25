@@ -72,7 +72,7 @@ class CommandRegistry:
         from .sandbox import SandboxCommand
         from .edit import EditCommand
         from .retry import RetryCommand
-        from .memory import MemoryCommand
+        from .edit_session import EditSessionCommand
         from .yolo import YoloCommand
         from .detail import DetailCommand
         from .new import NewCommand
@@ -90,7 +90,7 @@ class CommandRegistry:
             SandboxCommand(self.context),
             EditCommand(self.context),
             RetryCommand(self.context),
-            MemoryCommand(self.context),
+            EditSessionCommand(self.context),
             YoloCommand(self.context),
             DetailCommand(self.context),
             NewCommand(self.context),

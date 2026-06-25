@@ -1,7 +1,7 @@
 """
 Integration tests for built-in commands through TUI using pexpect.
 
-Tests verify all commands work correctly. Excludes /edit and /memory which open tmux windows.
+Tests verify all commands work correctly. Excludes /edit and /edit-session which open tmux windows.
 """
 
 import os

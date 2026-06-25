@@ -106,7 +106,6 @@ class AICoder:
     def initialize(self) -> None:
         """Initialize AI Coder components"""
         Config.validate_config()
-        self.initialize_system_prompt()
 
         # Set up streaming client with message history (TS calls setApiClient on messageHistory)
         self.message_history.set_api_client(self.streaming_client)
@@ -147,6 +146,9 @@ class AICoder:
 
         # Calculate tool tokens once at startup (after all plugins loaded)
         self._calculate_tool_tokens()
+
+        # Build system prompt after plugins loaded (so on_system_prompt_append hooks fire)
+        self.initialize_system_prompt()
 
         # Update stats to include tool tokens (estimate_context adds _tools_tokens)
         self.message_history.estimate_context()
