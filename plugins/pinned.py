@@ -80,9 +80,13 @@ def create_plugin(ctx):
 
     def on_before_context_bar(context="ai"):
         """Show pinned message before context bar"""
-        if not _is_enabled():
-            return
+        nonlocal _last_text, _last_reasoning
         if context != "ai":
+            # New file/context — clear pinned history
+            _last_text = ""
+            _last_reasoning = ""
+            return
+        if not _is_enabled():
             return
 
         display_text = _get_display_text()
