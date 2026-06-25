@@ -1,5 +1,6 @@
 """
-Memory command - Export conversation JSON to temp file, edit with $EDITOR, then reload
+Edit session command - Export conversation JSON to temp file, edit with $EDITOR, then reload
+Renamed from memory.py to free up /memory for the memory plugin
 """
 
 import json
@@ -16,20 +17,20 @@ def _gen_token():
     return secrets.token_hex(4)
 
 
-class MemoryCommand(BaseCommand):
-    """Edit conversation memory in $EDITOR"""
+class EditSessionCommand(BaseCommand):
+    """Edit conversation session in $EDITOR"""
 
     def __init__(self, context: CommandContext):
         super().__init__(context)
 
     def get_name(self) -> str:
-        return "memory"
+        return "edit-session"
 
     def get_description(self) -> str:
-        return "Edit conversation memory in $EDITOR"
+        return "Edit conversation session in $EDITOR"
 
     def get_aliases(self):
-        return ["m"]
+        return ["es"]
 
     def execute(self, args: list = None) -> CommandResult:
         """Export conversation to temp file, edit, and reload"""
@@ -52,8 +53,8 @@ class MemoryCommand(BaseCommand):
             LogUtils.info(f"Opening {editor} in tmux window...")
             LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
 
-            sync_point = f"memory_done_{random_suffix}"
-            window_name = f"memory_{random_suffix}"
+            sync_point = f"session_done_{random_suffix}"
+            window_name = f"session_{random_suffix}"
 
             # Create tmux window with editor and wait-for sync
             tmux_cmd = f'tmux new-window -n "{window_name}" \'bash -c "{editor} {temp_file}; tmux wait-for -S {sync_point}"\''
@@ -89,7 +90,7 @@ class MemoryCommand(BaseCommand):
                 pass
 
         except Exception as error:
-            LogUtils.error(f"Memory edit failed: {error}")
+            LogUtils.error(f"Session edit failed: {error}")
             # Clean up temp file on error
             try:
                 os.unlink(temp_file)

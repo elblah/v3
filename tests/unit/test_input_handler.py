@@ -188,7 +188,7 @@ class TestCompleter:
         commands = [
             "/help", "/h", "/?",
             "/quit", "/stats", "/save", "/s", "/load", "/l",
-            "/memory", "/new", "/n", "/yolo", "/y", "/detail", "/d",
+            "/edit-session", "/es", "/new", "/n", "/yolo", "/y", "/detail", "/d",
             "/compact", "/c", "/sandbox-fs", "/sfs", "/edit", "/e",
             "/retry"
         ]
