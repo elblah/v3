@@ -151,7 +151,7 @@ class SessionManager:
             )
 
         assistant_message = {
-            "content": full_response or "I'll help you with that.",
+            "content": full_response or "",
             "tool_calls": tool_calls_for_message,
         }
 
