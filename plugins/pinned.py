@@ -22,6 +22,7 @@ def create_plugin(ctx):
     _mode = "default"  # "default", "on", "off"
     _max_len = 300
     _last_text = ""
+    _last_reasoning = ""
 
     def _is_enabled():
         """Check if pinned should be shown based on mode and details setting"""
@@ -32,9 +33,19 @@ def create_plugin(ctx):
         # default: on when details is on
         return Config.detail_mode()
 
+    def _get_msg_reasoning(msg):
+        """Extract reasoning from message, checking all possible field names"""
+        override = Config.get_reasoning_field()
+        fields = [override] if override else []
+        for field in fields + ["reasoning_content", "reasoning", "reasoning_text", "thinking"]:
+            val = msg.get(field)
+            if val and isinstance(val, str) and val.strip():
+                return val.strip()
+        return ""
+
     def after_ai_processing(has_tool_calls: bool):
         """Capture last text message from AI"""
-        nonlocal _last_text
+        nonlocal _last_text, _last_reasoning
 
         messages = ctx.app.message_history.get_messages()
         if not messages:
@@ -43,30 +54,49 @@ def create_plugin(ctx):
         # Get last assistant message
         for msg in reversed(messages):
             if msg.get("role") == "assistant":
+                # Capture reasoning if present
+                reasoning = _get_msg_reasoning(msg)
+                if reasoning:
+                    _last_reasoning = reasoning
+                # Capture text content
                 content = msg.get("content", "")
-                if content and isinstance(content, str):
+                if isinstance(content, str):
                     text = content.strip()
                     if text:
                         _last_text = text
                 break
 
+    # Heuristic: if last msg had no text and reasoning is concise (fits _max_len),
+    # use reasoning. Otherwise fall back to _last_text.
+    def _get_display_text():
+        """Get the text to display — prefers concise reasoning, else last text"""
+        # Try reasoning if it fits
+        if _last_reasoning and len(_last_reasoning) <= _max_len:
+            return _last_reasoning
+        # Fall back to last text
+        if _last_text:
+            return _last_text
+        return None
+
     def on_before_context_bar(context="ai"):
         """Show pinned message before context bar"""
         if not _is_enabled():
             return
-
-        if not _last_text:
+        if context != "ai":
             return
 
-        from aicoder.utils.log import LogUtils
+        display_text = _get_display_text()
+        if not display_text:
+            return
 
-        # Truncate if needed
-        display_text = _last_text
+        # Truncate if needed (safety - reasoning already checked but text might be long)
         if len(display_text) > _max_len:
             display_text = display_text[:_max_len] + "..."
 
         # Replace newlines with spaces for single line display
         display_text = " ".join(display_text.split())
+
+        from aicoder.utils.log import LogUtils
 
         # Core behavior:
         # - AI path: no \n before context bar
@@ -118,7 +148,7 @@ def create_plugin(ctx):
 
     def _show_status():
         """Show current pinned settings"""
-        return f"Pinned: mode={_mode}, max_len={_max_len}, enabled={_is_enabled()}, last_text={len(_last_text)} chars"
+        return f"Pinned: mode={_mode}, max_len={_max_len}, enabled={_is_enabled()}, text={len(_last_text)} chars, reasoning={len(_last_reasoning)} chars"
 
     # Register hooks
     ctx.register_hook("after_ai_processing", after_ai_processing)

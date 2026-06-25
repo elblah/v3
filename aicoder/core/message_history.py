@@ -171,7 +171,9 @@ class MessageHistory:
         assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
 
         # Preserve reasoning field with whatever name the provider uses
-        for field in ["reasoning_content", "reasoning", "reasoning_text", "thinking"]:
+        override = Config.get_reasoning_field()
+        fields = [override] if override else []
+        for field in fields + ["reasoning_content", "reasoning", "reasoning_text", "thinking"]:
             if message.get(field):
                 assistant_message[field] = message.get(field)
                 break  # Only preserve first found

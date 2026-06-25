@@ -85,7 +85,8 @@ class StreamProcessor:
                     # - Anthropic: "thinking"
                     # - Others: "reasoning_text"
                     # Use first non-empty field to avoid duplication (e.g., chutes.ai returns both)
-                    reasoning_fields = ["reasoning_content", "reasoning", "thinking", "reasoning_text"]
+                    override = Config.get_reasoning_field()
+                    reasoning_fields = ([override] if override else []) + ["reasoning_content", "reasoning", "thinking", "reasoning_text"]
 
                     for field in reasoning_fields:
                         reasoning = delta.get(field)
