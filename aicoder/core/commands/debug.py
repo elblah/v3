@@ -42,6 +42,10 @@ class DebugCommand(BaseCommand):
         if action in ["breakpoint", "bp", "break", "b"]:
             return self._trigger_breakpoint()
 
+        # Handle prompt display
+        if action in ["prompt", "p", "system"]:
+            return self._show_prompt()
+
         # Handle on/off/toggle
         if action in ["on", "1", "enable", "true"]:
             return self._enable_debug()
@@ -74,6 +78,31 @@ class DebugCommand(BaseCommand):
         LogUtils.dim("\nQuick actions:")
         LogUtils.dim("  /debug on|off|toggle - Manage debug mode")
         LogUtils.dim("  /debug breakpoint|bp|break - Trigger Python breakpoint() for debugging")
+        LogUtils.dim("  /debug prompt|p|system - Print current system prompt")
+
+        return CommandResult(should_quit=False, run_api_call=False)
+
+    def _show_prompt(self) -> CommandResult:
+        """Print the current system prompt"""
+        msgs = self.context.message_history.messages
+        prompt = None
+        for m in msgs:
+            if m.get("role") == "system":
+                prompt = m.get("content", "")
+                break
+
+        if not prompt:
+            LogUtils.error("No system prompt found in message history")
+            return CommandResult(should_quit=False, run_api_call=False)
+
+        lines = prompt.splitlines()
+        c = Config.colors
+        LogUtils.print(f"{c['bold']}System Prompt ({len(lines)} lines, {len(prompt)} chars):{c['reset']}")
+        LogUtils.print(f"{c['dim']}{'─' * 60}{c['reset']}")
+        for i, line in enumerate(lines, 1):
+            ln = f"{c['green']}{i:>4}{c['reset']}  {line}"
+            LogUtils.print(ln)
+        LogUtils.print(f"{c['dim']}{'─' * 60}{c['reset']}")
 
         return CommandResult(should_quit=False, run_api_call=False)
 
