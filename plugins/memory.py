@@ -12,7 +12,6 @@ No special API calls or background processes needed.
 
 import os
 from typing import List
-from aicoder.core.config import Config
 
 MEMORY_DIR = ".aicoder/memory"
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
@@ -45,14 +44,10 @@ def create_plugin(ctx):
 
         return content
 
-    # Flag to avoid duplicate injection when prompt_reloader rebuilds prompt
-    _autoload_injected = []
-
     def on_autoload_write(path, _content):
         """Queue autoload.md for size check after tool results"""
         if path and path.endswith("autoload.md"):
             _pending_check.append(path)
-            _autoload_injected.clear()  # new content needs re-injection
 
     def on_tool_results(_tool_results):
         """Check autoload.md size after tool results"""
@@ -78,12 +73,8 @@ def create_plugin(ctx):
                     ctx.app.message_history.add_user_message(msg)
 
     def on_system_prompt_append():
-        """Inject autoload.md content into system prompt (once per content set)"""
-        if _autoload_injected:
-            return None
+        """Inject autoload.md content into system prompt"""
         autoload = get_autoload()
-        if autoload:
-            _autoload_injected.append(True)
         if autoload:
             instructions = (
                 "\n\n## Persistent Memory\n"
@@ -148,130 +139,109 @@ def create_plugin(ctx):
                     "`.aicoder/memory/` persistent memory has been initialized.\n"
                     "- `autoload.md` (max 2KB): loaded into your system prompt each session.\n"
                     "- `index.md`: working memory file. Update with key learnings.\n"
-                    "- Create additional `.md` files as needed.\n"
-                    "Use `write_file`/`edit_file` to manage memory files."
                 )
 
         elif subcmd == "rm-all":
-            if not os.path.isdir(MEMORY_DIR):
-                LogUtils.info("[memory] not initialized")
+            msg = "Are you sure you want to DELETE all persistent memory? [y/N] "
+            import sys
+            sys.stdout.write(msg)
+            sys.stdout.flush()
+            resp = input().strip().lower()
+            if resp != "y":
+                LogUtils.info("[memory] rm-all cancelled")
                 return
 
-            import sys
-            sys.stdout.write("Remove all memory files? [y/N]: ")
-            sys.stdout.flush()
             try:
-                answer = input().strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                answer = ""
-            if answer in ("y", "yes"):
                 import shutil
                 shutil.rmtree(MEMORY_DIR)
-                LogUtils.success(f"[memory] {MEMORY_DIR} removed")
-            else:
-                LogUtils.info("[memory] cancelled")
+                LogUtils.warn(f"[memory] Memory directory {MEMORY_DIR} deleted")
+            except FileNotFoundError:
+                LogUtils.error("[memory] Memory directory does not exist")
+            except PermissionError:
+                LogUtils.error(f"[memory] Cannot delete {MEMORY_DIR} - permission denied")
+
+            # Tell the AI
+            if ctx.app and ctx.app.message_history:
+                ctx.app.message_history.add_user_message(
+                    "**Memory Reset**: The `.aicoder/memory/` directory has been deleted. "
+                    "All persistent memory is gone."
+                )
 
         elif subcmd == "status":
-            c = Config.colors
-            lines = [f"{c['bold']}Memory Status:{c['reset']}"]
-
             if not os.path.isdir(MEMORY_DIR):
-                lines.append(f"  Not initialized. Run {c['green']}/memory init{c['reset']}")
-                LogUtils.print("\n".join(lines))
+                LogUtils.info("[memory] Memory directory does not exist")
+                LogUtils.info("  Use /memory init to create it")
                 return
 
-            # autoload.md (check active, then disabled)
-            try:
-                with open(AUTOLOAD_FILE, "r", encoding="utf-8") as f:
-                    content = f.read()
-                size = len(content)
-                ok = size <= MAX_AUTOLOAD_BYTES
-                status = f"  {c['cyan']}autoload.md{c['reset']} ({size} bytes"
-                if not ok:
-                    status += f"{c['red']} OVER LIMIT{c['reset']}"
-                status += ")"
-                if ok:
-                    status += " [injected]"
-                lines.append(status)
-            except (FileNotFoundError, IOError, OSError):
-                # Check disabled
-                try:
-                    with open(AUTOLOAD_DISABLED, "r", encoding="utf-8") as f:
-                        content = f.read()
-                    lines.append(f"  {c['cyan']}autoload.md.disabled{c['reset']} "
-                                 f"({len(content)} bytes) [disabled]")
-                except (FileNotFoundError, IOError, OSError):
-                    lines.append(f"  {c['cyan']}autoload.md{c['reset']} (not found)")
-
-            # index.md
-            try:
-                with open(INDEX_FILE, "r", encoding="utf-8") as f:
-                    content = f.read()
-                lines.append(f"  {c['cyan']}index.md{c['reset']} ({len(content)} bytes)")
-            except (FileNotFoundError, IOError, OSError):
-                lines.append(f"  {c['cyan']}index.md{c['reset']} (not found)")
-
-            # Count additional .md files
-            extra = 0
+            files = []
             try:
                 for fname in os.listdir(MEMORY_DIR):
-                    if fname.endswith(".md") and fname not in ("autoload.md", "index.md"):
-                        extra += 1
-            except (FileNotFoundError, IOError, OSError):
-                pass
+                    fpath = os.path.join(MEMORY_DIR, fname)
+                    if os.path.isfile(fpath):
+                        size = os.path.getsize(fpath)
+                        files.append((fname, size))
+            except FileNotFoundError:
+                LogUtils.error("[memory] Memory directory not found")
+                return
 
-            if extra > 0:
-                lines.append(f"  + {extra} additional file(s)")
+            disabled = os.path.isfile(AUTOLOAD_DISABLED)
 
-            LogUtils.print("\n".join(lines))
+            LogUtils.print(f"\n{'[memory] Persistent Memory Status':^40}", bold=True)
+            LogUtils.dim(f"{'─' * 42}")
+            LogUtils.print(f"  Directory: {MEMORY_DIR}")
+            LogUtils.print(f"  Autoload:  {'DISABLED' if disabled else 'ENABLED'}")
+            LogUtils.dim(f"{'─' * 42}")
+            for fname, size in sorted(files):
+                label = fname
+                if fname == "autoload.md" and disabled:
+                    label += " (disabled, not loaded)"
+                LogUtils.print(f"  {label:<30} {size:>7} bytes")
+            LogUtils.dim(f"{'─' * 42}\n")
 
         elif subcmd == "on":
             if os.path.isfile(AUTOLOAD_DISABLED):
                 os.rename(AUTOLOAD_DISABLED, AUTOLOAD_FILE)
-                LogUtils.success("[memory] enabled (restored autoload.md)")
-            elif os.path.isfile(AUTOLOAD_FILE):
-                LogUtils.info("[memory] already enabled")
+                LogUtils.success("[memory] Autoload re-enabled")
+                if ctx.app and ctx.app.message_history:
+                    ctx.app.message_history.add_user_message(
+                        "**Memory Autoload**: Persistent memory autoload is now ON. "
+                        "Your session prompt will include autoload.md content again."
+                    )
             else:
-                LogUtils.info("[memory] not initialized, use /memory init")
+                LogUtils.info("[memory] Autoload is already enabled")
 
         elif subcmd == "off":
             if os.path.isfile(AUTOLOAD_FILE):
                 os.rename(AUTOLOAD_FILE, AUTOLOAD_DISABLED)
-                LogUtils.info("[memory] disabled (autoload.md -> autoload.md.disabled)")
-            elif os.path.isfile(AUTOLOAD_DISABLED):
-                LogUtils.info("[memory] already disabled")
+                LogUtils.warn("[memory] Autoload disabled")
+                if ctx.app and ctx.app.message_history:
+                    ctx.app.message_history.add_user_message(
+                        "**Memory Autoload**: Persistent memory autoload is now OFF. "
+                        "Your session prompt will NOT include autoload.md content."
+                    )
             else:
-                LogUtils.info("[memory] not initialized, use /memory init")
+                LogUtils.info("[memory] Autoload is already disabled")
 
         else:
-            c = Config.colors
-            LogUtils.print(f"{c['bold']}Usage:{c['reset']}")
-            LogUtils.print(f"  {c['green']}/memory rm-all{c['reset']}  "
-                           "Remove all memory files (safe prompt)")
-            LogUtils.print(f"  {c['green']}/memory init{c['reset']}   "
-                           "Create .aicoder/memory/ structure")
-            LogUtils.print(f"  {c['green']}/memory status{c['reset']} "
-                           "Show memory file info")
-            LogUtils.print(f"  {c['green']}/memory on{c['reset']}    "
-                           "Enable autoload injection")
-            LogUtils.print(f"  {c['green']}/memory off{c['reset']}   "
-                           "Disable autoload injection")
-            LogUtils.print(f"  {c['green']}/m{c['reset']}            "
-                           "Alias for /memory")
+            LogUtils.print("Memory plugin commands:", bold=True)
+            LogUtils.dim("  /memory init     - Initialize memory directory")
+            LogUtils.dim("  /memory rm-all   - Delete all memory (requires confirmation)")
+            LogUtils.dim("  /memory status   - Show memory status and file sizes")
+            LogUtils.dim("  /memory on       - Enable autoload")
+            LogUtils.dim("  /memory off      - Disable autoload")
 
     # Register hooks
     ctx.register_hook("after_file_write", on_autoload_write)
     ctx.register_hook("after_tool_results", on_tool_results)
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
 
-    # Register command
-    ctx.register_command("memory", handle_command, description="Persistent memory management")
-    ctx.register_command("m", handle_command, description="Alias for /memory")
-
-    if Config.debug():
-        from aicoder.utils.log import LogUtils
-        LogUtils.print("[+] Memory plugin loaded")
-        LogUtils.print("    - /memory command (aliases: /m)")
-        LogUtils.print("    - on_system_prompt_append hook (inject autoload.md)")
-        LogUtils.print("    - after_file_write hook (monitor autoload.md)")
-        LogUtils.print("    - after_tool_results hook (warn on oversized autoload.md)")
+    return {
+        "name": "memory",
+        "description": "Persistent memory management (.aicoder/memory/)",
+        "command": handle_command,
+        "hooks": {
+            "after_file_write": on_autoload_write,
+            "after_tool_results": on_tool_results,
+            "on_system_prompt_append": on_system_prompt_append,
+        },
+    }
