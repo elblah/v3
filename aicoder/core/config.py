@@ -115,6 +115,21 @@ class Config:
         """
         cls._clear_thinking = value
 
+    # Show reasoning - initialize from env var ONCE at module load time
+    # AICODER_SHOW_REASONING=0 disables printing reasoning on first content
+    # Default (unset or any other value): enabled
+    _show_reasoning = os.environ.get("AICODER_SHOW_REASONING", "1").lower() not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def show_reasoning() -> bool:
+        """Get show_reasoning state (true=print reasoning, false=suppress)"""
+        return Config._show_reasoning
+
+    @classmethod
+    def set_show_reasoning(cls, value: bool) -> None:
+        """Set show_reasoning state"""
+        cls._show_reasoning = value
+
     # Suppress error body - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # false = include error body in HTTP error messages (default)
