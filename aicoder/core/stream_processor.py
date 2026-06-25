@@ -109,6 +109,9 @@ class StreamProcessor:
 
                     content = delta.get("content")
                     if content:
+                        # On first content chunk, print accumulated reasoning (if any)
+                        if full_response == "" and Config.show_reasoning() and accumulated_reasoning:
+                            builtins.print(f"\n{Config.colors['dim']}Reasoning: {accumulated_reasoning}{Config.colors['reset']}\n")
                         # Strip leading whitespace for cleaner output
                         if full_response == "":
                             content = content.lstrip()
