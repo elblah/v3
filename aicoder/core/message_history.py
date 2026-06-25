@@ -3,6 +3,8 @@
 """
 
 import json
+import os
+import time
 from typing import List, Optional, TYPE_CHECKING, Dict, Any
 
 
@@ -12,6 +14,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict, Any
 
 
 from aicoder.core.stats import Stats
+from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
 if TYPE_CHECKING:
@@ -189,6 +192,17 @@ class MessageHistory:
         if self._plugin_system:
             self._plugin_system.call_hooks("after_assistant_message_added", assistant_message)
 
+        # Append to session output file if configured
+        output_file = Config.session_output_file()
+        if output_file:
+            try:
+                entry = dict(assistant_message)
+                entry["timestamp"] = int(time.time())
+                with open(output_file, "a") as f:
+                    f.write(json.dumps(entry) + "\n")
+            except Exception:
+                pass  # Best-effort, don't crash on write failure
+
     def add_tool_results(self, tool_results) -> None:
         """Add tool results - accepts both dicts and objects"""
         # Ensure tool_results is iterable
@@ -302,6 +316,10 @@ class MessageHistory:
     def get_chat_messages(self) -> List[Dict[str, Any]]:
         """Get chat messages (excluding system messages)"""
         return [msg for msg in self.messages if msg.get("role") != "system"]
+
+    def get_session_messages(self) -> List[Dict[str, Any]]:
+        """Get messages for session persistence (excludes system role)"""
+        return self.get_chat_messages()
 
     def replace_messages(self, new_messages: List[Dict[str, Any]]) -> None:
         """Replace all messages with new list"""
@@ -450,8 +468,6 @@ class MessageHistory:
 
     def should_auto_compact(self) -> bool:
         """Check if auto-compaction should be triggered"""
-        from aicoder.core.config import Config
-
         percentage = Config.context_compact_percentage()
         if percentage <= 0:
             return False  # Auto-compaction disabled

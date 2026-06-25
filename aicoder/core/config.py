@@ -590,6 +590,16 @@ class Config:
         return int(top_k) if top_k else None
 
     @staticmethod
+    def session_file() -> str:
+        """Get session JSON file path from env var (for load-on-start, save-on-exit)"""
+        return os.environ.get("SESSION_JSON_FILE") or os.environ.get("AICODER_SESSION_FILE") or ""
+
+    @staticmethod
+    def session_output_file() -> str:
+        """Get session output JSONL file path from env var (for AI response logging)"""
+        return os.environ.get("SESSION_OUTPUT_FILE") or os.environ.get("AICODER_SESSION_OUTPUT") or ""
+
+    @staticmethod
     def repetition_penalty() -> float:
         """
         Get repetition_penalty setting

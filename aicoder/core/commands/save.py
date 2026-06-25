@@ -39,7 +39,7 @@ class SaveCommand(BaseCommand):
         filename = args[0] if args else "session.json"
 
         try:
-            messages = self.context.message_history.get_messages()
+            messages = self.context.message_history.get_chat_messages()
             
             # Only save if there's at least one real user message or assistant message
             # (not starting with '[') - this handles sessions that have been compacted
