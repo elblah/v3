@@ -2,7 +2,7 @@
 Memory plugin - Auto-managed persistent memory for cross-session learning.
 
 Creates .aicoder/memory/ structure:
-  autoload.md - auto-injected into system prompt (max 2KB)
+  autoload.md - auto-injected into system prompt (limit configurable via LUNA_MEMORY_AUTOLOAD_LIMIT env var)
   index.md - main memory file, AI manages freely
   *.md - any additional files AI creates
 
@@ -16,7 +16,7 @@ from typing import List
 MEMORY_DIR = ".aicoder/memory"
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
-MAX_AUTOLOAD_BYTES = 2048
+MAX_AUTOLOAD_BYTES = int(os.environ.get("LUNA_MEMORY_AUTOLOAD_LIMIT", "2048"))
 AUTOLOAD_DISABLED = AUTOLOAD_FILE + ".disabled"
 
 
@@ -94,7 +94,7 @@ def create_plugin(ctx):
             "Manage them with `write_file`/`edit_file`. Keep everything inside that directory.\n"
             "\n"
             "**How it works:**\n"
-            "- `autoload.md` (< 2KB) - loaded into **every session's prompt**. "
+            "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) - loaded into **every session's prompt**. "
             "Put critical facts here.\n"
             "- `index.md` - main working memory (project knowledge, patterns, "
             "user preferences).\n"
@@ -131,7 +131,7 @@ def create_plugin(ctx):
                 "This directory is your persistent memory. "
                 "You manage these files using write_file/edit_file.\n\n"
                 "## Rules\n"
-                "- `autoload.md` (< 2KB) - critical facts loaded into every session's "
+                "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) - critical facts loaded into every session's "
                 "prompt. Keep it concise.\n"
                 "- `index.md` is your working memory. "
                 "Organize project knowledge, patterns, conventions here.\n"
