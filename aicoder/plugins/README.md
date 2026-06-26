@@ -2,49 +2,38 @@
 
 Ultra-fast, minimalist plugin system using duck typing.
 
-## How It Works
+## 3-Tier Plugin Loading
 
-1. Available plugins live in `plugins/` (tracked in git)
-2. Enabled plugins live in `.aicoder/plugins/` (per-project, gitignored)
-3. Each plugin is a single `.py` file
-4. Plugin exports `create_plugin(context)` function
-5. Files starting with `_` are disabled (e.g., `_ruff.py`)
+Plugins load in priority order (first wins on name collision):
 
-## Installing Plugins
+1. **Local** — `.aicoder/plugins/` (per-project, gitignored)
+2. **Global** — `~/.config/aicoder-v3/plugins/` (user-wide)
+3. **Bundled** — `aicoder/plugins/` (shipped with package, resolves from package location, not CWD)
 
-### For New Projects
+Each plugin is a single `.py` file exporting `create_plugin(context)`. Files starting with `_` are disabled.
+
+## Managing Plugins
+
+### Disabling a Bundled Plugin
+
+Add a file with same name to `.aicoder/plugins/` — local takes priority over bundled.
 
 ```bash
-# Copy only plugins you want
-cp plugins/web_search.py .aicoder/plugins/
-cp plugins/notify_prompt.py .aicoder/plugins/
+# Touch empty file to disable (local override wins)
+touch .aicoder/plugins/web_search.py
 
-# Or copy all available plugins
-cp plugins/*.py .aicoder/plugins/
+# Or rename in bundled dir (won't survive package update)
+mv aicoder/plugins/ruff.py aicoder/plugins/_ruff.py
 ```
 
-### For Existing Projects (using current setup)
-
-You're already good - `.aicoder/plugins/` is populated.
-
-### Disabling a Plugin
+### Disabling a Plugin (local/global)
 
 ```bash
 # Option 1: Remove file
 rm .aicoder/plugins/ruff.py
 
-# Option 2: Rename with _ prefix (files starting with _ are ignored)
+# Option 2: Rename with _ prefix
 mv .aicoder/plugins/ruff.py .aicoder/plugins/_ruff.py
-```
-
-### Re-enabling a Plugin
-
-```bash
-# Copy from available plugins
-cp plugins/ruff.py .aicoder/plugins/
-
-# Or rename back
-mv .aicoder/plugins/_ruff.py .aicoder/plugins/ruff.py
 ```
 
 ### Restricting Plugins with PLUGINS_ALLOW
@@ -73,11 +62,13 @@ PLUGINS_ALLOW="web_search" TOOLS_ALLOW="read_file,grep" aicoder
 **Plugin locations:**
 - Local: `.aicoder/plugins/` (project-specific, takes precedence)
 - Global: `~/.config/aicoder-v3/plugins/` (user's global plugins)
+- Bundled: `aicoder/plugins/` (ships with package, auto-loads)
 
 ```bash
-# List available plugins
-ls -la .aicoder/plugins/        # Local plugins
-ls -la ~/.config/aicoder-v3/plugins/  # Global plugins
+# List plugins by tier
+ls -la .aicoder/plugins/                  # Local (project)
+ls -la ~/.config/aicoder-v3/plugins/      # Global (user)
+ls -la aicoder/plugins/                   # Bundled (package)
 ```
 
 ## Plugin Output Conventions
@@ -104,7 +95,7 @@ def create_plugin(ctx):
 **Rules:**
 - Wrap informational/verbose messages in `if Config.debug():`
 - Always print errors (e.g., missing requirements) without conditions
-- The global plugin loader message `[i] Loading plugins from...` is always shown
+- Plugin loading messages are gated on `Config.debug()` — silent in normal use
 
 **To see plugin loading output:**
 ```bash

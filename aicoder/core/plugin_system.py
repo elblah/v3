@@ -122,7 +122,7 @@ class PluginSystem:
         self.global_plugins_dir = global_plugins_dir or os.path.expanduser("~/.config/aicoder-v3/plugins")
         # Bundled plugins dir is always relative to package, not CWD
         self.bundled_plugins_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "plugins"
         )
         self.plugins: List[Any] = []
