@@ -78,12 +78,12 @@ def create_plugin(ctx):
         if autoload:
             instructions = (
                 "\n\n## Persistent Memory\n"
-                "You have a persistent memory directory at `.aicoder/memory/`.\n"
+                "`.aicoder/memory/` directory and files already exist. No setup needed.\n"
                 "You manage it yourself using `write_file`/`edit_file`.\n"
-                "- `autoload.md` < 2KB: This file (loaded into your prompt each session).\n"
+                "- `autoload.md` < 2KB: Loaded into your prompt each session (shown below).\n"
                 "- `index.md`: Your main working file. Organize project knowledge, "
                 "user preferences, patterns.\n"
-                "- Create more `.md` files for different topics.\n\n"
+                "- Create additional `.md` files for new topics as needed.\n\n"
                 "### Current Memory\n"
                 + autoload
             )
@@ -234,6 +234,10 @@ def create_plugin(ctx):
     ctx.register_hook("after_file_write", on_autoload_write)
     ctx.register_hook("after_tool_results", on_tool_results)
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
+
+    # Register command
+    ctx.register_command("memory", handle_command, description="Persistent memory management (.aicoder/memory/)")
+    ctx.register_command("m", handle_command, description="Alias for /memory")
 
     return {
         "name": "memory",
