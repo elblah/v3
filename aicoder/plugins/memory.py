@@ -16,13 +16,39 @@ from typing import List
 MEMORY_DIR = ".aicoder/memory"
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
-MAX_AUTOLOAD_BYTES = int(os.environ.get("LUNA_MEMORY_AUTOLOAD_LIMIT", "2048"))
-AUTOLOAD_DISABLED = AUTOLOAD_FILE + ".disabled"
+MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
 
 
 def create_plugin(ctx):
     """Memory plugin - persistent memory management"""
     _pending_check: List[str] = []
+
+    def _auto_init():
+        """Auto-init memory dir + seed files if missing"""
+        if os.path.isdir(MEMORY_DIR):
+            return
+        os.makedirs(MEMORY_DIR, exist_ok=True)
+        index_content = (
+            "# Memory Index\n\n"
+            "This directory is your persistent memory. "
+            "Manage files via write_file/edit_file.\n\n"
+            "## Rules\n"
+            "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) - critical facts loaded into every session's prompt.\n"
+            "- `index.md` - working memory for project knowledge, patterns, conventions.\n"
+            "- Create more `.md` files for specific topics as needed.\n"
+            "- Update memory when you learn something important.\n\n"
+            "## Guidelines\n"
+            "- Be specific. Prefer facts over vague statements.\n"
+            "- Replace dates with actual values (no 'today', 'yesterday').\n"
+            "- Prune stale entries.\n"
+        )
+        with open(INDEX_FILE, "w", encoding="utf-8") as f:
+            f.write(index_content)
+        if not os.path.isfile(AUTOLOAD_FILE):
+            with open(AUTOLOAD_FILE, "w", encoding="utf-8") as f:
+                f.write("_No persistent memories yet._")
+        from aicoder.utils.log import LogUtils
+        LogUtils.info(f"[memory] auto-initialized at {MEMORY_DIR}")
 
     def get_autoload() -> str | None:
         """Read autoload.md content, truncated if over limit"""
@@ -85,6 +111,8 @@ def create_plugin(ctx):
 
     def on_system_prompt_append():
         """Inject memory info and autoload.md into system prompt"""
+        _auto_init()
+
         autoload = get_autoload()
         files = list_memory_files()
 
@@ -118,54 +146,7 @@ def create_plugin(ctx):
         parts = args_str.split()
         subcmd = parts[0] if parts else ""
 
-        if subcmd == "init":
-            if os.path.isdir(MEMORY_DIR):
-                LogUtils.info("[memory] already initialized")
-                return
-
-            os.makedirs(MEMORY_DIR, exist_ok=True)
-
-            # Create index.md
-            index_content = (
-                "# Memory Index\n\n"
-                "This directory is your persistent memory. "
-                "You manage these files using write_file/edit_file.\n\n"
-                "## Rules\n"
-                "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) - critical facts loaded into every session's "
-                "prompt. Keep it concise.\n"
-                "- `index.md` is your working memory. "
-                "Organize project knowledge, patterns, conventions here.\n"
-                "- Create additional `.md` files for specific topics as needed.\n"
-                "- Update memory when you learn something important "
-                "about the project or user preferences.\n\n"
-                "## Guidelines\n"
-                "- Be specific. Prefer facts over vague statements.\n"
-                "- Replace \"today\", \"yesterday\", \"last time\" with actual dates.\n"
-                "- Prune stale entries. Don't let contradictions accumulate.\n"
-            )
-            with open(INDEX_FILE, "w", encoding="utf-8") as f:
-                f.write(index_content)
-
-            # Create autoload.md only if it doesn't exist
-            if not os.path.isfile(AUTOLOAD_FILE):
-                with open(AUTOLOAD_FILE, "w", encoding="utf-8") as f:
-                    f.write("_No persistent memories yet._")
-
-            LogUtils.success(f"[memory] Memory initialized at {MEMORY_DIR}")
-
-            # Rebuild system prompt so memory section is visible immediately
-            if ctx.app and ctx.app.message_history:
-                from aicoder.core.prompt_builder import PromptBuilder
-                from aicoder.core.token_estimator import cache_message
-                system_prompt = PromptBuilder.build_complete_system_prompt(
-                    ctx.app.plugin_system
-                )
-                messages = ctx.app.message_history.messages
-                if messages and len(messages) > 0 and messages[0].get("role") == "system":
-                    messages[0]["content"] = system_prompt
-                    cache_message(messages[0])
-
-        elif subcmd == "rm-all":
+        if subcmd == "rm-all":
             msg = "Are you sure you want to DELETE all persistent memory? [y/N] "
             import sys
             sys.stdout.write(msg)
@@ -178,23 +159,28 @@ def create_plugin(ctx):
             try:
                 import shutil
                 shutil.rmtree(MEMORY_DIR)
-                LogUtils.warn(f"[memory] Memory directory {MEMORY_DIR} deleted")
+                LogUtils.warn("[memory] Memory directory deleted, will re-initialize")
             except FileNotFoundError:
                 LogUtils.error("[memory] Memory directory does not exist")
             except PermissionError:
                 LogUtils.error(f"[memory] Cannot delete {MEMORY_DIR} - permission denied")
 
-            # Tell the AI
+            # Rebuild system prompt so auto-init creates fresh memory
             if ctx.app and ctx.app.message_history:
-                ctx.app.message_history.add_user_message(
-                    "**Memory Reset**: The `.aicoder/memory/` directory has been deleted. "
-                    "All persistent memory is gone."
+                from aicoder.core.prompt_builder import PromptBuilder
+                from aicoder.core.token_estimator import cache_message
+                system_prompt = PromptBuilder.build_complete_system_prompt(
+                    ctx.app.plugin_system
                 )
+                messages = ctx.app.message_history.messages
+                if messages and len(messages) > 0 and messages[0].get("role") == "system":
+                    messages[0]["content"] = system_prompt
+                    cache_message(messages[0])
 
         elif subcmd == "status":
+            from aicoder.utils.log import LogUtils
             if not os.path.isdir(MEMORY_DIR):
-                LogUtils.info("[memory] Memory directory does not exist")
-                LogUtils.info("  Use /memory init to create it")
+                LogUtils.info("[memory] Not initialized (will auto-init on next request)")
                 return
 
             files = []
@@ -208,51 +194,19 @@ def create_plugin(ctx):
                 LogUtils.error("[memory] Memory directory not found")
                 return
 
-            disabled = os.path.isfile(AUTOLOAD_DISABLED)
-
-            LogUtils.print(f"\n{'[memory] Persistent Memory Status':^40}", bold=True)
+            LogUtils.print(f"\n{'[memory] Memory Status':^40}", bold=True)
             LogUtils.dim(f"{'─' * 42}")
-            LogUtils.print(f"  Directory: {MEMORY_DIR}")
-            LogUtils.print(f"  Autoload:  {'DISABLED' if disabled else 'ENABLED'}")
+            LogUtils.print("  Disable via PLUGINS_DENY=...,memory (env var)")
             LogUtils.dim(f"{'─' * 42}")
             for fname, size in sorted(files):
-                label = fname
-                if fname == "autoload.md" and disabled:
-                    label += " (disabled, not loaded)"
-                LogUtils.print(f"  {label:<30} {size:>7} bytes")
+                LogUtils.print(f"  {fname:<30} {size:>7} bytes")
             LogUtils.dim(f"{'─' * 42}\n")
-
-        elif subcmd == "on":
-            if os.path.isfile(AUTOLOAD_DISABLED):
-                os.rename(AUTOLOAD_DISABLED, AUTOLOAD_FILE)
-                LogUtils.success("[memory] Autoload re-enabled")
-                if ctx.app and ctx.app.message_history:
-                    ctx.app.message_history.add_user_message(
-                        "**Memory Autoload**: Persistent memory autoload is now ON. "
-                        "Your session prompt will include autoload.md content again."
-                    )
-            else:
-                LogUtils.info("[memory] Autoload is already enabled")
-
-        elif subcmd == "off":
-            if os.path.isfile(AUTOLOAD_FILE):
-                os.rename(AUTOLOAD_FILE, AUTOLOAD_DISABLED)
-                LogUtils.warn("[memory] Autoload disabled")
-                if ctx.app and ctx.app.message_history:
-                    ctx.app.message_history.add_user_message(
-                        "**Memory Autoload**: Persistent memory autoload is now OFF. "
-                        "Your session prompt will NOT include autoload.md content."
-                    )
-            else:
-                LogUtils.info("[memory] Autoload is already disabled")
 
         else:
             LogUtils.print("Memory plugin commands:", bold=True)
-            LogUtils.dim("  /memory init     - Initialize memory directory")
             LogUtils.dim("  /memory rm-all   - Delete all memory (requires confirmation)")
             LogUtils.dim("  /memory status   - Show memory status and file sizes")
-            LogUtils.dim("  /memory on       - Enable autoload")
-            LogUtils.dim("  /memory off      - Disable autoload")
+            LogUtils.dim("  Disable via PLUGINS_DENY=...,memory env var")
 
     # Register hooks
     ctx.register_hook("after_file_write", on_autoload_write)
