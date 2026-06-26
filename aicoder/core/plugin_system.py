@@ -2,10 +2,10 @@
 Ultra-fast plugin system for AI Coder v3
 
 Design principles:
-- Startup speed: Load plugins only when .aicoder/plugins/ or ~/.config/aicoder-v3/plugins/ exists
+- Startup speed: Load plugins only when plugin directories exist
 - Minimalism: Single create_plugin(context) function (duck typing)
-- Priority: Local .aicoder/plugins/ takes precedence over global plugins
-- Fallback: Global plugins in ~/.config/aicoder-v3/plugins/ for worktree support
+- Priority: Local .aicoder/plugins/ > global ~/.config/aicoder-v3/plugins/ > bundled plugins/
+- Same name in higher-priority dir overrides lower (no duplicate loading)
 - No dependencies: Pure Python stdlib only
 - Closure state: Plugin state in closures, no complex state mgmt
 - Direct access: Plugins get ctx.app for direct component access
@@ -104,12 +104,11 @@ class PluginContext:
 
 class PluginSystem:
     """
-    Ultra-fast plugin loader
+    Ultra-fast plugin loader — 3-tier priority
 
     Features:
-    - Loads both local and global plugins simultaneously
-    - Local .aicoder/plugins/ loaded first, overrides global if same name
-    - Global ~/.config/aicoder-v3/plugins/ as shared pool
+    - Loads from local .aicoder/plugins/, global ~/.config/aicoder-v3/plugins/, bundled plugins/
+    - Higher-priority source overrides same-named plugin in lower tiers
     - Single file per plugin
     - Duck-typed: just create_plugin(context) function
     - Hook system for events
@@ -117,10 +116,17 @@ class PluginSystem:
     - Direct app access: plugins get ctx.app for full component access
     """
 
-    def __init__(self, plugins_dir: str = ".aicoder/plugins", global_plugins_dir: Optional[str] = None):
+    def __init__(self, plugins_dir: str = ".aicoder/plugins",
+                 global_plugins_dir: Optional[str] = None):
         self.plugins_dir = plugins_dir
         self.global_plugins_dir = global_plugins_dir or os.path.expanduser("~/.config/aicoder-v3/plugins")
+        # Bundled plugins dir is always relative to package, not CWD
+        self.bundled_plugins_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "plugins"
+        )
         self.plugins: List[Any] = []
+        self.loaded_plugin_names: Set[str] = set()
         self.tools: Dict[str, Dict] = {}
         self.commands: Dict[str, Callable] = {}
         self.hooks: Dict[str, List[Callable]] = {}
@@ -217,43 +223,41 @@ class PluginSystem:
 
     def load_plugins(self) -> None:
         """
-        Load plugins from local .aicoder/plugins/ and global ~/.config/aicoder-v3/plugins/
-
-        - Local plugins loaded first
-        - Global plugins loaded second, skipping any already loaded locally (local overrides)
-        - Ultra-fast: returns immediately if no plugins directory exists
+        Load plugins from three sources (priority order):
+        1. Local .aicoder/plugins/ (project overrides)
+        2. Global ~/.config/aicoder-v3/plugins/ (user-wide overrides)
+        3. Bundled plugins/ (built-in defaults)
+        - Same name in higher-priority dir overrides lower (no duplicate loading)
         """
-        loaded_plugins: Dict[str, str] = {}  # plugin_name -> source
         total_start = time.perf_counter()
 
-        # 1. Load local plugins first
-        if os.path.exists(self.plugins_dir):
-            for plugin_name, plugin_path in self._get_plugin_files(self.plugins_dir):
-                t0 = time.perf_counter()
-                self._load_single_plugin(plugin_path, plugin_name)
-                dt = time.perf_counter() - t0
-                loaded_plugins[plugin_name] = "local"
-                if Config.debug():
-                    print(f"[+] Loaded plugin: {plugin_name} ({dt:.3f}s)")
-
-        # 2. Load global plugins, skip if already loaded locally
-        if os.path.exists(self.global_plugins_dir):
-            if sys.stdout.isatty():
-                LogUtils.print(f"[i] Loading global plugins from: {self.global_plugins_dir}")
-
-            for plugin_name, plugin_path in self._get_plugin_files(self.global_plugins_dir):
-                if plugin_name not in loaded_plugins:
-                    t0 = time.perf_counter()
-                    self._load_single_plugin(plugin_path, plugin_name)
-                    dt = time.perf_counter() - t0
-                    loaded_plugins[plugin_name] = "global"
-                    if Config.debug():
-                        print(f"[+] Loaded plugin: {plugin_name} ({dt:.3f}s)")
+        self._load_plugins_from_dir(self.plugins_dir, "local")
+        self._load_plugins_from_dir(self.global_plugins_dir, "global")
+        self._load_plugins_from_dir(self.bundled_plugins_dir, "bundled")
 
         # Debug timing
         if Config.debug() and self.plugins:
             total_dt = time.perf_counter() - total_start
             print(f"[+] Plugins loaded in {total_dt:.3f}s ({len(self.plugins)} plugins)")
+
+    def _load_plugins_from_dir(self, dir_path: str, source: str) -> None:
+        """Load plugins from a single directory, skipping already-loaded names"""
+        if not os.path.isdir(dir_path):
+            return
+
+        if Config.debug():
+            LogUtils.print(f"[i] Loading {source} plugins from: {dir_path}")
+
+        for plugin_name, plugin_path in self._get_plugin_files(dir_path):
+            if plugin_name in self.loaded_plugin_names:
+                continue  # Already loaded from higher-priority source
+
+            t0 = time.perf_counter()
+            self._load_single_plugin(plugin_path, plugin_name)
+            dt = time.perf_counter() - t0
+
+            if Config.debug():
+                print(f"[+] Loaded plugin: {plugin_name} ({dt:.3f}s)")
 
     def _load_single_plugin(self, plugin_path: str, plugin_name: str) -> None:
         """Load a single plugin file"""
@@ -273,6 +277,7 @@ class PluginSystem:
 
                 # Track the plugin
                 self.plugins.append(plugin_name)
+                self.loaded_plugin_names.add(plugin_name)
 
                 # Handle cleanup if returned
                 if result and isinstance(result, dict) and "cleanup" in result:
