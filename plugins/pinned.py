@@ -9,9 +9,12 @@ Commands:
   /pinned on       - Always show
   /pinned off      - Never show
   /pinned len <n>  - Set max characters (default: 300)
+  /pinned pwd on   - Also show current working directory
+  /pinned pwd off  - Hide PWD (default)
   /pinned status   - Show current settings
 """
 
+import os
 from aicoder.core.config import Config
 
 
@@ -21,6 +24,7 @@ def create_plugin(ctx):
     # Settings
     _mode = "default"  # "default", "on", "off"
     _max_len = 300
+    _pwd_enabled = False
     _last_text = ""
     _last_reasoning = ""
 
@@ -113,9 +117,13 @@ def create_plugin(ctx):
             # AI path: no \n from context bar, add \n after Pinned
             LogUtils.print(f"{Config.colors['yellow']}Pinned: {display_text}{Config.colors['reset']}\n")
 
+        if _pwd_enabled:
+            pwd = os.getcwd()
+            LogUtils.print(f"{Config.colors['dim']}PWD: {pwd}{Config.colors['reset']}")
+
     def pinned_command(args):
         """Handle /pinned commands"""
-        nonlocal _mode, _max_len
+        nonlocal _mode, _max_len, _pwd_enabled
 
         if not args:
             return _show_status()
@@ -147,12 +155,23 @@ def create_plugin(ctx):
                 return "Invalid number. Usage: /pinned len <number>"
         elif cmd == "status":
             return _show_status()
+        elif cmd == "pwd":
+            if len(parts) < 2:
+                return f"PWD display: {'on' if _pwd_enabled else 'off'}"
+            sub = parts[1].lower()
+            if sub == "on":
+                _pwd_enabled = True
+                return "PWD display: on"
+            elif sub == "off":
+                _pwd_enabled = False
+                return "PWD display: off"
+            return "Usage: /pinned pwd on|off"
         else:
-            return "Usage: /pinned [default|on|off|len <n>|status]"
+            return "Usage: /pinned [default|on|off|len <n>|pwd on|off|status]"
 
     def _show_status():
         """Show current pinned settings"""
-        return f"Pinned: mode={_mode}, max_len={_max_len}, enabled={_is_enabled()}, text={len(_last_text)} chars, reasoning={len(_last_reasoning)} chars"
+        return f"Pinned: mode={_mode}, max_len={_max_len}, enabled={_is_enabled()}, pwd={'on' if _pwd_enabled else 'off'}, text={len(_last_text)} chars, reasoning={len(_last_reasoning)} chars"
 
     # Register hooks
     ctx.register_hook("after_ai_processing", after_ai_processing)
