@@ -100,3 +100,4 @@ tmp/
 .aicoder/snippets
 .aicoder/
 **/.aicoder/
+*.json
