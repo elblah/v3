@@ -2,7 +2,7 @@
 Memory plugin - Auto-managed persistent memory for cross-session learning.
 
 Creates .aicoder/memory/ structure:
-  autoload.md - auto-injected into system prompt (limit configurable via LUNA_MEMORY_AUTOLOAD_LIMIT env var)
+  autoload.md - auto-injected into system prompt (limit configurable via AICODER_MEMORY_AUTOLOAD_LIMIT env var)
   index.md - main memory file, AI manages freely
   *.md - any additional files AI creates
 
