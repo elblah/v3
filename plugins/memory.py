@@ -44,6 +44,17 @@ def create_plugin(ctx):
 
         return content
 
+    def list_memory_files() -> list[str]:
+        """List .md files in memory directory"""
+        try:
+            files = []
+            for fname in os.listdir(MEMORY_DIR):
+                if fname.endswith(".md") and os.path.isfile(os.path.join(MEMORY_DIR, fname)):
+                    files.append(fname)
+            return sorted(files)
+        except FileNotFoundError:
+            return []
+
     def on_autoload_write(path, _content):
         """Queue autoload.md for size check after tool results"""
         if path and path.endswith("autoload.md"):
@@ -73,22 +84,32 @@ def create_plugin(ctx):
                     ctx.app.message_history.add_user_message(msg)
 
     def on_system_prompt_append():
-        """Inject autoload.md content into system prompt"""
+        """Inject memory info and autoload.md into system prompt"""
         autoload = get_autoload()
+        files = list_memory_files()
+
+        section = (
+            "\n\n## Persistent Memory\n"
+            "Memory files live in `.aicoder/memory/` (relative to CWD, already exists).\n"
+            "Manage them with `write_file`/`edit_file`. Keep everything inside that directory.\n"
+            "\n"
+            "**How it works:**\n"
+            "- `autoload.md` (< 2KB) - loaded into **every session's prompt**. "
+            "Put critical facts here.\n"
+            "- `index.md` - main working memory (project knowledge, patterns, "
+            "user preferences).\n"
+            "- Create additional `.md` files for specific topics.\n"
+        )
+
+        if files:
+            section += "\n### Memory Files\n"
+            for name in files:
+                section += f"- {name}\n"
+
         if autoload:
-            instructions = (
-                "\n\n## Persistent Memory\n"
-                "`.aicoder/memory/` directory and files already exist. No setup needed.\n"
-                "You manage it yourself using `write_file`/`edit_file`.\n"
-                "- `autoload.md` < 2KB: Loaded into your prompt each session (shown below).\n"
-                "- `index.md`: Your main working file. Organize project knowledge, "
-                "user preferences, patterns.\n"
-                "- Create additional `.md` files for new topics as needed.\n\n"
-                "### Current Memory\n"
-                + autoload
-            )
-            return instructions
-        return None
+            section += "\n### autoload.md\n" + autoload
+
+        return section
 
     def handle_command(args_str: str):
         """Handle /memory command"""
@@ -108,10 +129,10 @@ def create_plugin(ctx):
             index_content = (
                 "# Memory Index\n\n"
                 "This directory is your persistent memory. "
-                "The AI manages these files using write_file/edit_file.\n\n"
+                "You manage these files using write_file/edit_file.\n\n"
                 "## Rules\n"
-                "- `autoload.md` (max 2KB) is loaded into your system prompt each session. "
-                "Keep it concise.\n"
+                "- `autoload.md` (< 2KB) - critical facts loaded into every session's "
+                "prompt. Keep it concise.\n"
                 "- `index.md` is your working memory. "
                 "Organize project knowledge, patterns, conventions here.\n"
                 "- Create additional `.md` files for specific topics as needed.\n"
@@ -132,14 +153,17 @@ def create_plugin(ctx):
 
             LogUtils.success(f"[memory] Memory initialized at {MEMORY_DIR}")
 
-            # Tell the AI
+            # Rebuild system prompt so memory section is visible immediately
             if ctx.app and ctx.app.message_history:
-                ctx.app.message_history.add_user_message(
-                    "## Memory System\n\n"
-                    "`.aicoder/memory/` persistent memory has been initialized.\n"
-                    "- `autoload.md` (max 2KB): loaded into your system prompt each session.\n"
-                    "- `index.md`: working memory file. Update with key learnings.\n"
+                from aicoder.core.prompt_builder import PromptBuilder
+                from aicoder.core.token_estimator import cache_message
+                system_prompt = PromptBuilder.build_complete_system_prompt(
+                    ctx.app.plugin_system
                 )
+                messages = ctx.app.message_history.messages
+                if messages and len(messages) > 0 and messages[0].get("role") == "system":
+                    messages[0]["content"] = system_prompt
+                    cache_message(messages[0])
 
         elif subcmd == "rm-all":
             msg = "Are you sure you want to DELETE all persistent memory? [y/N] "
