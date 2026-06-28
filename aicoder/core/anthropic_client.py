@@ -249,6 +249,16 @@ class AnthropicClient:
         if self._plugin_system:
             request_data = self._plugin_system.call_hooks_with_return("transform_request", request_data) or request_data
 
+        # Add thinking config for Anthropic
+        thinking_extra = Config.thinking_extra_body()
+        if thinking_extra:
+            request_data.update(thinking_extra)
+
+        # Add top-level thinking params (e.g., reasoning_effort)
+        thinking_params = Config.thinking_params()
+        if thinking_params:
+            request_data.update(thinking_params)
+
         return request_data
 
     def _handle_streaming_response(self, response: Response, start_time: float) -> Generator[Dict[str, Any], None, None]:
