@@ -192,6 +192,7 @@ class Config:
         "deepseek": {"effort_field": "reasoning_effort", "uses_extra_body": True},
         "glm": {"effort_field": "reasoningEffort", "uses_extra_body": True},
         "openai": {"effort_field": "reasoning_effort", "uses_extra_body": False},
+        "anthropic": {"uses_extra_body": True},
     }
 
     # Model name patterns for auto-detection
@@ -199,6 +200,7 @@ class Config:
         "deepseek": ["deepseek"],
         "glm": ["glm", "zhipuai", "z.ai"],
         "openai": ["gpt", "o1", "o3", "o4", "chatgpt", "openai"],
+        "anthropic": ["claude", "anthropic"],
     }
 
     @classmethod
@@ -229,7 +231,9 @@ class Config:
         """
         fmt = cls.get_reasoning_format()
         if fmt and fmt in cls._reasoning_formats:
-            return cls._reasoning_formats[fmt]["effort_field"]
+            field = cls._reasoning_formats[fmt].get("effort_field")
+            if field:
+                return field
         return "reasoning_effort"  # default
 
     @staticmethod
@@ -282,6 +286,19 @@ class Config:
         """
         cls._thinking = mode
 
+    @staticmethod
+    def thinking_budget_tokens() -> int:
+        """
+        Get budget tokens for thinking mode from THINKING_BUDGET_TOKENS env var (default: 16000)
+        """
+        val = os.environ.get("THINKING_BUDGET_TOKENS", "")
+        if val:
+            try:
+                return int(val)
+            except ValueError:
+                pass
+        return 16000
+
     @classmethod
     def thinking_extra_body(cls) -> Optional[dict]:
         """
@@ -299,7 +316,7 @@ class Config:
             if fmt and fmt in cls._reasoning_formats:
                 if not cls._reasoning_formats[fmt].get("uses_extra_body", True):
                     return None  # Format doesn't use extra_body
-            return {"thinking": {"type": "enabled"}}
+            return {"thinking": {"type": "enabled", "budget_tokens": cls.thinking_budget_tokens()}}
         return None
 
     @classmethod
