@@ -17,6 +17,34 @@ DEFAULT_TIMEOUT = Config.default_shell_timeout()
 
 # Global reference to active subprocess for Ctrl+C cleanup
 _active_proc: Optional[subprocess.Popen] = None
+_tty_path: Optional[str] = None
+
+
+def get_tty_path() -> str:
+    """Detect and cache the terminal device path.
+    
+    Tries os.ttyname() on stdin/stdout/stderr, falls back to /dev/tty.
+    Returns empty string if no TTY is available (e.g. Android/Termux where
+    /dev/tty doesn't exist but ttyname still works on the pty fd).
+    """
+    global _tty_path
+    if _tty_path is not None:
+        return _tty_path
+    
+    for fd in [0, 1, 2]:
+        try:
+            if os.isatty(fd):
+                _tty_path = os.ttyname(fd)
+                return _tty_path
+        except OSError:
+            pass
+    
+    if os.path.exists("/dev/tty"):
+        _tty_path = "/dev/tty"
+        return _tty_path
+    
+    _tty_path = ""
+    return _tty_path
 
 
 def _get_cleared_env() -> Optional[Dict[str, str]]:
@@ -48,13 +76,17 @@ def kill_active_process() -> None:
         _active_proc = None
 
 
-def _wrap_with_tee(command: str) -> str:
-    """Wrap command so output goes to both /dev/tty and stdout/stderr pipes.
+def _wrap_with_tee(command: str) -> Optional[str]:
+    """Wrap command so output goes to both TTY and stdout/stderr pipes.
     
     Uses tee to duplicate output to the user's terminal in real-time
     while still capturing it for the AI. Preserves exit codes via PIPESTATUS.
+    Returns None if no TTY is available.
     """
-    return f"({command}) 2>&1 | tee /dev/tty 2>/dev/null; exit ${{PIPESTATUS[0]}}"
+    tty = get_tty_path()
+    if not tty:
+        return None
+    return f"({command}) 2>&1 | tee {tty} 2>/dev/null; exit ${{PIPESTATUS[0]}}"
 
 
 def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
@@ -66,7 +98,9 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
 
     # Wrap command with tee when detail TTY passthrough is enabled
     if Config.detail_tty():
-        command = _wrap_with_tee(command)
+        wrapped = _wrap_with_tee(command)
+        if wrapped:
+            command = wrapped
 
     # Create process group for the entire process tree
     proc = subprocess.Popen(
