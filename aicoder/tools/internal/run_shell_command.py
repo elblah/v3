@@ -48,12 +48,25 @@ def kill_active_process() -> None:
         _active_proc = None
 
 
+def _wrap_with_tee(command: str) -> str:
+    """Wrap command so output goes to both /dev/tty and stdout/stderr pipes.
+    
+    Uses tee to duplicate output to the user's terminal in real-time
+    while still capturing it for the AI. Preserves exit codes via PIPESTATUS.
+    """
+    return f"({command}) 2>&1 | tee /dev/tty 2>/dev/null; exit ${{PIPESTATUS[0]}}"
+
+
 def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
     """Execute command with proper process group termination"""
     global _active_proc
 
     # Get env with cleared vars (or None to inherit parent env)
     clean_env = _get_cleared_env()
+
+    # Wrap command with tee when detail TTY passthrough is enabled
+    if Config.detail_tty():
+        command = _wrap_with_tee(command)
 
     # Create process group for the entire process tree
     proc = subprocess.Popen(
