@@ -14,6 +14,7 @@ import os
 from typing import Dict, Any
 
 from aicoder.core.config import Config
+from aicoder.tools.internal.run_shell_command import get_tty_path
 from aicoder.utils.log import LogUtils
 
 
@@ -37,8 +38,10 @@ def create_plugin(ctx):
             cmd = command
             shell_executable = None
             if Config.detail_tty():
-                cmd = f"({command}) 2>&1 | tee /dev/tty 2>/dev/null; exit ${{PIPESTATUS[0]}}"
-                shell_executable = "/bin/bash"
+                tty = get_tty_path()
+                if tty:
+                    cmd = f"({command}) 2>&1 | tee {tty} 2>/dev/null; exit ${{PIPESTATUS[0]}}"
+                    shell_executable = "/bin/bash"
 
             # Run command
             result = subprocess.run(
