@@ -29,24 +29,74 @@ class DetailCommand(BaseCommand):
 
     def execute(self, args: List[str] = None) -> CommandResult:
         """Execute detail command"""
-        status = "ENABLED" if Config.detail_mode() else "DISABLED"
-        status_color = "green" if Config.detail_mode() else "yellow"
-
         if not args:
             # Show status
-            LogUtils.print(f"Detail Mode Status: {status}", color=status_color, bold=True)
+            dm_status = "ENABLED" if Config.detail_mode() else "DISABLED"
+            dm_color = "green" if Config.detail_mode() else "yellow"
+            LogUtils.print(f"Detail Mode: {dm_status}", color=dm_color, bold=True)
+
+            tty_status = "ON" if Config.detail_tty() else "OFF"
+            tty_color = "green" if Config.detail_tty() else "yellow"
+            LogUtils.print(f"TTY Passthrough: {tty_status}", color=tty_color, bold=True)
 
             if Config.detail_mode():
                 LogUtils.success("All tool parameters and results will be shown")
-                LogUtils.info("Use Ctrl+Z or /detail off to switch to simple mode")
             else:
                 LogUtils.warn("Only important tool information will be shown")
-                LogUtils.info("Use Ctrl+Z or /detail on to switch to detailed mode")
 
-            LogUtils.dim("Quick toggle: Ctrl+Z | Command: /detail [on|off]")
+            if Config.detail_tty():
+                LogUtils.success("Command output also shown live in terminal via /dev/tty")
+
+            LogUtils.dim("Usage: /detail [on|off|toggle|tty on|off|help]")
             return CommandResult(should_quit=False, run_api_call=False)
 
         action = args[0].lower()
+
+        # Handle tty subcommand
+        if action == "tty":
+            if len(args) < 2:
+                tty_status = "ON" if Config.detail_tty() else "OFF"
+                LogUtils.print(f"TTY Passthrough: {tty_status}", color="green" if Config.detail_tty() else "yellow", bold=True)
+                if Config.detail_tty():
+                    LogUtils.success("Command output is shown live in terminal")
+                LogUtils.dim("Usage: /detail tty on|off")
+                return CommandResult(should_quit=False, run_api_call=False)
+
+            tty_action = args[1].lower()
+            if tty_action in ("on", "1", "enable", "true"):
+                if Config.detail_tty():
+                    LogUtils.warn("[*] TTY passthrough is already ON")
+                else:
+                    Config.set_detail_tty(True)
+                    LogUtils.success("[*] TTY passthrough ENABLED")
+                    LogUtils.info("Command output will also be shown live in terminal")
+            elif tty_action in ("off", "0", "disable", "false"):
+                if Config.detail_tty():
+                    Config.set_detail_tty(False)
+                    LogUtils.warn("[*] TTY passthrough DISABLED")
+                else:
+                    LogUtils.warn("[*] TTY passthrough is already OFF")
+            else:
+                LogUtils.error("Invalid tty argument. Use: /detail tty on|off")
+            return CommandResult(should_quit=False, run_api_call=False)
+
+        # Handle tty help explicit
+        if action == "help":
+            LogUtils.print("Detail Mode Controls:", color="cyan", bold=True)
+            LogUtils.dim("  /detail           - Show current detail and TTY status")
+            LogUtils.dim("  /detail on|off    - Toggle detailed tool output mode")
+            LogUtils.dim("  /detail toggle    - Toggle between on/off")
+            LogUtils.dim("  /detail tty on    - Enable live terminal output (/dev/tty)")
+            LogUtils.dim("  /detail tty off   - Disable live terminal output")
+            LogUtils.dim("  /detail help      - Show this help")
+            LogUtils.dim("")
+            LogUtils.info("TTY mode: when ON, command output goes to both the AI and")
+            LogUtils.info("your terminal in real-time (via tee /dev/tty). Useful for")
+            LogUtils.info("long-running commands like builds where you want to see")
+            LogUtils.info("progress without waiting for the AI's turn to finish.")
+            LogUtils.dim("Quick toggle: Ctrl+Z")
+            return CommandResult(should_quit=False, run_api_call=False)
+
         if action in ("on", "1", "enable", "true"):
             if Config.detail_mode():
                 LogUtils.warn("[*] Detail mode is already enabled")
@@ -71,11 +121,11 @@ class DetailCommand(BaseCommand):
                 LogUtils.warn("[*] Detail mode DISABLED")
                 LogUtils.info("Only important tool information will be shown")
         else:
-            LogUtils.error("Invalid argument. Use: /detail [on|off|toggle]")
+            LogUtils.error("Invalid argument. Use: /detail [on|off|toggle|tty on|off|help]")
             LogUtils.dim("  /detail - Show current status")
             LogUtils.dim("  /detail on - Enable detailed output")
             LogUtils.dim("  /detail off - Disable detailed output (show friendly messages)")
             LogUtils.dim("  /detail toggle - Toggle between on/off")
-            LogUtils.dim("  Ctrl+Z - Quick toggle")
+            LogUtils.dim("  /detail tty on|off - Toggle TTY passthrough (live terminal output)")
 
         return CommandResult(should_quit=False, run_api_call=False)

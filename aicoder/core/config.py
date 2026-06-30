@@ -73,6 +73,7 @@ class Config:
     # After this, only runtime state is used (env var ignored)
     _sandbox_disabled = os.environ.get("MINI_SANDBOX") == "0"
     _detail_mode = os.environ.get("DETAIL") == "1"
+    _detail_tty = os.environ.get("DETAIL_TTY") == "1"
 
     # Thinking mode - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
@@ -268,6 +269,16 @@ class Config:
         Set detail mode state
         """
         cls._detail_mode = enabled
+
+    @staticmethod
+    def detail_tty() -> bool:
+        """Get detail TTY passthrough state"""
+        return Config._detail_tty
+
+    @staticmethod
+    def set_detail_tty(enabled: bool) -> None:
+        """Set detail TTY passthrough state"""
+        Config._detail_tty = enabled
 
     # Thinking mode state - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)

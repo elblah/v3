@@ -32,10 +32,19 @@ def create_plugin(ctx):
             # Resolve cwd
             resolved_cwd = cwd if cwd else os.getcwd()
 
+            # Wrap command with tee when detail TTY passthrough is enabled
+            # Must use bash explicitly — PIPESTATUS is bash-only
+            cmd = command
+            shell_executable = None
+            if Config.detail_tty():
+                cmd = f"({command}) 2>&1 | tee /dev/tty 2>/dev/null; exit ${{PIPESTATUS[0]}}"
+                shell_executable = "/bin/bash"
+
             # Run command
             result = subprocess.run(
-                command,
+                cmd,
                 shell=True,
+                executable=shell_executable,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
