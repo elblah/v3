@@ -91,7 +91,7 @@ class Config:
     # Clear thinking - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # false = preserve reasoning across turns (recommended for coding)
-    # true = clear reasoning between turns (faster/cheaper for simple queries)
+    # true = strip reasoning from non-tool-call messages before sending (saves bandwidth)
     def _init_clear_thinking_from_env() -> Optional[bool]:
         env_val = os.environ.get("CLEAR_THINKING", "").lower()
         if env_val in ("1", "true", "yes", "on"):
@@ -105,14 +105,14 @@ class Config:
     @staticmethod
     def clear_thinking() -> Optional[bool]:
         """
-        Get clear_thinking state (true=clear reasoning, false=preserve reasoning, None=use default)
+        Get reasoning strip state (true=strip from non-tool-call msgs, false=preserve, None=default)
         """
         return Config._clear_thinking
 
     @classmethod
     def set_clear_thinking(cls, value: bool) -> None:
         """
-        Set clear_thinking state (true=clear reasoning, false=preserve reasoning)
+        Set reasoning strip state (true=strip from non-tool-call msgs, false=preserve)
         """
         cls._clear_thinking = value
 
@@ -344,10 +344,6 @@ class Config:
         effort = cls.reasoning_effort()
         if effort:
             params[cls.get_effort_field()] = effort
-
-        clear_thinking = cls.clear_thinking()
-        if clear_thinking is not None:
-            params["clear_thinking"] = clear_thinking
 
         return params if params else None
 

@@ -117,14 +117,14 @@ class ThinkingCommand(BaseCommand):
         elif mode == "on":
             LogUtils.info("Reasoning effort: API default (medium)")
 
-        # Show clear_thinking (preserve reasoning)
+        # Show reasoning strip (clear_thinking)
         if mode == "on":
             if clear_thinking is None:
-                LogUtils.success("Reasoning preservation: AUTO (preserving across turns - default for coding)")
+                LogUtils.success("Reasoning strip: AUTO (preserving across turns - default for coding)")
             elif clear_thinking:
-                LogUtils.info("Reasoning preservation: OFF (clearing between turns)")
+                LogUtils.info("Reasoning strip: ON (stripping reasoning from non-tool-call messages)")
             else:
-                LogUtils.success("Reasoning preservation: ON (preserving across turns)")
+                LogUtils.success("Reasoning strip: OFF (preserving all reasoning across turns)")
 
         # Show what will be sent
         if mode == "default":
@@ -135,11 +135,11 @@ class ThinkingCommand(BaseCommand):
                 effort_field = Config.get_effort_field()
                 LogUtils.info(f'Sending top-level: {effort_field}="{effort}"')
             if clear_thinking is not None:
-                LogUtils.info(f'Sending extra_body: {extra_body} (clear_thinking={clear_thinking})')
+                LogUtils.info(f'With extra_body: {extra_body} (clear_thinking={clear_thinking})')
             else:
-                LogUtils.info(f'Sending extra_body: {extra_body}')
+                LogUtils.info(f'With extra_body: {extra_body}')
         else:
-            LogUtils.info('Sending extra_body: {"thinking": {"type": "disabled"}}')
+            LogUtils.info('With extra_body: {"thinking": {"type": "disabled"}}')
 
         LogUtils.dim("Use: /thinking [default|on|off] [effort <level>] [clear <true|false>]")
 
@@ -165,25 +165,25 @@ class ThinkingCommand(BaseCommand):
             LogUtils.error(f"[*] {e}")
 
     def _show_clear_thinking(self, clear_thinking: Optional[bool]) -> None:
-        """Show current clear_thinking setting"""
+        """Show current reasoning strip setting"""
         if clear_thinking is None:
-            LogUtils.info("Reasoning preservation: AUTO (preserving across turns - default for coding)")
+            LogUtils.info("Reasoning strip: AUTO (preserving across turns - default for coding)")
         elif clear_thinking:
-            LogUtils.info("Reasoning preservation: OFF (clearing between turns)")
+            LogUtils.info("Reasoning strip: ON (stripping reasoning from non-tool-call messages)")
         else:
-            LogUtils.success("Reasoning preservation: ON (preserving across turns)")
+            LogUtils.success("Reasoning strip: OFF (preserving all reasoning across turns)")
         LogUtils.dim("Use: /thinking clear <true|false>")
 
     def _set_clear_thinking(self, value: str) -> None:
-        """Set clear_thinking (true=clear reasoning, false=preserve reasoning)"""
+        """Set reasoning strip (true=strip from non-tool-call msgs, false=preserve)"""
         if value.lower() in ("true", "1", "yes", "on"):
             Config.set_clear_thinking(True)
-            LogUtils.warn("[*] Clear thinking enabled (reasoning not preserved)")
-            LogUtils.info("Use this for faster/cheaper simple queries")
+            LogUtils.warn("[*] Reasoning strip enabled")
+            LogUtils.info("Reasoning stripped from non-tool-call messages (saves bandwidth)")
         elif value.lower() in ("false", "0", "no", "off"):
             Config.set_clear_thinking(False)
-            LogUtils.success("[*] Preserved thinking enabled")
-            LogUtils.info("Reasoning will be preserved across turns (recommended for coding)")
+            LogUtils.success("[*] Reasoning strip disabled")
+            LogUtils.info("All reasoning preserved across turns (recommended for coding)")
         else:
             LogUtils.error("Invalid value. Use: /thinking clear <true|false>")
 
