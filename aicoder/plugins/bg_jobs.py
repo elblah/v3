@@ -33,6 +33,8 @@ def create_plugin(ctx):
     # In-memory job storage
     # Key: pid, Value: {name, process, command, started_at}
     jobs: Dict[int, Dict[str, Any]] = {}
+    # Completed jobs history: [{name, command, started_at, ended_at, duration_seconds, pid}]
+    completed_jobs: list = []
 
     def start_background_job(name: str, command: str) -> int:
         """Start a background job with proper process group handling"""
@@ -80,8 +82,8 @@ def create_plugin(ctx):
             # We can't do more - just mark it as done
             pass
 
-        # Remove from jobs dict
-        del jobs[pid]
+        # Remove from jobs dict and archive
+        archive_job(pid)
         return True
 
     def kill_all_jobs(timeout: float = 2.0) -> int:
@@ -93,15 +95,43 @@ def create_plugin(ctx):
                 killed += 1
         return killed
 
+    def archive_job(pid: int) -> None:
+        """Move a finished job from running to completed history"""
+        if pid not in jobs:
+            return
+        job = jobs[pid]
+        ended_at = datetime.now()
+        duration = int((ended_at - job["started_at"]).total_seconds())
+        completed_jobs.append({
+            "name": job["name"],
+            "command": job["command"],
+            "started_at": job["started_at"],
+            "ended_at": ended_at,
+            "duration_seconds": duration,
+            "pid": pid,
+        })
+        del jobs[pid]
+
     def cleanup_dead_jobs() -> None:
-        """Remove dead jobs from the jobs dict"""
+        """Move dead jobs from running to history"""
         dead_pids = []
         for pid, job in jobs.items():
             if job["process"].poll() is not None:
                 dead_pids.append(pid)
-
         for pid in dead_pids:
-            del jobs[pid]
+            archive_job(pid)
+
+    def format_duration(seconds: int) -> str:
+        """Format a duration in seconds to human-readable string"""
+        if seconds < 60:
+            return f"{seconds}s"
+        elif seconds < 3600:
+            return f"{seconds // 60}m {seconds % 60}s"
+        elif seconds < 86400:
+            return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
+        else:
+            days = seconds // 86400
+            return f"{days}d {format_duration(seconds % 86400)}"
 
     def format_relative_time(dt: datetime) -> str:
         """Format a datetime as relative time (e.g., '2 minutes ago')"""
@@ -185,7 +215,8 @@ def create_plugin(ctx):
 
             job_list = []
             for idx, (pid, job) in enumerate(jobs.items(), 1):
-                job_list.append(f"{idx}) {job['name']} (pid: {pid})")
+                uptime = int((datetime.now() - job["started_at"]).total_seconds())
+                job_list.append(f"{idx}) {job['name']:<20} (pid: {pid}) — running {format_duration(uptime)}")
 
             job_info = "\n".join(job_list)
             return {
@@ -249,11 +280,30 @@ def create_plugin(ctx):
                 "detailed": f"Successfully killed {killed} background job(s)"
             }
 
+        elif action == "history":
+            if not completed_jobs:
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": "No completed jobs in history",
+                    "detailed": "No background jobs have finished yet"
+                }
+
+            lines = []
+            for i, j in enumerate(completed_jobs, 1):
+                d = format_duration(j["duration_seconds"])
+                lines.append(f"{i}) {j['name']:<20} (pid: {j['pid']}) — took {d}")
+
+            return {
+                "tool": "bg_jobs",
+                "friendly": f"Found {len(completed_jobs)} completed job(s)",
+                "detailed": f"Completed Jobs ({len(completed_jobs)}):\n\n" + "\n".join(lines)
+            }
+
         else:
             return {
                 "tool": "bg_jobs",
                 "friendly": f"Error: Unknown action: {action}",
-                "detailed": f"Valid actions are: run, list, kill, kill_all"
+                "detailed": f"Valid actions are: run, list, kill, kill_all, history"
             }
 
     # Register the bg_jobs tool
@@ -262,6 +312,7 @@ def create_plugin(ctx):
         fn=bg_jobs_tool,
         description=(
             "Manage background long-running processes (web servers, databases, etc.). "
+            "Use 'list' to see running jobs with uptime, 'history' to see finished jobs. "
             "IMPORTANT: stdout and stderr are discarded (sent to /dev/null). "
             "If you need to read the output, redirect it to files in the command, "
             "e.g.: 'mycommand > output.log 2>&1', then read the file later."
@@ -271,7 +322,7 @@ def create_plugin(ctx):
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["run", "list", "kill", "kill_all"],
+                    "enum": ["run", "list", "kill", "kill_all", "history"],
                     "description": "Action to perform"
                 },
                 "name": {
@@ -332,8 +383,9 @@ def create_plugin(ctx):
         if not args or args[0] == "help":
             info("""
 Background Jobs Commands:
-  /bg-jobs list              - List all running jobs
+  /bg-jobs list              - List all running jobs (with uptime)
   /bg-jobs status <pid|seq>  - Show job details
+  /bg-jobs history           - List completed jobs (with duration)
   /bg-jobs kill <pid|seq>    - Kill a specific job
   /bg-jobs kill-all          - Kill all jobs
   /bg-jobs run <name> <cmd>  - Start a new background job
@@ -341,6 +393,7 @@ Background Jobs Commands:
 Examples:
   /bg-jobs list
   /bg-jobs status 1
+  /bg-jobs history
   /bg-jobs kill 2312
   /bg-jobs kill-all
   /bg-jobs run Webserver "python -m http.server 8000"
@@ -358,7 +411,8 @@ Examples:
             else:
                 success(f"Background Jobs ({len(jobs)} running):")
                 for idx, (pid, job) in enumerate(jobs.items(), 1):
-                    print(f"  [{idx}] {job['name']:<20} (pid: {pid})")
+                    uptime = int((datetime.now() - job["started_at"]).total_seconds())
+                    print(f"  [{idx}] {job['name']:<20} (pid: {pid}) — running {format_duration(uptime)}")
 
         elif action == "status":
             if len(args) < 2:
@@ -373,10 +427,11 @@ Examples:
                 return
 
             job = jobs[pid]
+            uptime = int((datetime.now() - job["started_at"]).total_seconds())
             info(f"""
 Job: {job['name']}
 PID: {pid}
-Status: running
+Status: running (uptime: {format_duration(uptime)})
 Command: {job['command']}
 Started: {format_time(job['started_at'])}
 """)
@@ -415,6 +470,14 @@ Started: {format_time(job['started_at'])}
             pid = start_background_job(name, command)
             success(f"Started job: {name} (pid: {pid})")
             dim(f"Command: {command}")
+
+        elif action == "history":
+            if not completed_jobs:
+                dim("No completed jobs in history")
+                return
+            success(f"Completed Jobs ({len(completed_jobs)}):")
+            for i, j in enumerate(completed_jobs, 1):
+                print(f"  [{i}] {j['name']:<20} (pid: {j['pid']}) — took {format_duration(j['duration_seconds'])}")
 
         else:
             warn(f"Unknown command: {action}")
