@@ -347,12 +347,16 @@ class StreamingClient:
                 msg_dict["tool_call_id"] = msg["tool_call_id"]
 
             # Preserve reasoning with the same field name the provider uses
-            override = Config.get_reasoning_field()
-            fields = [override] if override else []
-            for field in fields + ["reasoning_content", "reasoning", "thinking", "reasoning_text"]:
-                if msg.get(field):
-                    msg_dict[field] = msg[field]
-                    break
+            # clear_thinking=True strips reasoning from non-tool-call messages (save bandwidth)
+            if Config.clear_thinking() is True and not msg.get("tool_calls"):
+                pass  # strip reasoning from non-tool-call assistant messages
+            else:
+                override = Config.get_reasoning_field()
+                fields = [override] if override else []
+                for field in fields + ["reasoning_content", "reasoning", "thinking", "reasoning_text"]:
+                    if msg.get(field):
+                        msg_dict[field] = msg[field]
+                        break
 
             formatted.append(msg_dict)
 
