@@ -15,7 +15,10 @@ AI Coder is a fast, lightweight AI-assisted development tool. Built using only P
 3. **Structured tool returns** - All tools must return `tool`, `friendly`, `detailed` dict
 4. **DO NOT** write to ~/.config/* or local .aicoder/* directories
 5. **DO NOT** try to install global plugins or snippets
-6. **Plugins directory** - The `plugins/` folder in project root is the ONLY place for plugins. Do NOT look in `.aicoder/plugins` or `~/.config/aicoder-v3/plugins`
+6. **Two plugin directories:**
+   - `aicoder/plugins/` - Core plugins, auto-loaded by PluginSystem (generically useful, e.g. shell, memory, git_aware, ruff)
+   - `examples/plugins/` - Optional/example plugins, NOT auto-loaded (specialized: a11y, audio, tts, etc.)
+   Plugin loading priority: `.aicoder/plugins/` > `~/.config/aicoder-v3/plugins/` > `aicoder/plugins/`
 
 ## Core Components
 - `aicoder/core/aicoder.py` - Main application orchestrator
@@ -29,6 +32,12 @@ Always use `Config.colors` - never hardcode ANSI codes:
 from aicoder.core.config import Config
 print(f"{Config.colors['green']}[+] Done{Config.colors['reset']}")
 ```
+
+## tmux Integration
+- Core commands (`edit`, `edit-session`, `memory`) use tmux for editor popups
+- `examples/tmux-popup-menu.sh` - Interactive popup menu for stop/yolo/commands
+- `examples/tmux-status.sh` - Status bar indicator for AI Coder state
+- Socket API is tmux-aware (uses `TMUX_PANE` in socket path)
 
 ## Common Patterns to Avoid
 - Don't mention something in AGENTS.md just to document it - this biases the model toward it
