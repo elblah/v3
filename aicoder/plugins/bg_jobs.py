@@ -43,6 +43,7 @@ def create_plugin(ctx):
         process = subprocess.Popen(
             ["bash", "-c", command],
             preexec_fn=os.setsid,  # Create new process group
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
