@@ -110,6 +110,14 @@ class StreamProcessor:
 
                     content = delta.get("content")
                     if content:
+                        # Handle content that may be a list (e.g., mistral-small returns list of content blocks)
+                        if isinstance(content, list):
+                            content = "".join(
+                                block.get("text", "") if isinstance(block, dict) else str(block)
+                                for block in content
+                            )
+                        if not content:
+                            continue
                         # On first content chunk, print accumulated reasoning (if any)
                         # Use flag instead of checking full_response to handle
                         # whitespace-only chunks that get lstripped to nothing
