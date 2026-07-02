@@ -17,6 +17,53 @@ from aicoder.core.config import Config
 SOCKET_PATH = os.path.join(os.environ.get("TMP", "/tmp"), "stats_server.sock")
 
 
+def _extract_cost(usage):
+    """Extract USD cost from usage dict, handling various formats. Returns float or None."""
+    if not usage or not isinstance(usage, dict):
+        return None
+
+    # Format 1: usage["cost"]["usd"]
+    cost_obj = usage.get("cost")
+    if isinstance(cost_obj, dict):
+        usd = cost_obj.get("usd")
+        if usd is not None and isinstance(usd, (int, float)) and usd > 0:
+            return float(usd)
+
+    # Format 2: usage["cost_details"]["upstream_inference_cost"]
+    cost_details = usage.get("cost_details")
+    if isinstance(cost_details, dict):
+        for key in ("upstream_inference_cost", "upstream_inference_prompt_cost"):
+            val = cost_details.get(key)
+            if val is not None and isinstance(val, (int, float)) and val > 0:
+                return float(val)
+
+    # Format 3: usage["cost"] is a direct number
+    if isinstance(cost_obj, (int, float)) and cost_obj > 0:
+        return float(cost_obj)
+
+    # Format 4: flat keys like "upstream_inference_cost" or "usd_cost"
+    for key in ("upstream_inference_cost", "usd_cost", "total_cost"):
+        val = usage.get(key)
+        if val is not None and isinstance(val, (int, float)) and val > 0:
+            return float(val)
+
+    return None
+
+
+def _extract_cached_tokens(usage):
+    """Extract cached tokens from usage dict, handling various formats."""
+    if not usage or not isinstance(usage, dict):
+        return 0
+
+    # prompt_tokens_details.cached_tokens
+    ptd = usage.get("prompt_tokens_details")
+    if isinstance(ptd, dict):
+        return ptd.get("cached_tokens", 0)
+
+    # direct cached_tokens key
+    return usage.get("cached_tokens", 0)
+
+
 def _write_to_central(line):
     """Write to stats_server via Unix socket. Returns True on success."""
     import socket
@@ -50,10 +97,11 @@ def _write_to_central(line):
 def create_plugin(ctx):
     """Plugin entry point"""
     session_id = None
+    total_cost = 0.0
 
     def _on_usage_data(usage):
         """Hook when usage data is received from API"""
-        nonlocal session_id
+        nonlocal session_id, total_cost
         if session_id is None:
             import uuid
             session_id = str(uuid.uuid4())
@@ -69,6 +117,11 @@ def create_plugin(ctx):
         base_url = Config.base_url() or Config.api_endpoint()
         elapsed = stats.last_api_time
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
+
+        # Accumulate cost
+        cost = _extract_cost(usage)
+        if cost is not None:
+            total_cost += cost
 
         # Build JSONL entry
         entry = {
@@ -102,7 +155,21 @@ def create_plugin(ctx):
         # Send to central server
         _write_to_central(json_line + "\n")
 
+    def _on_context_bar():
+        """Hook: Add cost to context bar"""
+        nonlocal total_cost
+        if total_cost <= 0:
+            return None
+
+        # Show in cents if < $1, dollars if >= $1
+        if total_cost < 1.0:
+            cost_str = f"{total_cost * 100:.1f}¢"
+        else:
+            cost_str = f"${total_cost:.4f}"
+        return f"{Config.colors['dim']}{cost_str}{Config.colors['reset']}"
+
     # Register hook for usage data (fires for ALL API calls including compaction)
     ctx.register_hook("after_usage_data", _on_usage_data)
+    ctx.register_hook("on_context_bar", _on_context_bar)
 
     return {}
