@@ -41,6 +41,7 @@ _cache_alerts = True
 _message_hashes = []  # list of md5 hashes, one per message position
 _last_cached_tokens = None
 _msg_changed_this_turn = False  # flag set by before_ai, read by after_usage
+_msg_count_at_hash = 0  # message count at last hash snapshot, to detect compaction after the fact
 
 _RED = "\033[91m"
 _YELLOW = "\033[93m"
@@ -88,15 +89,16 @@ def _extract_cached_tokens(usage):
 
 def _on_session_change() -> None:
     """Session reset ( /new /load ) — clear all state"""
-    global _message_hashes, _last_cached_tokens, _msg_changed_this_turn
+    global _message_hashes, _last_cached_tokens, _msg_changed_this_turn, _msg_count_at_hash
     _message_hashes.clear()
     _last_cached_tokens = None
     _msg_changed_this_turn = False
+    _msg_count_at_hash = 0
 
 
 def _on_before_ai() -> None:
     """Snapshot message hashes, alert on any change to existing messages"""
-    global _message_hashes, _msg_changed_this_turn, _app
+    global _message_hashes, _msg_changed_this_turn, _msg_count_at_hash, _app
     if not _enabled:
         return
 
@@ -145,13 +147,24 @@ def _on_before_ai() -> None:
 
     # Update stored hashes
     _message_hashes = current_hashes
+    _msg_count_at_hash = len(current_hashes)
 
 
 def _on_usage_data(usage: dict) -> None:
     """Cache drop analysis — correlates with message changes"""
-    global _last_cached_tokens, _msg_changed_this_turn
+    global _last_cached_tokens, _msg_changed_this_turn, _msg_count_at_hash, _app
     if not _enabled or not _cache_alerts:
         return
+
+    # Compaction may have happened between before_ai and usage_data,
+    # check if message count changed since hash snapshot
+    if _app is not None and _msg_count_at_hash > 0:
+        try:
+            current_count = len(_app.message_history.get_messages())
+            if current_count != _msg_count_at_hash:
+                _msg_changed_this_turn = True
+        except Exception:
+            pass
 
     current_cached = _extract_cached_tokens(usage)
     if current_cached is None:
