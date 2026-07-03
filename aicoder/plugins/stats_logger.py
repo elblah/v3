@@ -56,34 +56,36 @@ def _extract_cached_tokens(usage):
     Semantics differ by provider:
     - OpenAI-style: prompt_tokens = total, cached_tokens is a subset
     - Anthropic-style: input_tokens = miss only, cache_read_input_tokens is separate
-    - Returns 0 if field absent (no cache info from provider).
+    - Returns int if cache field present (0 = no cache, >0 = cached tokens)
+    - Returns None if no cache field found (provider didn't report it)
     """
     if not usage or not isinstance(usage, dict):
-        return 0
+        return None
 
     # 1. OpenAI: prompt_tokens_details.cached_tokens (subset of prompt_tokens)
     ptd = usage.get("prompt_tokens_details")
     if isinstance(ptd, dict):
         val = ptd.get("cached_tokens")
-        if val is not None and isinstance(val, (int, float)) and val > 0:
+        if val is not None and isinstance(val, (int, float)):
             return int(val)
 
     # 2. Direct cached_tokens key (some providers)
     val = usage.get("cached_tokens")
-    if val is not None and isinstance(val, (int, float)) and val > 0:
+    if val is not None and isinstance(val, (int, float)):
         return int(val)
 
     # 3. Anthropic-style: cache_read_input_tokens (separate from input_tokens)
     val = usage.get("cache_read_input_tokens")
-    if val is not None and isinstance(val, (int, float)) and val > 0:
+    if val is not None and isinstance(val, (int, float)):
         return int(val)
 
     # 4. Fallback: prompt_cache_hit_tokens (other providers)
     val = usage.get("prompt_cache_hit_tokens")
-    if val is not None and isinstance(val, (int, float)) and val > 0:
+    if val is not None and isinstance(val, (int, float)):
         return int(val)
 
-    return 0
+    # No cache info in response at all
+    return None
 
 
 def _write_to_central(line):
@@ -184,12 +186,16 @@ def create_plugin(ctx):
             bold_yellow = f"{Config.colors['bold']}{Config.colors['yellow']}"
             reset = Config.colors['reset']
             if _last_cached_tokens is not None and _last_cached_tokens > 0:
-                if current_cached == 0:
-                    print(f"\n{bold_yellow}[!] FULL CACHE MISS (was {_last_cached_tokens} tokens){reset}")
-                elif current_cached < _last_cached_tokens:
-                    pct = (1 - current_cached / _last_cached_tokens) * 100
-                    print(f"\n{bold_yellow}[!] CACHE DROP: {_last_cached_tokens} → {current_cached} tokens (-{pct:.0f}%){reset}")
-            _last_cached_tokens = current_cached
+                if current_cached is not None:
+                    if current_cached == 0:
+                        print(f"\n{bold_yellow}[!] FULL CACHE MISS (was {_last_cached_tokens} tokens){reset}")
+                    elif current_cached < _last_cached_tokens:
+                        pct = (1 - current_cached / _last_cached_tokens) * 100
+                        print(f"\n{bold_yellow}[!] CACHE DROP: {_last_cached_tokens} → {current_cached} tokens (-{pct:.0f}%){reset}")
+                # else: provider didn't report cache — skip alert, keep baseline
+            # Track baseline only on reported data (even 0 is a real answer)
+            if current_cached is not None:
+                _last_cached_tokens = current_cached
 
     def _on_context_bar():
         """Hook: Add cost to context bar"""
