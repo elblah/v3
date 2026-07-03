@@ -51,17 +51,39 @@ def _extract_cost(usage):
 
 
 def _extract_cached_tokens(usage):
-    """Extract cached tokens from usage dict, handling various formats."""
+    """Extract cached tokens from usage dict, handling various provider formats.
+
+    Semantics differ by provider:
+    - OpenAI-style: prompt_tokens = total, cached_tokens is a subset
+    - Anthropic-style: input_tokens = miss only, cache_read_input_tokens is separate
+    - Returns 0 if field absent (no cache info from provider).
+    """
     if not usage or not isinstance(usage, dict):
         return 0
 
-    # prompt_tokens_details.cached_tokens
+    # 1. OpenAI: prompt_tokens_details.cached_tokens (subset of prompt_tokens)
     ptd = usage.get("prompt_tokens_details")
     if isinstance(ptd, dict):
-        return ptd.get("cached_tokens", 0)
+        val = ptd.get("cached_tokens")
+        if val is not None and isinstance(val, (int, float)) and val > 0:
+            return int(val)
 
-    # direct cached_tokens key
-    return usage.get("cached_tokens", 0)
+    # 2. Direct cached_tokens key (some providers)
+    val = usage.get("cached_tokens")
+    if val is not None and isinstance(val, (int, float)) and val > 0:
+        return int(val)
+
+    # 3. Anthropic-style: cache_read_input_tokens (separate from input_tokens)
+    val = usage.get("cache_read_input_tokens")
+    if val is not None and isinstance(val, (int, float)) and val > 0:
+        return int(val)
+
+    # 4. Fallback: prompt_cache_hit_tokens (other providers)
+    val = usage.get("prompt_cache_hit_tokens")
+    if val is not None and isinstance(val, (int, float)) and val > 0:
+        return int(val)
+
+    return 0
 
 
 def _write_to_central(line):
@@ -98,10 +120,11 @@ def create_plugin(ctx):
     """Plugin entry point"""
     session_id = None
     total_cost = 0.0
+    _last_cached_tokens = None
 
     def _on_usage_data(usage):
         """Hook when usage data is received from API"""
-        nonlocal session_id, total_cost
+        nonlocal session_id, total_cost, _last_cached_tokens
         if session_id is None:
             import uuid
             session_id = str(uuid.uuid4())
@@ -155,10 +178,25 @@ def create_plugin(ctx):
         # Send to central server
         _write_to_central(json_line + "\n")
 
+        # Cache miss detection (disabled via STATS_LOGGER_CACHE_ALERTS=0)
+        if os.environ.get("STATS_LOGGER_CACHE_ALERTS", "1") != "0":
+            current_cached = _extract_cached_tokens(usage)
+            bold_yellow = f"{Config.colors['bold']}{Config.colors['yellow']}"
+            reset = Config.colors['reset']
+            if _last_cached_tokens is not None and _last_cached_tokens > 0:
+                if current_cached == 0:
+                    print(f"\n{bold_yellow}[!] FULL CACHE MISS (was {_last_cached_tokens} tokens){reset}")
+                elif current_cached < _last_cached_tokens:
+                    pct = (1 - current_cached / _last_cached_tokens) * 100
+                    print(f"\n{bold_yellow}[!] CACHE DROP: {_last_cached_tokens} → {current_cached} tokens (-{pct:.0f}%){reset}")
+            _last_cached_tokens = current_cached
+
     def _on_context_bar():
         """Hook: Add cost to context bar"""
         nonlocal total_cost
         if total_cost <= 0:
+            return None
+        if os.environ.get("STATS_LOGGER_COST_CONTEXT_BAR", "1") == "0":
             return None
 
         # Show in cents if < $1, dollars if >= $1
