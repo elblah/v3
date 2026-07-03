@@ -40,7 +40,8 @@ Commands like `i <name>` accept args on the same line (e.g., `i subagents` at sk
 
 ## Features
 
-- Built with Python standard library only (no external dependencies)
+- Pure Python stdlib — zero dependencies, zero supply chain attack surface
+- **<1s startup on Raspberry Pi 3** — no heavy imports, no native extensions to load
 - Simple, direct code flow
 - Environment-based configuration
 - Streaming responses with retry logic
