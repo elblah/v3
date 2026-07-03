@@ -267,8 +267,12 @@ class MessageHistory:
                 tool_calls = msg.get("tool_calls") or []
                 for call in tool_calls:
                     if call.get("id") == tool_call_id:
-                        # Found the matching call - insert after this message
-                        return i + 1
+                        # Found the matching call - scan forward past any
+                        # existing tool results to preserve insertion order
+                        j = i + 1
+                        while j < len(self.messages) and self.messages[j].get("role") == "tool":
+                            j += 1
+                        return j
         
         # No matching call found
         return -1
