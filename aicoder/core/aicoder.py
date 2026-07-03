@@ -203,6 +203,8 @@ class AICoder:
         Config.print_startup_info()
         LogUtils.success("Type your message or /help for commands.")
 
+        self._skip_hooks_once = False
+
         while self.is_running:
             try:
                 # Auto-compaction check
@@ -210,8 +212,10 @@ class AICoder:
                     self.perform_auto_compaction()
 
                 # Get user input
-                self.call_notify_hook("on_before_user_prompt")
-                self.plugin_system.call_hooks("before_user_prompt")
+                if not self._skip_hooks_once:
+                    self.call_notify_hook("on_before_user_prompt")
+                    self.plugin_system.call_hooks("before_user_prompt")
+                self._skip_hooks_once = False
 
                 # Use next_prompt if set (auto-council trigger)
                 user_input = self.get_next_prompt() if self.has_next_prompt() else self.input_handler.get_user_input()
@@ -244,6 +248,8 @@ class AICoder:
                 self.session_manager.process_with_ai()
 
             except KeyboardInterrupt:
+                self._skip_hooks_once = True
+                self.next_prompt = None
                 continue
             except EOFError:
                 try:

@@ -125,6 +125,16 @@ def create_plugin(ctx):
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
     ctx.register_hook("before_user_prompt", _before_user_prompt)
 
+    def _on_info(sub: str) -> None:
+        if sub == "config":
+            c = Config.colors
+            status = "awaiting" if state["awaiting"] else "idle"
+            print(f"{c['bold']}cache_compact:{c['reset']}")
+            print(f"  threshold: {threshold}%  defer: {defer_pct}%  maxfails: {max_fails}")
+            print(f"  state: {status}  fails: {state['fails']}")
+
+    ctx.register_hook("on_info", _on_info)
+
     if Config.debug():
         LogUtils.print("[+] cache_compact plugin loaded")
         LogUtils.print(

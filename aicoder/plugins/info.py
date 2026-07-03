@@ -22,6 +22,10 @@ def _handle_info(args: str, ctx=None) -> None:
     else:
         print("Usage: /info config|stats")
 
+    # Fire hook so plugins can show their own info
+    if ctx and ctx.app and ctx.app.plugin_system:
+        ctx.app.plugin_system.call_hooks("on_info", sub)
+
 
 def _print_config() -> None:
     model = Config.model()
