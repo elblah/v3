@@ -191,7 +191,7 @@ class Config:
     # Set uses_extra_body=False for providers that only need top-level reasoning_effort
     _reasoning_formats: Dict[str, Dict[str, Any]] = {
         "deepseek": {"effort_field": "reasoning_effort", "uses_extra_body": True},
-        "glm": {"effort_field": "reasoningEffort", "uses_extra_body": True},
+        "glm": {"effort_field": "reasoning_effort", "uses_extra_body": True},
         "openai": {"effort_field": "reasoning_effort", "uses_extra_body": False},
         "anthropic": {"uses_extra_body": True},
     }
@@ -334,7 +334,8 @@ class Config:
     def thinking_params(cls) -> Optional[dict]:
         """
         Get thinking parameters for top-level request fields (e.g., reasoning_effort for DeepSeek)
-        Returns None if thinking is not "on" or no params are configured
+        Returns None if thinking is not "on" or no params are configured.
+        Priority for field name: 1) REASONING_FIELD env override, 2) hardcoded format mapping
         """
         mode = cls.thinking()
         if mode != "on":
@@ -343,7 +344,10 @@ class Config:
         params = {}
         effort = cls.reasoning_effort()
         if effort:
-            params[cls.get_effort_field()] = effort
+            # Check env override first (REASONING_FIELD / AICODER_REASONING_FIELD)
+            override = cls.get_reasoning_field()
+            field = override if override else cls.get_effort_field()
+            params[field] = effort
 
         return params if params else None
 
