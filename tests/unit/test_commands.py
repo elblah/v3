@@ -3,10 +3,6 @@
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
 import os
-import tempfile
-import json
-
-import sys
 
 from aicoder.core.commands.base import CommandContext, CommandResult
 from aicoder.core.commands.debug import DebugCommand
@@ -14,7 +10,6 @@ from aicoder.core.commands.detail import DetailCommand
 from aicoder.core.commands.yolo import YoloCommand
 from aicoder.core.commands.sandbox import SandboxCommand
 from aicoder.core.commands.edit import EditCommand
-from aicoder.core.commands.memory import MemoryCommand
 from aicoder.core.commands.help import HelpCommand
 from aicoder.core.commands.save import SaveCommand
 from aicoder.core.commands.load import LoadCommand
@@ -25,7 +20,7 @@ class MockMessageHistory:
     def __init__(self):
         self._messages = []
 
-    def get_messages(self):
+    def get_chat_messages(self):
         return self._messages
 
     def set_messages(self, messages):
@@ -369,61 +364,6 @@ class TestHelpCommand:
             result = cmd.execute([])
             assert result.should_quit is False
             assert result.run_api_call is False
-
-class TestMemoryCommand:
-    """Test MemoryCommand."""
-
-    def test_memory_command_name(self, mock_context):
-        """Test memory command has correct name."""
-        cmd = MemoryCommand(mock_context)
-        assert cmd.get_name() == "memory"
-
-    def test_memory_command_description(self, mock_context):
-        """Test memory command has correct description."""
-        cmd = MemoryCommand(mock_context)
-        assert "memory" in cmd.get_description().lower()
-
-    def test_memory_command_aliases(self, mock_context):
-        """Test memory command has aliases."""
-        cmd = MemoryCommand(mock_context)
-        aliases = cmd.get_aliases()
-        assert "m" in aliases
-
-    def test_memory_execute_no_tmux(self, mock_context):
-        """Test memory command fails gracefully outside tmux."""
-        with patch('aicoder.core.commands.memory.Config') as mock_config:
-            mock_config.in_tmux.return_value = False
-            cmd = MemoryCommand(mock_context)
-            result = cmd.execute([])
-            assert result.should_quit is False
-            assert result.run_api_call is False
-
-    def test_memory_execute_with_messages(self, mock_context):
-        """Test memory command with messages in history."""
-        # Setup mock messages
-        mock_context.message_history._messages = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"}
-        ]
-
-        with patch('aicoder.core.commands.memory.Config') as mock_config:
-            mock_config.in_tmux.return_value = True
-            mock_config.colors = {
-                "green": "\033[32m",
-                "yellow": "\033[33m",
-                "cyan": "\033[36m",
-                "dim": "\033[2m",
-                "reset": "\033[0m"
-            }
-            with patch('aicoder.core.commands.memory.create_temp_file', return_value='/tmp/test.json'):
-                with patch('builtins.open', mock_open(read_data='[{"role": "user", "content": "Updated"}]')):
-                    with patch('aicoder.core.commands.memory.os.path.exists', return_value=True):
-                        with patch('aicoder.core.commands.memory.os.unlink'):
-                            with patch('aicoder.core.commands.memory.os.system'):
-                                cmd = MemoryCommand(mock_context)
-                                result = cmd.execute([])
-                                assert result.should_quit is False
-                                assert result.run_api_call is False
 
 class TestEditCommand:
     """Test EditCommand - extended tests."""

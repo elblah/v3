@@ -432,7 +432,7 @@ class TestConfigAutoCompactThreshold:
 
     def test_auto_compact_threshold_with_percentage(self, monkeypatch):
         """Test auto compact threshold calculation"""
-        monkeypatch.setenv("CONTEXT_SIZE", "100000")
+        monkeypatch.setattr(config.Config, 'context_size', lambda: 100000)
         monkeypatch.setenv("CONTEXT_COMPACT_PERCENTAGE", "80")
         result = config.Config.auto_compact_threshold()
         # 100000 * 0.80 = 80000
@@ -440,7 +440,7 @@ class TestConfigAutoCompactThreshold:
 
     def test_auto_compact_threshold_capped_at_100(self, monkeypatch):
         """Test auto compact threshold caps at 100%"""
-        monkeypatch.setenv("CONTEXT_SIZE", "100000")
+        monkeypatch.setattr(config.Config, 'context_size', lambda: 100000)
         monkeypatch.setenv("CONTEXT_COMPACT_PERCENTAGE", "150")
         result = config.Config.auto_compact_threshold()
         # Capped at 100%

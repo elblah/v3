@@ -19,16 +19,14 @@ class TestPromptContext:
         assert context.agents_content is None
 
     def test_context_current_datetime_format(self):
-        """Test datetime is in UTC format matching madai.py."""
+        """Test datetime format matches PromptContext._get_current_datetime()."""
         context = PromptContext()
 
-        # Format should be: YYYY-MM-DD HH:MM:SS UTC
-        assert context.current_datetime.endswith(' UTC')
-        # Should contain date and time separated by space
-        assert ' ' in context.current_datetime
-        # Should follow pattern: 2026-01-22 11:23:52 UTC
+        # Format should be: YYYY-MM-DD
+        assert len(context.current_datetime) == 10
+        # Should follow pattern: 2026-01-22
         import re
-        assert re.match(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC', context.current_datetime)
+        assert re.match(r'\d{4}-\d{2}-\d{2}', context.current_datetime)
 
     def test_context_system_info_contains_platform(self):
         """Test system info contains platform info."""

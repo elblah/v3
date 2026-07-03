@@ -10,6 +10,17 @@ from unittest.mock import MagicMock, patch
 
 from aicoder.core.plugin_system import PluginContext, PluginSystem
 
+
+@pytest.fixture(autouse=True)
+def no_bundled_plugins():
+    """Prevent bundled plugins from autoloading and polluting test assertions"""
+    orig_init = PluginSystem.__init__
+    def patched_init(self, plugins_dir='.aicoder/plugins', global_plugins_dir=None):
+        orig_init(self, plugins_dir, global_plugins_dir)
+        self.bundled_plugins_dir = '/nonexistent'
+    with patch.object(PluginSystem, '__init__', patched_init):
+        yield
+
 class TestPluginContext:
     """Test PluginContext class"""
 
