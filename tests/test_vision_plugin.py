@@ -47,7 +47,7 @@ def test_message_history_accepts_dict():
 
 def test_parse_image_references():
     """Test parsing @image references"""
-    from plugins.vision import parse_image_references
+    from aicoder.plugins.vision import parse_image_references
 
     # Test single image
     clean, paths = parse_image_references("@screenshot.png Analyze this")
@@ -78,7 +78,7 @@ def test_parse_image_references():
 
 def test_is_supported_image():
     """Test image format support detection"""
-    from plugins.vision import is_supported_image
+    from aicoder.plugins.vision import is_supported_image
 
     assert is_supported_image("test.png") is True
     assert is_supported_image("test.jpg") is True
@@ -94,7 +94,7 @@ def test_is_supported_image():
 
 def test_encode_image():
     """Test image base64 encoding"""
-    from plugins.vision import encode_image
+    from aicoder.plugins.vision import encode_image
 
     # Create a small test image (1x1 red PNG)
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -113,7 +113,7 @@ def test_encode_image():
 
 def test_create_image_content_part():
     """Test creating image content part (provider-aware)"""
-    from plugins.vision import create_image_content_part
+    from aicoder.plugins.vision import create_image_content_part
 
     # Create a small test image
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -139,7 +139,7 @@ def test_create_image_content_part():
 
 def test_create_user_message():
     """Test creating multimodal user message"""
-    from plugins.vision import create_user_message
+    from aicoder.plugins.vision import create_user_message
 
     # Create test images
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -171,7 +171,7 @@ def test_create_user_message():
 
 def test_transform_user_input():
     """Test the hook transformation"""
-    from plugins.vision import transform_user_input
+    from aicoder.plugins.vision import transform_user_input
 
     app = MockApp()
 
@@ -207,7 +207,7 @@ def test_transform_user_input():
 
 def test_plugin_integration():
     """Test plugin hooks are callable"""
-    from plugins.vision import create_plugin
+    from aicoder.plugins.vision import create_plugin
 
     mock_ctx = type('MockCtx', (), {})()
     mock_ctx.register_hook = lambda name, fn: None

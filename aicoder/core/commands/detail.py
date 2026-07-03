@@ -94,7 +94,6 @@ class DetailCommand(BaseCommand):
             LogUtils.info("your terminal in real-time (via tee /dev/tty). Useful for")
             LogUtils.info("long-running commands like builds where you want to see")
             LogUtils.info("progress without waiting for the AI's turn to finish.")
-            LogUtils.dim("Quick toggle: Ctrl+Z")
             return CommandResult(should_quit=False, run_api_call=False)
 
         if action in ("on", "1", "enable", "true"):
