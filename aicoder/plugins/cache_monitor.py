@@ -9,7 +9,10 @@ Also handles cache drop alerts (moved from stats_logger) and correlates
 them with message changes: if no message changed but cache dropped,
 it's likely a provider-side eviction.
 
+NOT auto-loaded. Set AICODER_CACHE_MONITOR=1 to enable.
+
 Env:
+    AICODER_CACHE_MONITOR=1      (required to load)
     CACHE_MONITOR_ENABLE=1       (default: 1)
     CACHE_MONITOR_CACHE_ALERTS=1 (default: 1)
 
@@ -112,20 +115,27 @@ def _on_before_ai() -> None:
         _message_hashes = current_hashes
         return
 
+    # Detect compaction: message count shrunk significantly
+    old_count = len(_message_hashes)
+    new_count = len(current_hashes)
+    compaction = old_count > 0 and new_count < old_count * 0.9
+
+    if compaction:
+        # Compaction rewrites everything — individual msg changes are noise
+        _msg_changed_this_turn = True
+        print(f"\n{_YELLOW}[!] COMPACTION: {old_count} → {new_count} messages, hashes reset{_RESET}")
+        _message_hashes = current_hashes
+        return
+
     # Check for changes
     changed_positions = []
 
-    for i in range(len(_message_hashes)):
-        if i >= len(current_hashes):
+    for i in range(old_count):
+        if i >= new_count:
             changed_positions.append((i, "REMOVED"))
         elif current_hashes[i] != _message_hashes[i]:
             role = messages[i].get("role", "?") if i < len(messages) else "?"
             changed_positions.append((i, f"CHANGED (role={role})"))
-
-    if len(current_hashes) < len(_message_hashes):
-        # Messages were dropped from the end too
-        for i in range(len(current_hashes), len(_message_hashes)):
-            changed_positions.append((i, "REMOVED"))
 
     if changed_positions:
         _msg_changed_this_turn = True
@@ -215,6 +225,10 @@ _app = None
 
 def create_plugin(ctx):
     global _enabled, _cache_alerts, _app, _message_hashes, _last_cached_tokens
+
+    # Only load when explicitly enabled
+    if os.environ.get("AICODER_CACHE_MONITOR") != "1":
+        return {}
 
     _app = ctx.app
     _message_hashes = []
