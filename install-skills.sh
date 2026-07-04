@@ -4,9 +4,30 @@
 # Remote: GitHub repos (listed below)
 
 SKILLS_DIR="$HOME/.config/aicoder-v3/skills"
+PLUGINS_DIR="$HOME/.config/aicoder-v3/plugins"
 AICODER_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 mkdir -p "$SKILLS_DIR"
+
+# Check if skills plugin is installed
+if [ ! -f "$PLUGINS_DIR/skills.py" ]; then
+    echo ""
+    echo "Note: The skills plugin (examples/plugins/skills.py) is not installed."
+    echo "      The plugin loads skills automatically on startup."
+    echo "      Without it you can still use skills by:"
+    echo "        - Setting SKILLS_DIR env var (pointing to $SKILLS_DIR)"
+    echo "        - Saying 'read skills dir at $SKILLS_DIR' in conversation"
+    echo ""
+    read -p "Install the skills plugin now? [y/N]: " ans
+    if [[ "$ans" =~ [yY] ]]; then
+        mkdir -p "$PLUGINS_DIR"
+        cp -v "$AICODER_DIR/examples/plugins/skills.py" "$PLUGINS_DIR/"
+        echo "[✓] skills plugin installed"
+    else
+        echo "Skipped. You can install later with: install-plugins.sh"
+    fi
+    echo ""
+fi
 
 # Remote skills: "display_name|user/repo|skill_dir_in_tarball"
 REMOTE_SKILLS=(
