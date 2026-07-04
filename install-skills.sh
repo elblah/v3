@@ -14,9 +14,9 @@ if [ ! -f "$PLUGINS_DIR/skills.py" ]; then
     echo ""
     echo "Note: The skills plugin (examples/plugins/skills.py) is not installed."
     echo "      The plugin loads skills automatically on startup."
-    echo "      Without it you can still use skills by:"
-    echo "        - Setting SKILLS_DIR env var (pointing to $SKILLS_DIR)"
-    echo "        - Saying 'read skills dir at $SKILLS_DIR' in conversation"
+    echo "      Without it you can still use skills:"
+    echo "        - Set AICODER_SYSTEM_PROMPT_APPEND='skills in $SKILLS_DIR, ask user before running'"
+    echo "        - Or just say 'read skills dir at $SKILLS_DIR' in conversation"
     echo ""
     read -p "Install the skills plugin now? [y/N]: " ans
     if [[ "$ans" =~ [yY] ]]; then
