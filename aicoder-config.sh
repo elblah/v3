@@ -285,8 +285,8 @@ cmd_create() {
 }
 
 cmd_plugins() {
-    local avail_dir="$PROJECT_ROOT/plugins"
-    local github_path="plugins"
+    local avail_dir="$PROJECT_ROOT/examples/plugins"
+    local github_path="examples/plugins"
     while true; do
         clear; echo -e "${B}Plugin management${R}"; echo ""
         echo -e "${DIM}Plugins:${R}"
