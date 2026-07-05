@@ -20,6 +20,7 @@ Env:
 - CACHE_COMPACT_DEFER      upper bound % to defer to existing tiers (default 80)
 - CACHE_COMPACT_MAXFAILS   consecutive failures before standing down (default 3)
 - CACHE_COMPACT_FORCE=1    use forceful "COMPACTION MODE" instruction instead of soft suggestion
+- CACHE_COMPACT_DEBUG=1    verbose log: per-msg fail count & suggestion events
 """
 
 import os
@@ -109,6 +110,17 @@ def create_plugin(ctx):
             return
         content = _content_str(message.get("content", ""))
         if content and _is_summary_first_printable(content):
+            # Don't compact if this message also has tool_calls — the tool
+            # results haven't been added yet and would become orphaned,
+            # causing "tool result's tool id not found" (2013) on next request.
+            if message.get("tool_calls"):
+                if os.environ.get("CACHE_COMPACT_DEBUG"):
+                    c = Config.colors
+                    LogUtils.print(
+                        f"{c['yellow']}[cache_compact] [SUMMARY] had tool_calls, "
+                        f"deferring compaction{c['reset']}"
+                    )
+                return
             _compact(app.message_history.get_messages(), app, state)
 
     def _suggest_compaction(user_input: str) -> str:
@@ -123,11 +135,12 @@ def create_plugin(ctx):
         if state["awaiting"]:
             state["awaiting"] = False
             state["fails"] += 1
-            c = Config.colors
-            LogUtils.print(
-                f"{c['yellow']}[cache_compact] AI did not emit [SUMMARY] "
-                f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
-            )
+            if os.environ.get("CACHE_COMPACT_DEBUG"):
+                c = Config.colors
+                LogUtils.print(
+                    f"{c['yellow']}[cache_compact] AI did not emit [SUMMARY] "
+                    f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
+                )
 
         current = app.stats.current_prompt_size or 0
         max_size = Config.context_size()
@@ -146,11 +159,12 @@ def create_plugin(ctx):
 
         instruction = FORCE_COMPACT_INSTRUCTION if cfg["force"] else COMPACT_INSTRUCTION
         state["awaiting"] = True
-        c = Config.colors
-        LogUtils.print(
-            f"{c['bold']}{c['cyan']}[cache_compact] {pct:.0f}% context "
-            f"-> appended [SUMMARY] suggestion{c['reset']}"
-        )
+        if os.environ.get("CACHE_COMPACT_DEBUG"):
+            c = Config.colors
+            LogUtils.print(
+                f"{c['bold']}{c['cyan']}[cache_compact] {pct:.0f}% context "
+                f"-> appended [SUMMARY] suggestion{c['reset']}"
+            )
         return f"{user_input}\n\n<system-reminder>\n{instruction}\n</system-reminder>"
 
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)

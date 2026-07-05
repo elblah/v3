@@ -39,6 +39,8 @@ class SaveCommand(BaseCommand):
         filename = args[0] if args else "session.json"
 
         try:
+            # Strip orphans before persisting to disk
+            self.context.message_history.remove_orphan_tool_results()
             messages = self.context.message_history.get_chat_messages()
             
             # Only save if there's at least one real user/assistant message
