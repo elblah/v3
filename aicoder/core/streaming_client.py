@@ -694,6 +694,14 @@ class StreamingClient:
         error_msg = str(error) if error else "Unknown error"
         status = self._parse_http_status(error_msg)
 
+        # Defense-in-depth: remove orphan tool results that cause "tool result's
+        # tool id not found" (2013) errors. Idempotent — no harm if none exist.
+        if self.message_history:
+            orphan_count = self.message_history.remove_orphan_tool_results()
+            if orphan_count:
+                log_info(f"[*] Removed {orphan_count} orphaned tool result(s), retrying...")
+                return True  # Retry — the data is now consistent
+
         # Check if context is too large and attempt auto-recovery (once per request)
         if self.message_history and self.stats and not throw_on_error:
             current_size = self.stats.current_prompt_size or 0
