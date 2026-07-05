@@ -26,18 +26,17 @@ import os
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
+import re
+
 SUMMARY_TAG = "[SUMMARY]"
 
-PASSIVE_INSTRUCTION = """=== CONTEXT SELF-COMPACTION ===
-You can reset/compact your context at any logical breakpoint by sending a message that begins with the literal token `[SUMMARY]` followed by a self-contained summary of everything you must remember (task, progress, key decisions, file paths and line numbers, current state, next steps). That summary then becomes your entire memory of the session; everything else is discarded. Use this proactively when context is growing large or a major task milestone is complete."""
+PASSIVE_INSTRUCTION = """=== CONTEXT SELF-COMPACTION (protocol) ===
+When context grows or at a milestone, emit exactly `[SUMMARY]` as the first printable content of your response — no markdown, no `**` bold, no quotes, no indentation, no whitespace prefix. It's a literal tag read by internal tooling. Follow with a self-contained summary of task, progress, decisions, files, next steps. This resets context to just [system, summary]; everything else is discarded. Use at natural breakpoints."""
 
-COMPACT_INSTRUCTION = (
-    "Context is getting large. If you've reached a natural breakpoint, consider emitting "
-    "a `[SUMMARY]` to compact — it'll become your entire memory of the session, so include "
-    "everything you must remember: task, progress, key decisions, file paths, current state, "
-    "next steps. If you're mid-task, just continue normally and compact when you hit a "
-    "stopping point."
-)
+# Detect [SUMMARY] even if dumb AIs wrap it in markdown formatting
+_RE_SUMMARY_LEADING = re.compile(r'^[*_`#\s]*(\[SUMMARY\])')
+
+COMPACT_INSTRUCTION = "Context growing. If at a breakpoint, emit [SUMMARY] with what to remember."
 
 FORCE_COMPACT_INSTRUCTION = (
     "COMPACTION MODE: your context is large. Produce a self-contained summary of the "
@@ -59,6 +58,34 @@ def _content_str(content):
     return ""
 
 
+def _is_summary_first_printable(text: str) -> bool:
+    """True if [SUMMARY] is the first printable content (ignoring leading whitespace/markdown)."""
+    if SUMMARY_TAG not in text:
+        return False
+    return bool(_RE_SUMMARY_LEADING.match(text))
+
+
+def _compact(messages, app, state):
+    """Replace history with [system, summary], reset state."""
+    system_msg = messages[0] if messages[0].get("role") == "system" else None
+    # If there's already a [SUMMARY] user message, keep it as-is
+    last = messages[-1]
+    summary_content = _content_str(last.get("content", ""))
+    summary_msg = {"role": "user", "content": summary_content}
+    new_msgs = [system_msg, summary_msg] if system_msg else [summary_msg]
+    before = len(messages)
+    app.message_history.set_messages(new_msgs)
+    app.message_history.prune_old_summaries()
+    app.message_history.increment_compaction_count()
+    state["awaiting"] = False
+    state["fails"] = 0
+    c = Config.colors
+    LogUtils.print(
+        f"{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] "
+        f"-> {before} to {len(new_msgs)} msgs{c['reset']}"
+    )
+
+
 def create_plugin(ctx):
     app = ctx.app
 
@@ -76,33 +103,21 @@ def create_plugin(ctx):
             return PASSIVE_INSTRUCTION
         return None
 
-    def _transform_user_input(user_input: str) -> str:
-        """after_user_prompt hook - detect [SUMMARY], suggest compaction"""
+    def _on_assistant_message_added(message):
+        """after_assistant_message_added hook - detect [SUMMARY] immediately."""
+        if cfg["threshold"] <= 0:
+            return
+        content = _content_str(message.get("content", ""))
+        if content and _is_summary_first_printable(content):
+            _compact(app.message_history.get_messages(), app, state)
+
+    def _suggest_compaction(user_input: str) -> str:
+        """after_user_prompt hook - inject <system-reminder> if context growing."""
+        if cfg["threshold"] <= 0:
+            return user_input
+
         messages = app.message_history.get_messages()
         if not messages:
-            return user_input
-
-        # Check if AI just emitted [SUMMARY] -> compact history
-        last = messages[-1]
-        last_content = _content_str(last.get("content", "")) if last.get("role") == "assistant" else ""
-        if last_content.startswith(SUMMARY_TAG):
-            system_msg = messages[0] if messages[0].get("role") == "system" else None
-            summary_msg = {"role": "user", "content": last_content}
-            new_msgs = [system_msg, summary_msg] if system_msg else [summary_msg]
-            before = len(messages)
-            app.message_history.set_messages(new_msgs)
-            app.message_history.prune_old_summaries()
-            app.message_history.increment_compaction_count()
-            state["awaiting"] = False
-            state["fails"] = 0
-            c = Config.colors
-            LogUtils.print(
-                f"{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] "
-                f"-> {before} to {len(new_msgs)} msgs{c['reset']}"
-            )
-            return user_input
-
-        if cfg["threshold"] <= 0:
             return user_input
 
         if state["awaiting"]:
@@ -126,7 +141,6 @@ def create_plugin(ctx):
         if state["fails"] >= cfg["max_fails"]:
             return user_input
 
-        # Don't pollute commands
         if user_input.startswith("/"):
             return user_input
 
@@ -140,7 +154,8 @@ def create_plugin(ctx):
         return f"{user_input}\n\n<system-reminder>\n{instruction}\n</system-reminder>"
 
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
-    ctx.register_hook("after_user_prompt", _transform_user_input)
+    ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
+    ctx.register_hook("after_user_prompt", _suggest_compaction)
 
     def _on_info(sub: str) -> None:
         if sub == "config":

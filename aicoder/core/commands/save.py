@@ -41,12 +41,15 @@ class SaveCommand(BaseCommand):
         try:
             messages = self.context.message_history.get_chat_messages()
             
-            # Only save if there's at least one real user message or assistant message
-            # (not starting with '[') - this handles sessions that have been compacted
+            # Only save if there's at least one real user/assistant message
+            # (exclude bare role placeholders like [user], keep [SUMMARY])
             has_real_content = any(
                 msg.get("role") in ("user", "assistant")
                 and msg.get("content")
-                and not str(msg.get("content", "")).startswith("[")
+                and (
+                    not str(msg.get("content", "")).startswith("[")
+                    or str(msg.get("content", "")).startswith("[SUMMARY]")
+                )
                 for msg in messages
             )
             
