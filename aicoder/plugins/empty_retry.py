@@ -203,6 +203,11 @@ How it works:
                 last_assistant_msg = content
                 break
 
+        # No assistant message at all = history was compacted or just started
+        if last_assistant_msg is None:
+            EmptyRetryService.reset_retry()
+            return None
+
         # If there's actual content, not empty - reset counter
         if last_assistant_msg and last_assistant_msg.strip():
             EmptyRetryService.reset_retry()
