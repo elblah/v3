@@ -9,12 +9,12 @@ Also handles cache drop alerts (moved from stats_logger) and correlates
 them with message changes: if no message changed but cache dropped,
 it's likely a provider-side eviction.
 
-NOT auto-loaded. Set AICODER_CACHE_MONITOR=1 to enable.
+Not auto-loaded. Set CACHE_MONITOR=1 to enable.
 
 Env:
-    AICODER_CACHE_MONITOR=1      (required to load)
-    CACHE_MONITOR_ENABLE=1       (default: 1)
-    CACHE_MONITOR_CACHE_ALERTS=1 (default: 1)
+    CACHE_MONITOR=1              (required to load, default: off)
+    CACHE_MONITOR_ENABLE=1       (runtime toggle, default: 1)
+    CACHE_MONITOR_CACHE_ALERTS=1 (cache drop alerts, default: 1)
 
 Hooks:
     on_session_change      -> clear state
@@ -240,7 +240,7 @@ def create_plugin(ctx):
     global _enabled, _cache_alerts, _app, _message_hashes, _last_cached_tokens
 
     # Only load when explicitly enabled
-    if os.environ.get("AICODER_CACHE_MONITOR") != "1":
+    if os.environ.get("CACHE_MONITOR") != "1":
         return {}
 
     _app = ctx.app
