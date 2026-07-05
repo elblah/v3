@@ -31,13 +31,14 @@ import re
 
 SUMMARY_TAG = "[SUMMARY]"
 
-PASSIVE_INSTRUCTION = """=== CONTEXT SELF-COMPACTION (protocol) ===
-When context grows or at a milestone, emit exactly `[SUMMARY]` as the first printable content of your response — no markdown, no `**` bold, no quotes, no indentation, no whitespace prefix. It's a literal tag read by internal tooling. Follow with a self-contained summary of task, progress, decisions, files, next steps. This resets context to just [system, summary]; everything else is discarded. Use at natural breakpoints."""
+PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with `[SUMMARY]`. If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
 
 # Detect [SUMMARY] even if dumb AIs wrap it in markdown formatting
-_RE_SUMMARY_LEADING = re.compile(r'^[*_`#\s]*(\[SUMMARY\])')
+_RE_SUMMARY_LEADING = re.compile(r"^[*_`#\s]*(\[SUMMARY\])")
 
-COMPACT_INSTRUCTION = "Context growing. If at a breakpoint, emit [SUMMARY] with what to remember."
+COMPACT_INSTRUCTION = (
+    "Context growing. Optionally emit [SUMMARY] with what to remember if at a breakpoint."
+)
 
 FORCE_COMPACT_INSTRUCTION = (
     "COMPACTION MODE: your context is large. Produce a self-contained summary of the "
@@ -87,6 +88,25 @@ def _compact(messages, app, state):
     )
 
 
+def _compact_keep_assistant(app, state, assistant_msg):
+    """Compact old messages but keep the assistant message (with tool_calls) intact."""
+    messages = app.message_history.get_messages()
+    system_msg = (
+        messages[0] if messages and messages[0].get("role") == "system" else None
+    )
+    new_msgs = [system_msg, assistant_msg] if system_msg else [assistant_msg]
+    before = len(messages)
+    app.message_history.set_messages(new_msgs)
+    app.message_history.increment_compaction_count()
+    state["awaiting"] = False
+    state["fails"] = 0
+    c = Config.colors
+    LogUtils.print(
+        f"{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] (with tool_calls) "
+        f"-> {before} to {len(new_msgs)} msgs{c['reset']}"
+    )
+
+
 def create_plugin(ctx):
     app = ctx.app
 
@@ -94,7 +114,8 @@ def create_plugin(ctx):
         "threshold": int(os.environ.get("CACHE_COMPACT_THRESHOLD", "50")),
         "defer": int(os.environ.get("CACHE_COMPACT_DEFER", "80")),
         "max_fails": int(os.environ.get("CACHE_COMPACT_MAXFAILS", "3")),
-        "force": os.environ.get("CACHE_COMPACT_FORCE", "").lower() in ("1", "true", "yes"),
+        "force": os.environ.get("CACHE_COMPACT_FORCE", "").lower()
+        in ("1", "true", "yes"),
     }
 
     state = {"awaiting": False, "fails": 0}
@@ -110,18 +131,13 @@ def create_plugin(ctx):
             return
         content = _content_str(message.get("content", ""))
         if content and _is_summary_first_printable(content):
-            # Don't compact if this message also has tool_calls — the tool
-            # results haven't been added yet and would become orphaned,
-            # causing "tool result's tool id not found" (2013) on next request.
             if message.get("tool_calls"):
-                if os.environ.get("CACHE_COMPACT_DEBUG"):
-                    c = Config.colors
-                    LogUtils.print(
-                        f"{c['yellow']}[cache_compact] [SUMMARY] had tool_calls, "
-                        f"deferring compaction{c['reset']}"
-                    )
-                return
-            _compact(app.message_history.get_messages(), app, state)
+                # Message has both [SUMMARY] and tool_calls. Keep it intact
+                # (content + tool_calls) so tool results can follow normally.
+                # Just prune old messages — the summary is already in content.
+                _compact_keep_assistant(app, state, message)
+            else:
+                _compact(app.message_history.get_messages(), app, state)
 
     def _suggest_compaction(user_input: str) -> str:
         """after_user_prompt hook - inject <system-reminder> if context growing."""
@@ -176,10 +192,14 @@ def create_plugin(ctx):
             c = Config.colors
             status = "awaiting" if state["awaiting"] else "idle"
             enabled = cfg["threshold"] > 0
-            print(f"{c['bold']}cache_compact:{c['reset']} {'enabled' if enabled else 'disabled'}")
+            print(
+                f"{c['bold']}cache_compact:{c['reset']} {'enabled' if enabled else 'disabled'}"
+            )
             if enabled:
                 mode = "force" if cfg["force"] else "soft"
-                print(f"  threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}")
+                print(
+                    f"  threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}"
+                )
                 print(f"  mode: {mode}  state: {status}  fails: {state['fails']}")
 
     ctx.register_hook("on_info", _on_info)
@@ -194,12 +214,18 @@ def create_plugin(ctx):
             c = Config.colors
             status = "awaiting" if state["awaiting"] else "idle"
             mode = "force" if cfg["force"] else "soft"
-            print(f"{c['bold']}cache_compact:{c['reset']} {'enabled' if enabled else 'disabled'}")
+            print(
+                f"{c['bold']}cache_compact:{c['reset']} {'enabled' if enabled else 'disabled'}"
+            )
             if enabled:
-                print(f"  threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}")
+                print(
+                    f"  threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}"
+                )
                 print(f"  mode: {mode}  state: {status}  fails: {state['fails']}")
             else:
-                print(f"  threshold: 0 (disabled)  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}")
+                print(
+                    f"  threshold: 0 (disabled)  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}"
+                )
 
         elif sub == "enable":
             val = int(parts[1]) if len(parts) > 1 else 50
@@ -236,12 +262,16 @@ def create_plugin(ctx):
         else:
             print("usage: /cache-compact [status|enable [N]|disable|set <key> <val>]")
 
-    ctx.register_command("cache-compact", _handle_cc, "Manage cache compaction (enable/disable/set)")
+    ctx.register_command(
+        "cache-compact", _handle_cc, "Manage cache compaction (enable/disable/set)"
+    )
 
     if Config.debug():
         enabled = cfg["threshold"] > 0
         mode = "force" if cfg["force"] else "soft"
-        LogUtils.print(f"[+] cache_compact plugin loaded ({'enabled' if enabled else 'disabled'})")
+        LogUtils.print(
+            f"[+] cache_compact plugin loaded ({'enabled' if enabled else 'disabled'})"
+        )
         if enabled:
             LogUtils.print(
                 f"  - threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}  mode: {mode}"
