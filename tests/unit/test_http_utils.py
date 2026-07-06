@@ -282,7 +282,8 @@ class TestFetch:
         assert result.status == 200
         # Check that Request was created with headers
         req_call = mock_req_mod.Request.call_args
-        assert req_call[1]["headers"] == {"Authorization": "Bearer token", "Content-Type": "application/json"}
+        expected = {"Authorization": "Bearer token", "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate"}
+        assert req_call[1]["headers"] == expected
 
     @patch('aicoder.utils.http_utils._get_urllib')
     def test_fetch_with_post_method(self, mock_get_urllib):

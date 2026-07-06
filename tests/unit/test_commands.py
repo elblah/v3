@@ -26,6 +26,9 @@ class MockMessageHistory:
     def set_messages(self, messages):
         self._messages = messages
 
+    def remove_orphan_tool_results(self) -> int:
+        return 0
+
 class MockInputHandler:
     """Mock InputHandler for testing."""
     pass

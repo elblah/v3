@@ -3,7 +3,7 @@ Unit tests for stream processor.
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 
 import sys
 
@@ -16,6 +16,20 @@ class TestStreamProcessor:
         """Set up test fixtures."""
         self.mock_streaming_client = Mock()
         self.processor = StreamProcessor(self.mock_streaming_client)
+
+        # Mock Config reasoning methods to avoid env var interference
+        self._patches = [
+            patch('aicoder.core.stream_processor.Config.get_reasoning_field', return_value=None),
+            patch('aicoder.core.stream_processor.Config.get_possible_reasoning_fields',
+                  return_value=['reasoning_content', 'reasoning', 'thinking', 'reasoning_text']),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def teardown_method(self):
+        """Tear down test fixtures."""
+        for p in self._patches:
+            p.stop()
 
     def test_process_stream_basic_content(self):
         """Test processing stream with basic content."""

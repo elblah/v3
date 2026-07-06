@@ -79,25 +79,20 @@ class StreamProcessor:
                 if "delta" in choice:
                     delta = choice["delta"]
 
-                    # Check for reasoning tokens across multiple field names
-                    # Different providers use different field names for reasoning:
-                    # - GLM, llama.cpp: "reasoning_content"
-                    # - Some OpenAI-compatible endpoints: "reasoning"
-                    # - Anthropic: "thinking"
-                    # - Others: "reasoning_text"
-                    # Use first non-empty field to avoid duplication (e.g., chutes.ai returns both)
+                    # Check for reasoning tokens
                     override = Config.get_reasoning_field()
-                    reasoning_fields = ([override] if override else []) + ["reasoning_content", "reasoning", "thinking", "reasoning_text"]
+                    if override:
+                        reasoning_fields = [override]
+                    else:
+                        reasoning_fields = Config.get_possible_reasoning_fields()
 
                     for field in reasoning_fields:
                         reasoning = delta.get(field)
                         if reasoning and reasoning.strip():
                             reasoning_detected = True
                             accumulated_reasoning += reasoning
-                            # Remember the field name this provider uses (first one wins)
                             if reasoning_field_name is None:
                                 reasoning_field_name = field
-                            # Only use the first non-empty field (avoid duplication)
                             break
 
                     # Capture thinking signature for Anthropic-style APIs
