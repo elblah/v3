@@ -366,6 +366,7 @@ class StreamingClient:
         """Build request headers -"""
         headers = {
             "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate",
             "User-Agent": "Mozilla/5.0",
         }
         if stream:
