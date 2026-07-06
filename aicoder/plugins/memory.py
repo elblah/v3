@@ -1,7 +1,7 @@
 """
 Memory plugin - Auto-managed persistent memory for cross-session learning.
 
-Creates .aicoder/memory/ structure:
+Creates `<MEMORY_DIR>/` structure (configurable via AICODER_MEMORY_DIR, defaults to `.aicoder/memory`):
   autoload.md - auto-injected into system prompt (limit configurable via AICODER_MEMORY_AUTOLOAD_LIMIT env var)
   index.md - main memory file, AI manages freely
   *.md - any additional files AI creates
@@ -13,7 +13,7 @@ No special API calls or background processes needed.
 import os
 from typing import List
 
-MEMORY_DIR = ".aicoder/memory"
+MEMORY_DIR = os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory")
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
 MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
