@@ -248,7 +248,9 @@ class Config:
         """
         env = os.environ.get("AICODER_REASONING_POSSIBLE_FIELDS")
         if env:
-            return [f.strip() for f in env.split(",") if f.strip()]
+            fields = [f.strip() for f in env.split(",") if f.strip()]
+            if fields:
+                return fields
         return list(Config.REASONING_FIELDS_DEFAULT)
 
     @staticmethod
