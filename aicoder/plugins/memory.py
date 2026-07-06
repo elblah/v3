@@ -128,12 +128,12 @@ def create_plugin(ctx):
             "user preferences).\n"
             "- Create additional `.md` files for specific topics.\n"
             "\n"
-            "**When to write:**\n"
-            "- During tool use — if you discover something worth remembering "
-            "across sessions (a mistake to avoid, a pattern, a key decision "
-            "with rationale, an optimization), write it to memory immediately.\n"
-            "- Before your final response — always check if anything from this "
-            "turn is worth persisting. Include memory updates before any summary.\n"
+            "**When to write to memory:**\n"
+            "- During conversation (including tool use) — if user gives "
+            "feedback, corrects you, shares useful context, or you discover "
+            "something worth remembering across sessions, write it immediately.\n"
+            "- Before summarizing — always check if anything from this turn "
+            "is worth persisting. Write before the summary.\n"
         )
 
         if files:
