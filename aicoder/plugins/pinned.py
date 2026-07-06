@@ -38,13 +38,17 @@ def create_plugin(ctx):
         return Config.detail_mode()
 
     def _get_msg_reasoning(msg):
-        """Extract reasoning from message, checking all possible field names"""
+        """Extract reasoning from message"""
         override = Config.get_reasoning_field()
-        fields = [override] if override else []
-        for field in fields + ["reasoning_content", "reasoning", "reasoning_text", "thinking"]:
-            val = msg.get(field)
+        if override:
+            val = msg.get(override)
             if val and isinstance(val, str) and val.strip():
                 return val.strip()
+        else:
+            for field in Config.get_possible_reasoning_fields():
+                val = msg.get(field)
+                if val and isinstance(val, str) and val.strip():
+                    return val.strip()
         return ""
 
     def after_ai_processing(has_tool_calls: bool):

@@ -170,13 +170,16 @@ class MessageHistory:
         """Add an assistant message"""
         assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
 
-        # Preserve reasoning field with whatever name the provider uses
+        # Preserve reasoning field
         override = Config.get_reasoning_field()
-        fields = [override] if override else []
-        for field in fields + ["reasoning_content", "reasoning", "reasoning_text", "thinking"]:
-            if message.get(field):
-                assistant_message[field] = message.get(field)
-                break  # Only preserve first found
+        if override:
+            if message.get(override):
+                assistant_message[override] = message[override]
+        else:
+            for field in Config.get_possible_reasoning_fields():
+                if message.get(field):
+                    assistant_message[field] = message[field]
+                    break
 
         # Preserve thinking signature for Anthropic-style APIs (required for multi-turn)
         if message.get("thinking_signature"):

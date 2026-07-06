@@ -237,14 +237,28 @@ class Config:
                 return field
         return "reasoning_effort"  # default
 
+    # Default reasoning field names to check across providers
+    REASONING_FIELDS_DEFAULT = ["reasoning_content", "reasoning", "thinking", "reasoning_text"]
+
+    @staticmethod
+    def get_possible_reasoning_fields() -> List[str]:
+        """
+        Get list of reasoning field names to check, from env var
+        AICODER_REASONING_POSSIBLE_FIELDS (comma-separated) or default list.
+        """
+        env = os.environ.get("AICODER_REASONING_POSSIBLE_FIELDS")
+        if env:
+            return [f.strip() for f in env.split(",") if f.strip()]
+        return list(Config.REASONING_FIELDS_DEFAULT)
+
     @staticmethod
     def get_reasoning_field() -> Optional[str]:
         """
-        Get reasoning field name override from env var AICODER_REASONING_FIELD
-        (or REASONING_FIELD for cross-compatibility with Lua).
+        Get reasoning field name override from env var AICODER_REASONING_FIELD.
         Returns None if not set, allowing fallback to multi-field guessing.
+        When set, this field is used exclusively for read/store/send.
         """
-        val = os.environ.get("AICODER_REASONING_FIELD") or os.environ.get("REASONING_FIELD")
+        val = os.environ.get("AICODER_REASONING_FIELD")
         if val:
             return val.strip()
         return None

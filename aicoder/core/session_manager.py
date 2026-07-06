@@ -157,8 +157,8 @@ class SessionManager:
 
         # Add reasoning with the provider's field name for continuity
         if reasoning_content and reasoning_field:
-            assistant_message[reasoning_field] = reasoning_content
-            # Store signature for Anthropic-style APIs (required for multi-turn)
+            field = Config.get_reasoning_field() or reasoning_field
+            assistant_message[field] = reasoning_content
             if thinking_signature:
                 assistant_message["thinking_signature"] = thinking_signature
 
@@ -202,13 +202,15 @@ class SessionManager:
 
     def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str, thinking_signature: str = "") -> None:
         """Handle empty response from AI"""
+        field = Config.get_reasoning_field() or reasoning_field
+
         if full_response and full_response.strip() != "":
             # AI provided text response but no tools
             assistant_message = {"content": full_response}
 
             # Add reasoning with the provider's field name for continuity
             if reasoning_content and reasoning_field:
-                assistant_message[reasoning_field] = reasoning_content
+                assistant_message[field] = reasoning_content
                 if thinking_signature:
                     assistant_message["thinking_signature"] = thinking_signature
 
@@ -216,12 +218,11 @@ class SessionManager:
             LogUtils.print("")
         else:
             # AI provided no text response (this is normal when AI has nothing to say)
-            # Add a minimal message to show AI responded, then continue
             assistant_message = {"content": ""}
 
             # Add reasoning with the provider's field name for continuity
             if reasoning_content and reasoning_field:
-                assistant_message[reasoning_field] = reasoning_content
+                assistant_message[field] = reasoning_content
                 if thinking_signature:
                     assistant_message["thinking_signature"] = thinking_signature
 

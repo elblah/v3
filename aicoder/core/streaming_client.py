@@ -346,17 +346,24 @@ class StreamingClient:
             if msg.get("tool_call_id"):
                 msg_dict["tool_call_id"] = msg["tool_call_id"]
 
-            # Preserve reasoning with the same field name the provider uses
+            # Preserve reasoning with the field name the current provider expects
             # clear_thinking=True strips reasoning from non-tool-call messages (save bandwidth)
             if Config.clear_thinking() is True and not msg.get("tool_calls"):
                 pass  # strip reasoning from non-tool-call assistant messages
             else:
                 override = Config.get_reasoning_field()
-                fields = [override] if override else []
-                for field in fields + ["reasoning_content", "reasoning", "thinking", "reasoning_text"]:
-                    if msg.get(field):
-                        msg_dict[field] = msg[field]
-                        break
+                if override:
+                    # Remap: find reasoning from any stored field, send with override name
+                    for field in Config.get_possible_reasoning_fields():
+                        if msg.get(field):
+                            msg_dict[override] = msg[field]
+                            break
+                else:
+                    # No override: preserve whatever field name was stored
+                    for field in Config.get_possible_reasoning_fields():
+                        if msg.get(field):
+                            msg_dict[field] = msg[field]
+                            break
 
             formatted.append(msg_dict)
 
@@ -462,7 +469,9 @@ class StreamingClient:
                             # Show thinking indicator if any reasoning field present
                             for c in choices:
                                 delta = c.get("delta", {})
-                                if any(delta.get(f) and delta.get(f).strip() for f in ("reasoning_content", "reasoning", "thinking", "reasoning_text")):
+                                override = Config.get_reasoning_field()
+                                fields = [override] if override else Config.get_possible_reasoning_fields()
+                                if any(delta.get(f) and delta.get(f).strip() for f in fields):
                                     _show_thinking()
                                     break
                         else:
