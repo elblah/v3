@@ -10,8 +10,10 @@ import socket
 import time
 from typing import Dict, Any, Optional
 
-# Lazy import to avoid 300ms startup cost - only import when fetch() called
+# Lazy imports to avoid startup cost
 _urllib_request = None
+_gzip = None
+_zlib = None
 
 def _get_urllib():
     global _urllib_request
@@ -20,6 +22,20 @@ def _get_urllib():
         import urllib.request
         _urllib_request = urllib.request
     return _urllib_request
+
+def _get_gzip():
+    global _gzip
+    if _gzip is None:
+        import gzip as _gzip_mod
+        _gzip = _gzip_mod
+    return _gzip
+
+def _get_zlib():
+    global _zlib
+    if _zlib is None:
+        import zlib as _zlib_mod
+        _zlib = _zlib_mod
+    return _zlib
 
 
 class Response:
@@ -86,8 +102,7 @@ class Response:
             # Use cached content or read it
             if self._content is None:
                 if hasattr(self.response, "read"):
-                    self._enforce_timeout()
-                    self._content = self.response.read()
+                    self._content = self.read()
                 else:
                     self._content = b""
 
@@ -109,7 +124,7 @@ class Response:
             }
 
     def read(self) -> bytes:
-        """Read raw response bytes"""
+        """Read raw response bytes (auto-decompresses gzip/deflate)"""
         if self._content is None:
             if hasattr(self.response, "read"):
                 self._enforce_timeout()
@@ -117,6 +132,18 @@ class Response:
                 self._last_read_time = time.monotonic()
             else:
                 self._content = b""
+
+        # Decompress if needed
+        if self._content:
+            content_encoding = self.headers.get("Content-Encoding", "").lower()
+            if content_encoding == "gzip":
+                self._content = _get_gzip().decompress(self._content)
+            elif content_encoding == "deflate":
+                try:
+                    self._content = _get_zlib().decompress(self._content, -15)
+                except Exception:
+                    self._content = _get_zlib().decompress(self._content)
+
         return self._content
 
     def readline(self) -> bytes:
@@ -158,6 +185,8 @@ def _fetch_impl(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
 
     method = options.get("method", "GET")
     headers = options.get("headers", {})
+    if "Accept-Encoding" not in headers:
+        headers["Accept-Encoding"] = "gzip, deflate"
     body = options.get("body")
     from aicoder.core.config import Config
     total_timeout = options.get("timeout", Config.total_timeout())
