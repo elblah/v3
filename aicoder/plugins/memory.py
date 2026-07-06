@@ -25,25 +25,24 @@ def create_plugin(ctx):
 
     def _auto_init():
         """Auto-init memory dir + seed files if missing"""
-        if os.path.isdir(MEMORY_DIR):
-            return
-        os.makedirs(MEMORY_DIR, exist_ok=True)
-        index_content = (
-            "# Memory Index\n\n"
-            "This directory is your persistent memory. "
-            "Manage files via write_file/edit_file.\n\n"
-            "## Rules\n"
-            "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) - critical facts loaded into every session's prompt.\n"
-            "- `index.md` - working memory for project knowledge, patterns, conventions.\n"
-            "- Create more `.md` files for specific topics as needed.\n"
-            "- Update memory when you learn something important.\n\n"
-            "## Guidelines\n"
-            "- Be specific. Prefer facts over vague statements.\n"
-            "- Replace dates with actual values (no 'today', 'yesterday').\n"
-            "- Prune stale entries.\n"
-        )
-        with open(INDEX_FILE, "w", encoding="utf-8") as f:
-            f.write(index_content)
+        if not os.path.isdir(MEMORY_DIR):
+            os.makedirs(MEMORY_DIR, exist_ok=True)
+            index_content = (
+                "# Memory Index\n\n"
+                "This directory is your persistent memory. "
+                "Manage files via write_file/edit_file.\n\n"
+                "## Rules\n"
+                "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) - critical facts loaded into every session's prompt.\n"
+                "- `index.md` - working memory for project knowledge, patterns, conventions.\n"
+                "- Create more `.md` files for specific topics as needed.\n"
+                "- Update memory when you learn something important.\n\n"
+                "## Guidelines\n"
+                "- Be specific. Prefer facts over vague statements.\n"
+                "- Replace dates with actual values (no 'today', 'yesterday').\n"
+                "- Prune stale entries.\n"
+            )
+            with open(INDEX_FILE, "w", encoding="utf-8") as f:
+                f.write(index_content)
         if not os.path.isfile(AUTOLOAD_FILE):
             with open(AUTOLOAD_FILE, "w", encoding="utf-8") as f:
                 f.write("_No persistent memories yet._")
