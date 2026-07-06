@@ -127,6 +127,13 @@ def create_plugin(ctx):
             "- `index.md` - main working memory (project knowledge, patterns, "
             "user preferences).\n"
             "- Create additional `.md` files for specific topics.\n"
+            "\n"
+            "**When to write:**\n"
+            "- During tool use — if you discover something worth remembering "
+            "across sessions (a mistake to avoid, a pattern, a key decision "
+            "with rationale, an optimization), write it to memory immediately.\n"
+            "- Before your final response — always check if anything from this "
+            "turn is worth persisting. Include memory updates before any summary.\n"
         )
 
         if files:
