@@ -167,6 +167,15 @@ class StreamingClient:
                 ):
                     return
 
+                # Fire error hook with real HTTP status from response (no text parsing)
+                if self._plugin_system:
+                    try:
+                        http_status = response.status
+                    except (NameError, AttributeError):
+                        http_status = 0
+                    if http_status:
+                        self._plugin_system.call_hooks("on_api_error", str(error), http_status)
+
                 # Wait before next retry (except for last attempt)
                 # In unlimited mode (max_retries=0), always wait and continue
                 if max_retries == 0 or attempt_num < max_retries:
@@ -256,7 +265,7 @@ class StreamingClient:
     def _update_stats_on_success(self, start_time: float) -> None:
         """Update stats on success -"""
         if self.stats:
-            log_debug(f"*** _update_stats_on_success: increment_api_success, add_api_time")
+            log_debug("*** _update_stats_on_success: increment_api_success, add_api_time")
             self.stats.increment_api_success()
             self.stats.add_api_time((time.time() - start_time))
 
@@ -734,6 +743,7 @@ class StreamingClient:
             if throw_on_error:
                 raise Exception(error_msg)
             return False
+
 
         # Display attempt count (unlimited mode doesn't show max)
         if max_retries == 0:
