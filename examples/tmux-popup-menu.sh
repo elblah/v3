@@ -328,6 +328,19 @@ if [ ! -S "$SOCKET" ]; then
     exit
 fi
 
+# Handle inject-raw: take raw text from tmux command-prompt, base64, send via socket
+if [[ "$1" == "inject-raw" ]]; then
+    shift
+    msg="$*"
+    if [[ -z "$msg" ]]; then
+        exit 0
+    fi
+    encoded=$(echo -n "$msg" | base64 -w0 2>/dev/null || echo -n "$msg" | base64)
+    resp=$(echo "inject-text $encoded" | nc -U "$SOCKET" 2>/dev/null)
+    tmux display-message -d 2000 "AI Coder: injected"
+    exit 0
+fi
+
 if [[ ! -n "$1" ]]; then
     # Get user choice from menu
     CHOICE=$(show_menu "$SOCKET")
@@ -337,5 +350,21 @@ fi
 
 # Execute action if choice was made
 if [ -n "$CHOICE" ]; then
+    # Confirm destructive actions
+    if [[ "$CHOICE" == "stop"* || "$CHOICE" == "kill"* ]]; then
+        label="stop"
+        [[ "$CHOICE" == "kill"* ]] && label="kill"
+        confirm_file="/tmp/aicoder_confirm_${pane_numeric}"
+        rm -f "$confirm_file"
+        tmux command-prompt -p "${label} AI Coder? (y/N): " \
+            "run-shell -b 'echo \"%1\" > \"$confirm_file\"'"
+        for i in {1..100}; do
+            [[ -f "$confirm_file" ]] && break
+            sleep 0.1
+        done
+        ans=$(cat "$confirm_file" 2>/dev/null)
+        rm -f "$confirm_file"
+        [[ "$ans" != "y" && "$ans" != "Y" ]] && exit 0
+    fi
     execute_action "$SOCKET" "$CHOICE"
 fi
