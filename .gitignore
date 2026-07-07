@@ -96,6 +96,8 @@ plugins/__pycache__/
 
 tmp/
 
+# uv
+/uv.lock
 .aicoder/council/
 .aicoder/snippets
 .aicoder/
