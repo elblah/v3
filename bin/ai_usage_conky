@@ -1,0 +1,17 @@
+#!/bin/bash
+# ai_usage_conky - parse ai_usage.py total summary for conky display
+# Usage: ai_usage_conky [timeframe]  (default: today)
+# Prints nothing if no data for given period.
+
+TF="${1:-today}"
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+OUT=$(TZ=-3 "$DIR/examples/ai_usage.py" "$TF" 2>/dev/null)
+echo "$OUT" | grep -q 'TOTAL SUMMARY' || exit 0
+echo "$OUT" | sed -n '/TOTAL SUMMARY/,$p' \
+  | awk '
+    /^[[:space:]]*Total Requests/ {tr=$3; gsub(/,/,".",tr)}
+    /^[[:space:]]*Cache Hit:/ {chp=$NF; gsub(/[()%]/,"",chp)}
+    /^[[:space:]]*Total Input Tokens/ {it=$4; gsub(/,/,".",it)}
+    /^[[:space:]]*Avg Input\/Day/ {id=$3; gsub(/,/,".",id)}
+    END {printf "TR: %s (%s%%)\nIT: %s\nID: %s\n", tr, chp, it, id}
+  '

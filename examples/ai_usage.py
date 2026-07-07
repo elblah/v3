@@ -77,13 +77,17 @@ def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
             "cost": 0,
         }
     else:
-        # OpenAI raw usage fields:
-        #   prompt_tokens                    = TOTAL input tokens (cached + non-cached)
-        #   prompt_tokens_details.cached_tokens = tokens read from cache (cache hit)
-        #   completion_tokens                = generated tokens
+        # Two conventions for prompt_tokens vs cached_tokens:
         #
-        # Cached tokens are INCLUDED in prompt_tokens, not separate.
-        # To get non-cached (miss): prompt_tokens - cached_tokens
+        # OpenAI-style: prompt_tokens = TOTAL input (cached + non-cached)
+        #   prompt_tokens >= cached_tokens
+        #   miss = prompt_tokens - cached_tokens
+        #
+        # Anthropic-style: prompt_tokens = non-cached only (miss)
+        #   prompt_tokens < cached_tokens  (part < whole is impossible otherwise)
+        #   total input = prompt_tokens + cached_tokens
+        #
+        # The comparison (prompt_tokens < cached_tokens) distinguishes them.
         prompt = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
         completion = usage.get("completion_tokens") or usage.get("output_tokens") or 0
         prompt_details = usage.get("prompt_tokens_details") or {}
@@ -91,8 +95,13 @@ def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
         cache_read = (prompt_details.get("cached_tokens")
                      or usage.get("cache_read_input_tokens")
                      or usage.get("prompt_cache_hit_tokens") or 0)
-        # prompt_tokens already includes cached, so subtract to get miss
-        cache_miss = max(0, prompt - cache_read) if cache_read > 0 else prompt
+        if cache_read > 0 and prompt < cache_read:
+            # Anthropic-style: prompt_tokens is miss only
+            cache_miss = prompt
+            prompt = prompt + cache_read  # total input = miss + hit
+        else:
+            # OpenAI-style: prompt_tokens includes cached; also handles no-cache case
+            cache_miss = max(0, prompt - cache_read) if cache_read > 0 else prompt
         cost = (usage.get("cost_details", {}).get("upstream_inference_cost")
                or usage.get("cost") or 0)
         return {
