@@ -118,41 +118,30 @@ class MessageHistory:
 
     def insert_user_message_at_appropriate_position(self, content: str) -> None:
         """
-        Insert a user message at the correct position in message history.
+        Insert a user message without breaking tool call/response chains.
         
-        Scans backwards from the end and finds the appropriate injection position:
-        Priority: 1) after last tool response, 2) after last assistant message with no tool calls, 3) after last user message
-        
-        This prevents breaking tool call/response chains during injection.
+        LLM APIs reject a user message between tool calls and their results.
+        If the chain is open (last msg is a tool result or assistant with
+        tool_calls), insert before the assistant that started the chain.
+        Otherwise append.
         """
-        last_tool_index = -1
-        last_assistant_index = -1
-        last_user_index = -1
-        
-        # Scan backwards from the end to find the LAST occurrence of each type
-        for i in range(len(self.messages) - 1, -1, -1):
-            msg = self.messages[i]
-            role = msg.get("role")
-            
-            if role == "tool" and last_tool_index == -1:
-                last_tool_index = i
-            elif role == "assistant":
-                tool_calls = msg.get("tool_calls")
-                # Only consider assistant messages without tool calls
-                if (not tool_calls or len(tool_calls) == 0) and last_assistant_index == -1:
-                    last_assistant_index = i
-            elif role == "user" and last_user_index == -1:
-                last_user_index = i
-        
-        # Priority: tool > assistant > user
-        insertion_index = len(self.messages)  # Default: append to end
-        
-        if last_tool_index != -1:
-            insertion_index = last_tool_index + 1
-        elif last_assistant_index != -1:
-            insertion_index = last_assistant_index + 1
-        elif last_user_index != -1:
-            insertion_index = last_user_index + 1
+        insertion_index = len(self.messages)
+
+        if self.messages:
+            last = self.messages[-1]
+
+            if last["role"] == "tool":
+                # Open chain: tool results at end. Scan back past them.
+                i = len(self.messages) - 1
+                while i >= 0 and self.messages[i]["role"] == "tool":
+                    i -= 1
+                # i should be the assistant with tool_calls
+                if i >= 0 and self.messages[i]["role"] == "assistant" and self.messages[i].get("tool_calls"):
+                    insertion_index = i
+
+            elif last["role"] == "assistant" and last.get("tool_calls"):
+                # Open chain: assistant with tool_calls, no results yet.
+                insertion_index = len(self.messages) - 1
         
         # Create and insert the user message
         user_message = {"role": "user", "content": content}
