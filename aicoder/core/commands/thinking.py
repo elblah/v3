@@ -113,7 +113,11 @@ class ThinkingCommand(BaseCommand):
 
         # Show reasoning effort
         if effort:
-            LogUtils.print(f"Reasoning effort: {effort}", color="green", bold=True)
+            effort_msg = f"Reasoning effort: {effort}"
+            valid_values = Config._get_valid_reasoning_efforts()
+            if valid_values:
+                effort_msg += f"  (valid: {', '.join(valid_values)})"
+            LogUtils.print(effort_msg, color="green", bold=True)
         elif mode == "on":
             LogUtils.info("Reasoning effort: API default (medium)")
 
@@ -153,14 +157,24 @@ class ThinkingCommand(BaseCommand):
             LogUtils.info("Reasoning effort: not set (API will use default)")
 
         if valid_values:
-            LogUtils.info(f"Valid effort levels: {', '.join(sorted(valid_values))}")
+            LogUtils.info(f"Valid effort levels: {', '.join(valid_values)}")
         LogUtils.dim("Use: /thinking effort <level>")
 
     def _set_effort(self, value: str) -> None:
         """Set reasoning effort level"""
         try:
             Config.set_reasoning_effort(value)
-            LogUtils.success(f"[*] Reasoning effort set to: {value}")
+            new_effort = Config.reasoning_effort()
+            LogUtils.success(f"[*] Reasoning effort set to: {new_effort}")
+            valid_values = Config._get_valid_reasoning_efforts()
+            if valid_values:
+                parts = []
+                for v in valid_values:
+                    if v == new_effort:
+                        parts.append(f"{Config.colors['yellow']}{v}{Config.colors['reset']}")
+                    else:
+                        parts.append(v)
+                LogUtils.print(f"Valid: {' '.join(parts)}", color=None)
         except ValueError as e:
             LogUtils.error(f"[*] {e}")
 
@@ -193,7 +207,7 @@ class ThinkingCommand(BaseCommand):
 
         help_text = """Usage:
   /thinking [on|off|default]      Set thinking mode
-  /thinking effort <level>        Set reasoning effort level
+  /thinking effort <level>        Set reasoning effort level (or +/++/-/--, see below)
   /thinking effort                Show current effort level
   /thinking clear <true|false>    Set reasoning preservation (false=preserve, true=clear)
   /thinking clear                 Show current reasoning preservation setting
@@ -204,6 +218,10 @@ Examples:
   /thinking on                    Enable thinking with preserved reasoning (default for coding)
   /thinking off                   Disable thinking
   /thinking effort high           Set reasoning effort to high
+  /thinking effort +              Set reasoning effort to max (last in REASONING_EFFORT_VALID)
+  /thinking effort -              Set reasoning effort to min (first in REASONING_EFFORT_VALID)
+  /thinking effort ++             Step up one level from current
+  /thinking effort --             Step down one level from current
   /thinking clear false           Enable preserved thinking (recommended for coding)
   /thinking clear true            Clear reasoning between turns (faster/cheaper)
 
@@ -215,6 +233,6 @@ Environment Variables:
 """
 
         if valid_values:
-            help_text += f"\nValid effort levels (from REASONING_EFFORT_VALID):\n  {', '.join(sorted(valid_values))}\n"
+            help_text += f"\nValid effort levels (from REASONING_EFFORT_VALID):\n  {', '.join(valid_values)}\n"
 
         LogUtils.print(help_text)
