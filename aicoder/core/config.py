@@ -156,15 +156,15 @@ class Config:
     _reasoning_effort = _init_reasoning_effort_from_env()
 
     @staticmethod
-    def _get_valid_reasoning_efforts() -> Optional[Set[str]]:
+    def _get_valid_reasoning_efforts() -> Optional[List[str]]:
         """
         Get valid reasoning effort values from env var REASONING_EFFORT_VALID
-        Returns None if not set (accept any value)
+        Returns ordered list (preserving env var order) or None if not set.
         """
         env_val = os.environ.get("REASONING_EFFORT_VALID", "")
         if not env_val:
             return None
-        return {v.strip().lower() for v in env_val.split(",")}
+        return [v.strip().lower() for v in env_val.split(",")]
 
     @staticmethod
     def reasoning_effort() -> Optional[str]:
@@ -176,15 +176,44 @@ class Config:
     @classmethod
     def set_reasoning_effort(cls, effort: Optional[str]) -> None:
         """
-        Set reasoning effort level
-        Validates against REASONING_EFFORT_VALID if set
+        Set reasoning effort level.
+        Supports positional symbols requiring REASONING_EFFORT_VALID (ordered list):
+          '+' → last position (highest)
+          '-' → first position (lowest)
+          '++' → one step up from current
+          '--' → one step down from current
         """
-        if effort is not None:
-            valid_values = cls._get_valid_reasoning_efforts()
-            if valid_values is not None and effort.lower() not in valid_values:
-                valid_list = ", ".join(sorted(valid_values))
+        if effort is None:
+            cls._reasoning_effort = None
+            return
+
+        val = effort.lower()
+        valid_values = cls._get_valid_reasoning_efforts()
+
+        if val in ("+", "-", "++", "--") and not valid_values:
+            raise ValueError("REASONING_EFFORT_VALID not set — cannot use positional symbols")
+
+        if val == "+":
+            cls._reasoning_effort = valid_values[-1]
+        elif val == "-":
+            cls._reasoning_effort = valid_values[0]
+        elif val == "++":
+            current = cls._reasoning_effort
+            if current not in valid_values:
+                raise ValueError(f"Current effort '{current}' not in valid values — cannot step up")
+            idx = valid_values.index(current)
+            cls._reasoning_effort = valid_values[min(idx + 1, len(valid_values) - 1)]
+        elif val == "--":
+            current = cls._reasoning_effort
+            if current not in valid_values:
+                raise ValueError(f"Current effort '{current}' not in valid values — cannot step down")
+            idx = valid_values.index(current)
+            cls._reasoning_effort = valid_values[max(idx - 1, 0)]
+        else:
+            if valid_values is not None and val not in valid_values:
+                valid_list = ", ".join(valid_values)
                 raise ValueError(f"Invalid reasoning effort: {effort}. Valid values: {valid_list}")
-        cls._reasoning_effort = effort.lower() if effort else None
+            cls._reasoning_effort = val
 
     # Reasoning format registry - maps provider to effort field name
     # Can be extended for new providers
