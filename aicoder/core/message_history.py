@@ -121,26 +121,16 @@ class MessageHistory:
         Insert a user message without breaking tool call/response chains.
         
         LLM APIs reject a user message between tool calls and their results.
-        If the chain is open (last msg is a tool result or assistant with
-        tool_calls), insert before the assistant that started the chain.
-        Otherwise append.
+        Only case that's broken: last msg is assistant with tool_calls and
+        no results yet. In that case, insert before it. Otherwise append.
         """
         insertion_index = len(self.messages)
 
         if self.messages:
             last = self.messages[-1]
-
-            if last["role"] == "tool":
-                # Open chain: tool results at end. Scan back past them.
-                i = len(self.messages) - 1
-                while i >= 0 and self.messages[i]["role"] == "tool":
-                    i -= 1
-                # i should be the assistant with tool_calls
-                if i >= 0 and self.messages[i]["role"] == "assistant" and self.messages[i].get("tool_calls"):
-                    insertion_index = i
-
-            elif last["role"] == "assistant" and last.get("tool_calls"):
+            if last["role"] == "assistant" and last.get("tool_calls"):
                 # Open chain: assistant with tool_calls, no results yet.
+                # Insert before it to avoid user msg interrupting the pair.
                 insertion_index = len(self.messages) - 1
         
         # Create and insert the user message
