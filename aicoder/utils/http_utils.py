@@ -123,22 +123,33 @@ class Response:
                 "raw_content": str(self._content) if self._content else "None",
             }
 
+    def _content_encoding(self) -> str:
+        """Get Content-Encoding header case-insensitively"""
+        for k, v in self.headers.items():
+            if k.lower() == "content-encoding":
+                return v.lower()
+        return ""
+
     def read(self) -> bytes:
         """Read raw response bytes (auto-decompresses gzip/deflate)"""
         if self._content is None:
             if hasattr(self.response, "read"):
                 self._enforce_timeout()
-                self._content = self.response.read()
+                # If gzip stream was partially consumed via readline(), read rest from it
+                if hasattr(self, '_gzip_stream'):
+                    self._content = self._gzip_stream.read()
+                else:
+                    self._content = self.response.read()
                 self._last_read_time = time.monotonic()
             else:
                 self._content = b""
 
-        # Decompress if needed
-        if self._content:
-            content_encoding = self.headers.get("Content-Encoding", "").lower()
-            if content_encoding == "gzip":
+        # Decompress if needed (only if we didn't already read through _gzip_stream)
+        if self._content and not hasattr(self, '_gzip_stream'):
+            encoding = self._content_encoding()
+            if encoding == "gzip":
                 self._content = _get_gzip().decompress(self._content)
-            elif content_encoding == "deflate":
+            elif encoding == "deflate":
                 try:
                     self._content = _get_zlib().decompress(self._content, -15)
                 except Exception:
@@ -150,7 +161,13 @@ class Response:
         """Read one line from response - needed for SSE streaming"""
         if hasattr(self.response, "readline"):
             self._enforce_timeout()
-            line = self.response.readline()
+            encoding = self._content_encoding()
+            if encoding == "gzip":
+                line = self._readline_gzip()
+            elif encoding == "deflate":
+                line = self._readline_deflate()
+            else:
+                line = self.response.readline()
             self._last_read_time = time.monotonic()
             return line
         else:
@@ -163,6 +180,27 @@ class Response:
                 return line + b"\n"
             else:
                 return content
+
+    def _readline_gzip(self) -> bytes:
+        """Read one decompressed line from gzip response"""
+        if not hasattr(self, '_gzip_stream'):
+            self._gzip_stream = _get_gzip().GzipFile(fileobj=self.response)
+        return self._gzip_stream.readline()
+
+    def _readline_deflate(self) -> bytes:
+        """Read one decompressed line from deflate response by buffering"""
+        # Deflate streaming is tricky; buffer decompressed data
+        if not hasattr(self, '_deflate_buf'):
+            self._deflate_buf = b""
+        if b"\n" not in self._deflate_buf:
+            raw = self.response.read(8192)
+            if raw:
+                dec = _get_zlib().decompress(raw, -15)
+                self._deflate_buf += dec
+        if b"\n" in self._deflate_buf:
+            line, self._deflate_buf = self._deflate_buf.split(b"\n", 1)
+            return line + b"\n"
+        return self._deflate_buf
 
     def close(self) -> None:
         """Close the underlying response if possible"""
@@ -185,10 +223,10 @@ def _fetch_impl(url: str, options: Optional[Dict[str, Any]] = None) -> Response:
 
     method = options.get("method", "GET")
     headers = options.get("headers", {})
-    if "Accept-Encoding" not in headers:
+    from aicoder.core.config import Config
+    if Config.gzip_enabled() and "Accept-Encoding" not in headers:
         headers["Accept-Encoding"] = "gzip, deflate"
     body = options.get("body")
-    from aicoder.core.config import Config
     total_timeout = options.get("timeout", Config.total_timeout())
 
     # Calculate deadline for total timeout enforcement

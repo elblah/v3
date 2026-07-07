@@ -42,6 +42,7 @@ from typing import List, Dict, Any
 
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
 FILTER_TAG = os.environ.get("FILTER_TAG")
+FILTER_URL = os.environ.get("FILTER_URL")
 
 
 def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
@@ -273,6 +274,9 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
                     return None
             elif entry_tag != FILTER_TAG:
                 return None
+        # Filter by URL substring if FILTER_URL env var is set
+        if FILTER_URL is not None and FILTER_URL not in entry.get("url", ""):
+            return None
         ts = entry["ts"].replace("_", "T")
         dt = datetime.fromisoformat(ts)
         # Log timestamps are UTC; convert to local time for comparison
@@ -454,15 +458,15 @@ def main():
             total["cost"] += d["cost"]
 
     n = total["n"]
-    # Number of days in range for per-day averages
+    total_input_cache = total['cr'] + total['cm']
     day_secs = (end - start).total_seconds() / 86400 if start and end and end > start else 1
     print("-" * 50)
     print("TOTAL SUMMARY")
     print(f"    Total Requests:      {total['n']:,}")
     print(f"    Total Input Tokens:  {total['p']:,}")
     print(f"    Total Output Tokens: {total['c']:,}")
-    pct_hit = total['cr'] / total['p'] * 100 if total['p'] else 0
-    pct_miss = total['cm'] / total['p'] * 100 if total['p'] else 0
+    pct_hit = total['cr'] / total_input_cache * 100 if total_input_cache else 0
+    pct_miss = total['cm'] / total_input_cache * 100 if total_input_cache else 0
     print(f"    Cache Hit:           {total['cr']:,} ({pct_hit:.1f}%)")
     print(f"    Cache Miss:          {total['cm']:,} ({pct_miss:.1f}%)")
     print(f"    Avg Input/Request:   {total['p'] / n:,.0f}")
