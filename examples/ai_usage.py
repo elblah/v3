@@ -38,6 +38,7 @@ except ImportError:
     json_loads = json.loads
 import os
 from pathlib import Path
+import re
 from typing import List, Dict, Any
 
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
@@ -310,10 +311,44 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
         return None
 
 
+def _extract_timestamp(line: str) -> datetime | None:
+    """Extract timestamp from a JSONL line (cheap regex, no full parse)."""
+    m = re.search(r'"ts"\s*:\s*"(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2})"', line)
+    if not m:
+        return None
+    ts = m.group(1).replace("_", "T")
+    try:
+        dt = datetime.fromisoformat(ts)
+        return dt + _get_tz_offset()
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_stats(filepath: Path, start: datetime | None, end: datetime | None) -> List[Dict]:
-    """Parse a stats.log file, return entries within time range."""
+    """Parse a stats.log file, return entries within time range.
+
+    Reads bottom-up and stops at first entry before start (the log is
+    time-sorted ascending, so newer entries are at the tail). Set FULL=1
+    to read the entire file (all entries, no early exit).
+    """
+    lines = filepath.read_text().splitlines()
+    reverse = start is not None and not os.environ.get("FULL")
+
+    if reverse:
+        entries = []
+        for line in reversed(lines):
+            # Quick timestamp check: if we're past the range, stop
+            dt = _extract_timestamp(line)
+            if dt is not None and dt < start:
+                break
+            entry = _parse_line(line, start, end)
+            if entry:
+                entries.append(entry)
+        entries.reverse()  # restore chronological order
+        return entries
+
     entries = []
-    for line in filepath.read_text().splitlines():
+    for line in lines:
         entry = _parse_line(line, start, end)
         if entry:
             entries.append(entry)
