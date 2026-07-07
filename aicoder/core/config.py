@@ -596,6 +596,17 @@ class Config:
         return headers
 
     @staticmethod
+    def gzip_enabled() -> bool:
+        """
+        Check if gzip compression is enabled via AICODER_GZIP environment variable.
+        Default is enabled (gzip=True). Set AICODER_GZIP=0 to disable.
+        
+        Returns:
+            bool: True if gzip is enabled, False if disabled
+        """
+        return os.environ.get("AICODER_GZIP", "1") != "0"
+
+    @staticmethod
     def streaming_enabled() -> bool:
         """
         Check if streaming is enabled via AICODER_STREAM environment variable.
