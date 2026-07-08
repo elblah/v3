@@ -11,8 +11,8 @@ Usage:
     python ai_usage.py update                                # Scan & update cache
     python ai_usage.py clear-cache                           # Delete cache
     python ai_usage.py help                                  # Show this usage
-    ALL=1 python ai_usage.py ...                             # Global stats (ignore cwd)
-    CENTRAL=1 python ai_usage.py ...                         # Use central log
+    LOCAL=1 ALL=1 python ai_usage.py ...                     # All cached dirs (ignore cwd)
+    LOCAL=1 python ai_usage.py ...                           # Per-project stats.log mode
 
 Notes:
     - Cache persists indefinitely. Run 'update' to scan all dirs below PWD.
@@ -358,7 +358,7 @@ def main():
     args = sys.argv[1:]
 
     # Handle manual cache commands
-    if "clear-cache" in args:
+    if "clear-cache" in args or "--clear-cache" in args:
         clear_cache()
         print("Cache cleared.")
         sys.exit(0)
@@ -369,9 +369,9 @@ def main():
         print("  ai_usage.py YYYY-MM-DD YYYY-MM-DD                        # Date range")
         print("  ai_usage.py update         # Scan all dirs below, update cache")
         print("  ai_usage.py clear-cache    # Delete cache")
-        print("  ALL=1 ai_usage.py ...      # All cached dirs (ignore cwd filter)")
+        print("  LOCAL=1 ALL=1 ai_usage.py ...  # All cached dirs (ignore cwd filter)")
         sys.exit(0)
-    elif "update" in args:
+    elif "update" in args or "--update" in args:
         # Update cache: scan filesystem, add new dirs, remove invalid
         update_cache()
         sys.exit(0)
