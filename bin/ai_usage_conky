@@ -13,5 +13,5 @@ echo "$OUT" | sed -n '/TOTAL SUMMARY/,$p' \
     /^[[:space:]]*Cache Hit:/ {chp=$NF; gsub(/[()%]/,"",chp)}
     /^[[:space:]]*Total Input Tokens/ {it=$4; gsub(/,/,".",it)}
     /^[[:space:]]*Avg Input\/Day/ {id=$3; gsub(/,/,".",id)}
-    END {printf "TR: %s (%s%%)\nIT: %s\nID: %s\n", tr, chp, it, id}
+    END {printf "TR: %s${alignr}%s\nIT: %s\nID: %s\n", tr, chp, it, id}
   '
