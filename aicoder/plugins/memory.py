@@ -171,17 +171,7 @@ def create_plugin(ctx):
             except PermissionError:
                 LogUtils.error(f"[memory] Cannot delete {MEMORY_DIR} - permission denied")
 
-            # Rebuild system prompt so auto-init creates fresh memory
-            if ctx.app and ctx.app.message_history:
-                from aicoder.core.prompt_builder import PromptBuilder
-                from aicoder.core.token_estimator import cache_message
-                system_prompt = PromptBuilder.build_complete_system_prompt(
-                    ctx.app.plugin_system
-                )
-                messages = ctx.app.message_history.messages
-                if messages and len(messages) > 0 and messages[0].get("role") == "system":
-                    messages[0]["content"] = system_prompt
-                    cache_message(messages[0])
+            # Dir deleted. on_system_prompt_append will auto-init fresh on next build.
 
         elif subcmd == "status":
             from aicoder.utils.log import LogUtils
