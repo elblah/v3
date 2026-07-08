@@ -194,29 +194,23 @@ Create a meaningful commit message and run the appropriate git add/commit comman
     # Register the /git command
     ctx.register_command("/git", handle_git_command, description="Git operations")
 
-    def on_before_user_prompt():
-        """Hook: Add git context to system prompt before user prompt"""
+    def on_system_prompt_append():
+        """Contribute git context to system prompt during prompt build
+        
+        Uses on_system_prompt_append (not before_user_prompt/before_ai_processing)
+        to avoid directly mutating msgs[0]. This hook fires during 
+        build_complete_system_prompt() (on compaction, reload, session init),
+        and the returned string is baked into the prompt at build time —
+        no desync with _skip_hooks_once, no spurious msg[0]: CHANGED.
+        """
         if not _cached_git_branch:
-            return
+            return None
 
-        messages = ctx.app.message_history.messages
-        if not messages or len(messages) == 0:
-            return
-
-        system_msg = messages[0]
-        if system_msg.get("role") != "system":
-            return
-
-        original_content = system_msg.get("content", "")
-        if "Git Repository:" in original_content:
-            return
-
-        git_context = f"""
+        return f"""
 
 Git Repository:
 - Branch: {_cached_git_branch}
 """
-        system_msg["content"] = original_content + git_context
 
     def on_context_bar():
         """Hook: Add git status to context bar"""
@@ -229,10 +223,10 @@ Git Repository:
         return f"{Config.colors['dim']}Git"
 
     # Register hooks
-    ctx.register_hook("before_user_prompt", on_before_user_prompt)
+    ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
     ctx.register_hook("on_context_bar", on_context_bar)
 
     if Config.debug():
-        print("  - before_user_prompt hook (git awareness)")
+        print("  - on_system_prompt_append hook (git awareness)")
         print("  - on_context_bar hook (git status)")
         print("  - /git command (commit-ai, status, diff, log, branch)")
