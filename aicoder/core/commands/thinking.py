@@ -209,8 +209,6 @@ class ThinkingCommand(BaseCommand):
   /thinking [on|off|default]      Set thinking mode
   /thinking effort <level>        Set reasoning effort level (or +/++/-/--, see below)
   /thinking effort                Show current effort level
-  /thinking clear <true|false>    Set reasoning preservation (false=preserve, true=clear)
-  /thinking clear                 Show current reasoning preservation setting
   /thinking                       Show current status
   /thinking toggle                Toggle between on/off
 
@@ -222,14 +220,12 @@ Examples:
   /thinking effort -              Set reasoning effort to min (first in REASONING_EFFORT_VALID)
   /thinking effort ++             Step up one level from current
   /thinking effort --             Step down one level from current
-  /thinking clear false           Enable preserved thinking (recommended for coding)
-  /thinking clear true            Clear reasoning between turns (faster/cheaper)
 
 Environment Variables:
   THINKING=<mode>                  Set default thinking mode (default|on|off)
   REASONING_EFFORT=<level>        Set default reasoning effort
   REASONING_EFFORT_VALID=<vals>   Comma-separated valid effort levels
-  CLEAR_THINKING=<true|false>     Set reasoning preservation (false=preserve, true=clear)
+  CLEAR_THINKING=<true|false>     Strip reasoning from non-tool-call messages (bandwidth optimization)
 """
 
         if valid_values:
