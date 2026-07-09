@@ -200,20 +200,19 @@ def create_plugin(ctx):
 
         elif subcmd == "export":
             if len(parts) < 2:
-                LogUtils.error("[memory] Usage: /memory export <target-dir>")
+                LogUtils.error("[memory] Usage: /memory export <archive-path>")
                 return
 
-            target_dir = os.path.abspath(parts[1])
-            if not os.path.isdir(target_dir):
-                LogUtils.error(f"[memory] Target is not a directory: {target_dir}")
+            archive_path = os.path.abspath(parts[1])
+            archive_dir = os.path.dirname(archive_path)
+            if archive_dir and not os.path.isdir(archive_dir):
+                LogUtils.error(f"[memory] Parent directory does not exist: {archive_dir}")
                 return
             if not os.path.isdir(MEMORY_DIR):
                 LogUtils.error("[memory] No memory directory to export")
                 return
 
             import tarfile
-            archive_name = f"aicoder-memory.tar.gz"
-            archive_path = os.path.join(target_dir, archive_name)
 
             try:
                 mem_files = [f for f in os.listdir(MEMORY_DIR) if f.endswith(".md")]
@@ -259,7 +258,7 @@ def create_plugin(ctx):
 
         else:
             LogUtils.print("Memory plugin commands:", bold=True)
-            LogUtils.dim("  /memory export <dir>  - Export memory to aicoder-memory.tar.gz in <dir>")
+            LogUtils.dim("  /memory export <path> - Export memory to archive (.tar.gz)")
             LogUtils.dim("  /memory import <file> - Import memory from archive (replaces files)")
             LogUtils.dim("  /memory rm-all       - Delete all memory (requires confirmation)")
             LogUtils.dim("  /memory status       - Show memory status and file sizes")
