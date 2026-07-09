@@ -12,6 +12,7 @@ import fcntl
 import select
 import subprocess
 import signal
+import time
 import base64
 from typing import Optional, Dict, Any, List
 
@@ -524,6 +525,9 @@ class SocketServer:
                         content = f.read().strip()
 
                     if content:
+                        # Wait if compaction in progress — avoid race
+                        while self.aicoder.message_history.is_compacting:
+                            time.sleep(0.05)
                         self.aicoder.message_history.insert_user_message_at_appropriate_position(content)
                         if Config.debug():
                             LogUtils.debug(f"[Socket] Injected: {repr(content[:100])}")
@@ -573,6 +577,10 @@ class SocketServer:
 
             # Decode as UTF-8
             text = decoded_bytes.decode("utf-8")
+
+            # Wait if compaction in progress — avoid race
+            while self.aicoder.message_history.is_compacting:
+                time.sleep(0.05)
 
             # Insert into message history
             self.aicoder.message_history.insert_user_message_at_appropriate_position(text)
