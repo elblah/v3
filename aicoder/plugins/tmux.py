@@ -44,24 +44,17 @@ def create_plugin(ctx):
 
     def _apply_title(name):
         """Set pane title always, window title only if single-pane window.
-        Fire-and-forget - don't block."""
-        pane_cmd = f"tmux select-pane -t \"$TMUX_PANE\" -T \"{name}\""
-        subprocess.Popen(pane_cmd, shell=True,
+        Entirely async — no blocking subprocess calls."""
+        script = (
+            f'tmux select-pane -t "$TMUX_PANE" -T "{name}" && '
+            f'pane_count=$(tmux list-panes | wc -l) && '
+            f'if [ "$pane_count" -le 1 ]; then '
+            f'tmux rename-window -t "$TMUX_PANE" "{name}"; '
+            f'fi'
+        )
+        subprocess.Popen(script, shell=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL)
-
-        # Check pane count in this window
-        try:
-            r = subprocess.run(["tmux", "list-panes", "-F", "#{pane_id}"],
-                               capture_output=True, text=True, timeout=3)
-            panes = [p for p in r.stdout.strip().split("\n") if p]
-            if len(panes) <= 1:
-                win_cmd = f"tmux rename-window -t \"$TMUX_PANE\" \"{name}\""
-                subprocess.Popen(win_cmd, shell=True,
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
 
     def _read_title_file(path):
         """Read title from file, or None if missing/empty"""
