@@ -115,9 +115,16 @@ def create_plugin(ctx):
     
     def on_session_initialized(messages):
         """Handle session initialization - load existing session"""
-        # NOTE: This hook runs early in initialization before plugins are ready
-        # We handle session loading differently - see below
-        pass
+        if not session_path.exists():
+            LogUtils.print(f"[*] No existing session at {session_file}, starting fresh")
+            save_current_state()
+            return
+        
+        try:
+            load_existing_session(messages)
+            LogUtils.print(f"[*] Loaded session from {session_file}")
+        except Exception as e:
+            LogUtils.error(f"[!] Failed to load session from {session_file}: {e}")
     
     def on_user_message_added(message):
         """Handle user message addition"""
@@ -160,25 +167,6 @@ def create_plugin(ctx):
     ctx.register_hook("after_assistant_message_added", on_assistant_message_added)
     ctx.register_hook("after_tool_results_added", on_tool_results_added)
     ctx.register_hook("after_messages_set", on_messages_set)
-    
-    # Load existing session AFTER all hooks are registered and system is ready
-    # This ensures we have access to fully initialized message history
-    messages = ctx.app.message_history.get_messages()
-    if len(messages) == 1 and messages[0].get("role") == "system":
-        if session_path.exists():
-            from aicoder.core.config import Config
-            if Config.debug():
-                LogUtils.debug(f"[*] Loading existing session from {session_file}")
-            load_existing_session(messages)
-        else:
-            from aicoder.core.config import Config
-            if Config.debug():
-                LogUtils.debug(f"[*] No existing session file at {session_file}, starting fresh")
-            # New session: Save current state (chat messages only) to session file
-            save_current_state()
-    elif not session_path.exists():
-        # Also save if we have messages but no file (shouldn't happen but handle it)
-        save_current_state()
     
     from aicoder.core.config import Config
     if Config.debug():
