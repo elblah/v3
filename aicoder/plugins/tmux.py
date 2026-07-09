@@ -115,6 +115,12 @@ def create_plugin(ctx):
             _set_wintitle_from_file()
             return "Wintitle on."
 
+        elif cmd == "reset":
+            name = os.path.basename(os.path.abspath(os.getcwd()))
+            _write_title_file(active, name)
+            _apply_title(name)
+            return f"Wintitle reset to: {name}"
+
         elif cmd == "off":
             if os.path.isfile(active):
                 os.rename(active, disabled)
@@ -147,6 +153,7 @@ def create_plugin(ctx):
                 "  wintitle                 - Show current window name & state\n"
                 "  wintitle on              - Enable wintitle (restore saved name)\n"
                 "  wintitle off             - Disable wintitle (saves name)\n"
+                "  wintitle reset           - Reset to current directory name\n"
                 "  wintitle <custom name>   - Set custom window title\n"
                 "  help                     - Show this help"
             )
