@@ -87,7 +87,7 @@ def _extract_cached_tokens(usage):
     return None
 
 
-def _on_session_change() -> None:
+def _on_session_change(action=None) -> None:
     """Session reset ( /new /load ) — clear all state"""
     global _message_hashes, _last_cached_tokens, _msg_changed_this_turn, _msg_count_at_hash
     _message_hashes.clear()
