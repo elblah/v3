@@ -2,11 +2,11 @@
 Session Autosaver Plugin - AI Coder v3 session persistence
 
 Automatically loads and saves session to SESSION_FILE in JSONL format.
-V3 behavior:
 - SESSION_FILE environment variable
 - Auto-load on startup
 - Auto-append messages (user, assistant, tool)
-- Always save system prompt for proper /load functionality
+- Saves only chat messages (no system prompt) — matches /save behavior
+- On load, preserves current system prompt — matches /load behavior
 - Support both JSON and JSONL based on file extension
 - Respect debug mode configuration
 """
@@ -35,7 +35,7 @@ def create_plugin(ctx):
         LogUtils.print(f"[*] Session autosaver enabled: {session_file} ({'JSONL' if is_jsonl else 'JSON'} format)")
     
     def load_existing_session(messages):
-        """Load existing session from file"""
+        """Load existing session from file, preserving current system prompt"""
         if not session_path.exists():
             return
         
@@ -49,9 +49,18 @@ def create_plugin(ctx):
                 existing_messages = read_json(session_file)
             
             if existing_messages:
-                # JSONL/JSON should already contain system prompt from previous saves
-                # Just replace current messages with loaded ones
-                ctx.app.message_history.set_messages(existing_messages)
+                # Preserve current system prompt, only load chat messages
+                current = ctx.app.message_history.get_messages()
+                system_msg = None
+                for msg in current:
+                    if msg.get("role") == "system":
+                        system_msg = msg
+                        break
+                if system_msg:
+                    loaded = [system_msg] + [m for m in existing_messages if m.get("role") != "system"]
+                else:
+                    loaded = existing_messages
+                ctx.app.message_history.set_messages(loaded)
                 
                 from aicoder.core.config import Config
                 if Config.debug():
@@ -64,24 +73,22 @@ def create_plugin(ctx):
             LogUtils.error(f"[!] Failed to load session from {session_file}: {e}")
     
     def save_current_state():
-        """Save current complete state to session file (for initialization)"""
+        """Save current chat messages to session file (for initialization)"""
         try:
+            chat_messages = ctx.app.message_history.get_chat_messages()
             if is_jsonl:
                 from aicoder.utils.jsonl_utils import write_file as write_jsonl
-                # For JSONL: Save current complete state
-                all_messages = ctx.app.message_history.get_messages()
-                write_jsonl(session_file, all_messages)
+                write_jsonl(session_file, chat_messages)
             else:
-                # JSON format - write all messages (backward compatibility)
+                # JSON format (backward compatibility)
                 from aicoder.utils.json_utils import write_file as write_json
-                all_messages = ctx.app.message_history.get_messages()
-                write_json(session_file, all_messages)
+                write_json(session_file, chat_messages)
         except Exception as e:
             LogUtils.error(f"[!] Failed to save current state to {session_file}: {e}")
     
     def save_message_to_session(message):
         """Save a single message to session file (append mode for JSONL)"""
-        # Save ALL messages now including system prompt for proper /load support
+        # Save only chat messages — matches /save behavior
         
         try:
             if is_jsonl:
@@ -98,11 +105,10 @@ def create_plugin(ctx):
                 existing_messages.append(message)
                 write_jsonl(session_file, existing_messages)
             else:
-                # JSON format - write all messages (backward compatibility)
+                # JSON format - write all chat messages (backward compatibility)
                 from aicoder.utils.json_utils import write_file as write_json
-                all_messages = ctx.app.message_history.get_messages()
-                # Save ALL messages now for proper /load support
-                write_json(session_file, all_messages)
+                chat_messages = ctx.app.message_history.get_chat_messages()
+                write_json(session_file, chat_messages)
                 
         except Exception as e:
             LogUtils.error(f"[!] Failed to save message to {session_file}: {e}")
@@ -132,22 +138,18 @@ def create_plugin(ctx):
         # For JSON, we can use normal logic (always rewrites anyway)
         
         try:
+            chat_messages = ctx.app.message_history.get_chat_messages()
             if is_jsonl:
                 from aicoder.utils.jsonl_utils import write_file as write_jsonl
-                # For JSONL: Delete and recreate with current complete state
-                all_messages = ctx.app.message_history.get_messages()
-                # Save ALL messages now including system prompt for proper /load support
-                write_jsonl(session_file, all_messages)
+                write_jsonl(session_file, chat_messages)
                 
                 from aicoder.core.config import Config
                 if Config.debug():
-                    LogUtils.debug(f"[*] JSONL file recreated with current state after serious operation ({len(all_messages)} messages)")
+                    LogUtils.debug(f"[*] JSONL file recreated with current state after serious operation ({len(chat_messages)} messages)")
             else:
                 # For JSON: Use normal save logic (will rewrite everything anyway)
                 from aicoder.utils.json_utils import write_file as write_json
-                all_messages = ctx.app.message_history.get_messages()
-                # Save ALL messages now for proper /load support
-                write_json(session_file, all_messages)
+                write_json(session_file, chat_messages)
                 
         except Exception as e:
             LogUtils.error(f"[!] Failed to recreate session file after serious operation: {e}")
@@ -172,7 +174,7 @@ def create_plugin(ctx):
             from aicoder.core.config import Config
             if Config.debug():
                 LogUtils.debug(f"[*] No existing session file at {session_file}, starting fresh")
-            # New session: Save current state (includes system prompt) to new JSONL file
+            # New session: Save current state (chat messages only) to session file
             save_current_state()
     elif not session_path.exists():
         # Also save if we have messages but no file (shouldn't happen but handle it)
