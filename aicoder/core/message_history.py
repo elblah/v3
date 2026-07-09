@@ -422,37 +422,53 @@ class MessageHistory:
 
     def force_compact_rounds(self, n: int) -> None:
         """Force compact N oldest rounds"""
+        if self.is_compacting:
+            LogUtils.warn("Compaction already in progress, skipping...")
+            return
+
         # Import here to avoid circular imports
         from .compaction_service import CompactionService
 
-        # Call before_compaction hook
-        if self._plugin_system:
-            self._plugin_system.call_hooks("before_compaction")
+        self.is_compacting = True
+        try:
+            # Call before_compaction hook
+            if self._plugin_system:
+                self._plugin_system.call_hooks("before_compaction")
 
-        compaction = CompactionService(self.api_client)
-        new_messages = compaction.force_compact_rounds(self.messages, n)
-        self.set_messages(new_messages)
+            compaction = CompactionService(self.api_client)
+            new_messages = compaction.force_compact_rounds(self.messages, n)
+            self.set_messages(new_messages)
 
-        # Call after_compaction hook
-        if self._plugin_system:
-            self._plugin_system.call_hooks("after_compaction")
+            # Call after_compaction hook
+            if self._plugin_system:
+                self._plugin_system.call_hooks("after_compaction")
+        finally:
+            self.is_compacting = False
 
     def force_compact_messages(self, n: int) -> None:
         """Force compact N oldest messages"""
+        if self.is_compacting:
+            LogUtils.warn("Compaction already in progress, skipping...")
+            return
+
         # Import here to avoid circular imports
         from .compaction_service import CompactionService
 
-        # Call before_compaction hook
-        if self._plugin_system:
-            self._plugin_system.call_hooks("before_compaction")
+        self.is_compacting = True
+        try:
+            # Call before_compaction hook
+            if self._plugin_system:
+                self._plugin_system.call_hooks("before_compaction")
 
-        compaction = CompactionService(self.api_client)
-        new_messages = compaction.force_compact_messages(self.messages, n)
-        self.set_messages(new_messages)
+            compaction = CompactionService(self.api_client)
+            new_messages = compaction.force_compact_messages(self.messages, n)
+            self.set_messages(new_messages)
 
-        # Call after_compaction hook
-        if self._plugin_system:
-            self._plugin_system.call_hooks("after_compaction")
+            # Call after_compaction hook
+            if self._plugin_system:
+                self._plugin_system.call_hooks("after_compaction")
+        finally:
+            self.is_compacting = False
 
     def should_auto_compact(self) -> bool:
         """Check if auto-compaction should be triggered"""
