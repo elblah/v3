@@ -127,11 +127,13 @@ def create_plugin(ctx):
             "user preferences).\n"
             "- Create additional `.md` files for specific topics.\n"
             "\n"
-            "**When to write to memory:**\n"
-            "- During conversation (including tool use) — if user gives "
-            "feedback, corrects you, shares useful context, or you discover "
-            "something worth remembering across sessions, write it immediately.\n"
-            "- Before summarizing — always check if anything from this turn "
+            "**When to write to memory (AUTONOMOUS — no asking):**\n"
+            "- During conversation (including tool use) — when you learn "
+            "something worth persisting across sessions (feedback, corrections, "
+            "discoveries), write it immediately. Your call, every time.\n"
+            "- NEVER ask the user \"should I remember this\" or \"want me "
+            "to document it.\" Just write. Memory is your workspace.\n"
+            "- Before summarizing — check if anything from this turn "
             "is worth persisting. Write before the summary.\n"
         )
 
