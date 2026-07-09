@@ -1,12 +1,7 @@
 """
 tmux.py - Tmux session management for AI Coder
 
-Provides session markers for pane scrollback segmentation and a
-/tmux restore-session command to recover context from previous sessions.
-
-Each startup in tmux prints a dim marker line. restore-session captures
-tmux scrollback, finds the previous session marker, extracts content,
-opens editor for review/trimming, then sends as user message.
+Session markers for pane scrollback, restore-session, and wintitle.
 """
 
 import os
@@ -15,8 +10,10 @@ from datetime import datetime
 
 MARKER_PREFIX = "[tmux]"
 MARKER_TEXT = "session-start"
+WINTITLE_FILE = ".aicoder/tmux-wintitle"
+WINTITLE_FILE_DISABLED = ".aicoder/_tmux-wintitle"
 
-_MARKER_LOADED = False  # module-level guard against double-print
+_MARKER_LOADED = False
 
 
 def create_plugin(ctx):
@@ -36,9 +33,103 @@ def create_plugin(ctx):
     reset = colors.get("reset", "")
     dim = colors.get("dim", "")
 
-    # Print session marker for future restores
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     LogUtils.print(f"{dim}{MARKER_PREFIX} {MARKER_TEXT} {ts}{reset}")
+
+    def _wintitle_filepath():
+        return os.path.join(os.getcwd(), WINTITLE_FILE)
+
+    def _wintitle_filepath_disabled():
+        return os.path.join(os.getcwd(), WINTITLE_FILE_DISABLED)
+
+    def _apply_title(name):
+        """Set pane title always, window title only if single-pane window.
+        Fire-and-forget - don't block."""
+        pane_cmd = f"tmux select-pane -t \"$TMUX_PANE\" -T \"{name}\""
+        subprocess.Popen(pane_cmd, shell=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+
+        # Check pane count in this window
+        try:
+            r = subprocess.run(["tmux", "list-panes", "-F", "#{pane_id}"],
+                               capture_output=True, text=True, timeout=3)
+            panes = [p for p in r.stdout.strip().split("\n") if p]
+            if len(panes) <= 1:
+                win_cmd = f"tmux rename-window -t \"$TMUX_PANE\" \"{name}\""
+                subprocess.Popen(win_cmd, shell=True,
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+    def _read_title_file(path):
+        """Read title from file, or None if missing/empty"""
+        try:
+            with open(path, "r") as f:
+                content = f.read().strip()
+            return content if content else None
+        except (FileNotFoundError, IOError, OSError):
+            return None
+
+    def _write_title_file(path, name):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(name + "\n")
+
+    def _set_wintitle_from_file():
+        """Check active file, derive name, apply async. Called on startup."""
+        active = _wintitle_filepath()
+        name = _read_title_file(active)
+        if name is None:
+            # File may be empty — use dir name
+            name = os.path.basename(os.path.abspath(os.getcwd()))
+        _apply_title(name)
+
+    def _handle_wintitle(parts):
+        active = _wintitle_filepath()
+        disabled = _wintitle_filepath_disabled()
+
+        if not parts or parts[0] == "show":
+            # Show current window name
+            try:
+                r = subprocess.run(["tmux", "display-message", "-p", "#W"],
+                                   capture_output=True, text=True, timeout=3)
+                cur = r.stdout.strip()
+            except Exception:
+                cur = "(unknown)"
+            exists = "active" if os.path.isfile(active) else (
+                "saved (off)" if os.path.isfile(disabled) else "off (no file)"
+            )
+            return f"Window: {cur}\nWintitle state: {exists}"
+
+        cmd = parts[0]
+
+        if cmd == "on":
+            # Restore disabled file if exists, otherwise create
+            if os.path.isfile(disabled):
+                os.rename(disabled, active)
+            if not os.path.isfile(active):
+                name = os.path.basename(os.path.abspath(os.getcwd()))
+                _write_title_file(active, name)
+            _set_wintitle_from_file()
+            return "Wintitle on."
+
+        elif cmd == "off":
+            if os.path.isfile(active):
+                os.rename(active, disabled)
+            _apply_title(os.path.basename(os.path.abspath(os.getcwd())))
+            return "Wintitle off (name saved)."
+
+        else:
+            # Custom name
+            name = " ".join(parts)
+            _write_title_file(active, name)
+            # Ensure it's active (rename disabled -> active if exists)
+            if os.path.isfile(disabled):
+                os.rename(disabled, active)
+            _apply_title(name)
+            return f"Wintitle set to: {name}"
 
     def handle_tmux(args_str):
         """Handle /tmux command"""
@@ -47,14 +138,29 @@ def create_plugin(ctx):
 
         if cmd in ("rs", "restore", "restore-session"):
             return _restore_session(ctx)
-        else:
+        elif cmd == "wintitle":
+            return _handle_wintitle(parts[1:])
+        elif cmd in ("help", ""):
             return (
                 "Usage: /tmux <subcommand>\n"
-                "  rs / restore-session  - Recover context from previous session\n"
-                "  help                  - Show this help"
+                "  rs / restore-session     - Recover context from previous session\n"
+                "  wintitle                 - Show current window name & state\n"
+                "  wintitle on              - Enable wintitle (restore saved name)\n"
+                "  wintitle off             - Disable wintitle (saves name)\n"
+                "  wintitle <custom name>   - Set custom window title\n"
+                "  help                     - Show this help"
             )
+        else:
+            return f"Unknown subcommand: {cmd}. Try /tmux help"
 
-    ctx.register_command("tmux", handle_tmux, "Tmux session management (restore-session)")
+    ctx.register_command("tmux", handle_tmux, "Tmux session management (restore-session, wintitle)")
+
+    # Apply wintitle on startup if active file exists — fire-and-forget
+    if os.path.isfile(_wintitle_filepath()) or os.path.isfile(_wintitle_filepath_disabled()):
+        LogUtils.info("[tmux] wintitle file exists, will apply on session init")
+    ctx.register_hook("after_session_initialized", lambda *_: _set_wintitle_from_file()
+                       if os.path.isfile(_wintitle_filepath()) else None)
+
     return {"name": "tmux"}
 
 
