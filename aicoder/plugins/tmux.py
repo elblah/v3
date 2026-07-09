@@ -43,13 +43,13 @@ def create_plugin(ctx):
         return os.path.join(os.getcwd(), WINTITLE_FILE_DISABLED)
 
     def _apply_title(name):
-        """Set pane title always. Rename window only if single pane and name differs."""
+        """Rename window if single pane and name differs. Fully async."""
         script = (
-            f'tmux select-pane -t "$TMUX_PANE" -T "{name}" && '
             f'read cur_name cur_count <<< $(tmux display-message -p '
-            f'"#{{window_name}} #{{window_panes}}") && '
-            f'if [ "$cur_count" -le 1 ] && [ "$cur_name" != "{name}" ]; then '
-            f'tmux rename-window -t "$TMUX_PANE" "{name}"; '
+            f'"#{{window_name}} #{{window_panes}}" 2>/dev/null); '
+            f'if [ -n "$cur_count" ] && [ "$cur_count" -le 1 ] '
+            f'&& [ "$cur_name" != "{name}" ]; then '
+            f'tmux rename-window "{name}"; '
             f'fi'
         )
         subprocess.Popen(script, shell=True,
