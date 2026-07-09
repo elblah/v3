@@ -44,6 +44,7 @@ def create_plugin(ctx):
 
     def _apply_title(name):
         """Rename window if single pane and name differs. Fully async."""
+        # Explicit bash — /bin/sh may be dash (no <<< support)
         script = (
             f'read cur_name cur_count <<< $(tmux display-message -p '
             f'"#{{window_name}} #{{window_panes}}" 2>/dev/null); '
@@ -52,7 +53,7 @@ def create_plugin(ctx):
             f'tmux rename-window "{name}"; '
             f'fi'
         )
-        subprocess.Popen(script, shell=True,
+        subprocess.Popen(script, executable='/bin/bash', shell=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL)
 
