@@ -198,10 +198,71 @@ def create_plugin(ctx):
                 LogUtils.print(f"  {fname:<30} {size:>7} bytes")
             LogUtils.dim(f"{'─' * 42}\n")
 
+        elif subcmd == "export":
+            if len(parts) < 2:
+                LogUtils.error("[memory] Usage: /memory export <target-dir>")
+                return
+
+            target_dir = os.path.abspath(parts[1])
+            if not os.path.isdir(target_dir):
+                LogUtils.error(f"[memory] Target is not a directory: {target_dir}")
+                return
+            if not os.path.isdir(MEMORY_DIR):
+                LogUtils.error("[memory] No memory directory to export")
+                return
+
+            import tarfile
+            archive_name = f"aicoder-memory.tar.gz"
+            archive_path = os.path.join(target_dir, archive_name)
+
+            try:
+                mem_files = [f for f in os.listdir(MEMORY_DIR) if f.endswith(".md")]
+                if not mem_files:
+                    LogUtils.error("[memory] No memory files to export")
+                    return
+
+                with tarfile.open(archive_path, "w:gz") as tar:
+                    for fname in mem_files:
+                        fpath = os.path.join(MEMORY_DIR, fname)
+                        tar.add(fpath, arcname=fname)
+                LogUtils.success(f"[memory] Exported {len(mem_files)} files to {archive_path}")
+            except Exception as e:
+                LogUtils.error(f"[memory] Export failed: {e}")
+
+        elif subcmd == "import":
+            if len(parts) < 2:
+                LogUtils.error("[memory] Usage: /memory import <archive.tgz>")
+                return
+
+            archive_path = os.path.abspath(parts[1])
+            if not os.path.isfile(archive_path):
+                LogUtils.error(f"[memory] Archive not found: {archive_path}")
+                return
+
+            import tarfile
+            try:
+                with tarfile.open(archive_path, "r:gz") as tar:
+                    members = tar.getmembers()
+                    md_members = [m for m in members if m.name.endswith(".md") and ".." not in m.name]
+                    if not md_members:
+                        LogUtils.error("[memory] No .md files found in archive")
+                        return
+
+                    os.makedirs(MEMORY_DIR, exist_ok=True)
+                    for member in md_members:
+                        # Strip any directory components for safety
+                        member.name = os.path.basename(member.name)
+                        tar.extract(member, path=MEMORY_DIR)
+                    LogUtils.success(f"[memory] Imported {len(md_members)} files from {archive_path}")
+            except Exception as e:
+                LogUtils.error(f"[memory] Import failed: {e}")
+
         else:
             LogUtils.print("Memory plugin commands:", bold=True)
-            LogUtils.dim("  /memory rm-all   - Delete all memory (requires confirmation)")
-            LogUtils.dim("  /memory status   - Show memory status and file sizes")
+            LogUtils.dim("  /memory export <dir>  - Export memory to aicoder-memory.tar.gz in <dir>")
+            LogUtils.dim("  /memory import <file> - Import memory from archive (replaces files)")
+            LogUtils.dim("  /memory rm-all       - Delete all memory (requires confirmation)")
+            LogUtils.dim("  /memory status       - Show memory status and file sizes")
             LogUtils.dim("  Disable via PLUGINS_DENY=...,memory env var")
 
     # Register hooks
