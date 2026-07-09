@@ -161,12 +161,23 @@ def create_plugin(ctx):
         except Exception as e:
             LogUtils.error(f"[!] Failed to recreate session file after serious operation: {e}")
     
+    def on_session_change(action=None):
+        """Session reset (/new /load) — delete session file so next start is fresh"""
+        try:
+            if session_path.exists():
+                session_path.unlink()
+                if Config.debug():
+                    LogUtils.debug(f"[*] Deleted session file {session_file} on session change")
+        except Exception as e:
+            LogUtils.error(f"[!] Failed to delete session file {session_file}: {e}")
+    
     # Register hooks
     ctx.register_hook("after_session_initialized", on_session_initialized)
     ctx.register_hook("after_user_message_added", on_user_message_added)
     ctx.register_hook("after_assistant_message_added", on_assistant_message_added)
     ctx.register_hook("after_tool_results_added", on_tool_results_added)
     ctx.register_hook("after_messages_set", on_messages_set)
+    ctx.register_hook("on_session_change", on_session_change)
     
     from aicoder.core.config import Config
     if Config.debug():

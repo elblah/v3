@@ -79,7 +79,7 @@ class LoadCommand(BaseCommand):
                 return CommandResult(should_quit=False, run_api_call=False)
 
         # Call session change hooks before loading new session (allows plugins to cleanup state)
-        self.context.command_handler.plugin_system.call_hooks("on_session_change")
+        self.context.command_handler.plugin_system.call_hooks("on_session_change", "load")
 
         try:
             if not file_exists(filename):
