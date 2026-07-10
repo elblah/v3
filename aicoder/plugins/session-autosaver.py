@@ -11,6 +11,7 @@ Automatically loads and saves session to SESSION_FILE in JSONL format.
 - Respect debug mode configuration
 """
 
+import sys
 import os
 from pathlib import Path
 
@@ -113,12 +114,42 @@ def create_plugin(ctx):
         except Exception as e:
             LogUtils.error(f"[!] Failed to save message to {session_file}: {e}")
     
+    def _count_messages():
+        """Quick count of messages in session file without full load"""
+        if not session_path.exists():
+            return 0
+        try:
+            if is_jsonl:
+                with open(session_file, 'r') as f:
+                    return sum(1 for line in f if line.strip())
+            else:
+                import json
+                with open(session_file, 'r') as f:
+                    data = json.load(f)
+                return len(data) if isinstance(data, list) else 0
+        except Exception:
+            return 0
+
     def on_session_initialized(messages):
         """Handle session initialization - load existing session"""
         if not session_path.exists():
             LogUtils.print(f"[*] No existing session at {session_file}, starting fresh")
             save_current_state()
             return
+        
+        # On TTY, optionally confirm before loading (opt-in via env var)
+        should_confirm = (
+            sys.stdin.isatty()
+            and os.environ.get("SESSION_FILE_CONFIRM_AUTOLOAD", "").lower() in ("1", "true", "yes")
+        )
+        if should_confirm:
+            msg_count = _count_messages()
+            extra = f" ({msg_count} messages)" if msg_count else ""
+            answer = input(f"Load previous session from {session_file}{extra}? [Y/n] ").strip().lower()
+            if answer in ("n", "no"):
+                LogUtils.print("[*] Skipping session load, starting fresh")
+                save_current_state()
+                return
         
         try:
             load_existing_session(messages)
