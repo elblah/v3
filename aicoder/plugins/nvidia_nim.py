@@ -4,18 +4,20 @@ NVIDIA NIM Plugin - Smart model rotation for NVIDIA's free API.
 Auto-activates when OPENAI_BASE_URL == https://integrate.api.nvidia.com/v1.
 
 Two modes:
-  - API_MODEL=auto            → plugin picks best model, auto-rotates on 429/slow
+  - API_MODEL=auto            → plugin picks best model, auto-rotates on errors
   - API_MODEL=<concrete ID>   → plugin provides /nvidia commands only, no rotation
 
 Features:
   - Maintains ordered preference list of tool_call+reasoning models
-  - Detects 429 rate limits and rotates to next available model
+  - Detects 429/503 and rotates to next available model
+  - 404 penalizes 2x (model deprecated/unavailable)
   - Configurable cooldown per model (env var NVIDIA_NIM_COOLDOWN)
   - Caches filtered NVIDIA model data from models.dev in .aicoder/models.json
   - Stale cache preserved if refresh fails — never lose last good data
 
 Env vars:
-  NVIDIA_NIM_ORDER     - comma-separated model ID preference list
+  NVIDIA_NIM_ORDER     - comma-separated model ID preference list (default: _DEFAULT_ORDER)
+                         Example: NVIDIA_NIM_ORDER="z-ai/glm-5.2,moonshotai/kimi-k2.6,deepseek-ai/deepseek-v4-flash,minimaxai/minimax-m3,minimaxai/minimax-m2.7,stepfun-ai/step-3.7-flash"
   NVIDIA_NIM_COOLDOWN  - comma-separated model:seconds (e.g., glm:1800,kimi:1200)
 
 Commands:
@@ -403,12 +405,16 @@ def _on_error(msg: str, status: int):
             _sin(mid, _404_PENALTY)
             LogUtils.warn(f"[nvidia] 404 {mid} — rep -{_404_PENALTY:.0f}")
             _rotate_next()
+        elif status == 503:
+            _sin(mid, _429_PENALTY)
+            LogUtils.warn(f"[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
+            _rotate_next()
         elif status in (400, 422):
             _sin(mid, 500)
             LogUtils.warn(f"[nvidia] {status} {mid} — rep -500")
             _rotate_next()
         else:
-            pass  # 5xx = transient, don't rotate
+            pass  # other 5xx = transient, don't rotate
     except Exception as e:
         LogUtils.warn(f"[nvidia] _on_error failed: {e}")
 
