@@ -81,7 +81,7 @@ class LogUtils:
     @staticmethod
     def printc(message: str, options: Optional[LogOptions] = None,
                color: Optional[str] = None, bold: bool = False,
-               debug: bool = False) -> None:
+               debug: bool = False, stderr: bool = False) -> None:
         """
         Print message with optional coloring.
 
@@ -91,6 +91,7 @@ class LogUtils:
             color: Color name from Config.colors (e.g., "red", "green", "yellow", "cyan")
             bold: Apply bold formatting
             debug: Only print when DEBUG=1
+            stderr: Print to stderr instead of stdout
 
         Usage:
             LogUtils.printc("text")
@@ -115,6 +116,7 @@ class LogUtils:
             return
 
         colors = _get_colors()
+        file = sys.stderr if stderr else None
 
         if effective_color:
             # Check if it's an ANSI code (starts with escape character) or a color name
@@ -127,13 +129,13 @@ class LogUtils:
 
             if ansi_color:
                 format_code = f"{colors['bold']}{ansi_color}" if effective_bold else ansi_color
-                builtins.print(f"{format_code}{message}{colors['reset']}")
+                builtins.print(f"{format_code}{message}{colors['reset']}", file=file)
             else:
-                builtins.print(message)
+                builtins.print(message, file=file)
         elif effective_bold:
-            builtins.print(f"{colors['bold']}{message}{colors['reset']}")
+            builtins.print(f"{colors['bold']}{message}{colors['reset']}", file=file)
         else:
-            builtins.print(message)
+            builtins.print(message, file=file)
 
     @staticmethod
     def print(message: str = "", options: Optional[LogOptions] = None,
@@ -155,13 +157,13 @@ class LogUtils:
 
     @staticmethod
     def error(message: str) -> None:
-        """Print error message (red). Auto-detects exception context and prints/logs stack."""
-        LogUtils.printc(message, color="red")
+        """Print error message (red) to stderr. Auto-detects exception context and prints/logs stack."""
+        LogUtils.printc(message, color="red", stderr=True)
         exc_info = sys.exc_info()[0]
         if exc_info is not None and exc_info is not KeyboardInterrupt:
             import traceback
             tb = traceback.format_exc()
-            LogUtils.printc(tb, color="red")
+            LogUtils.printc(tb, color="red", stderr=True)
             _append_error_log(message, tb)
 
     @staticmethod
@@ -171,8 +173,8 @@ class LogUtils:
 
     @staticmethod
     def warn(message: str) -> None:
-        """Print warning message (yellow)"""
-        LogUtils.printc(message, color="yellow")
+        """Print warning message (yellow) to stderr"""
+        LogUtils.printc(message, color="yellow", stderr=True)
 
     @staticmethod
     def info(message: str) -> None:
