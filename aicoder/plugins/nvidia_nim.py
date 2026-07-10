@@ -38,6 +38,7 @@ from aicoder.utils.log import LogUtils
 _RECOVERY_RATE = 5.0   # rep points recovered per minute toward base
 _SLOW_PENALTY = 10.0   # rep penalty for <3 tok/s
 _429_PENALTY = 10.0    # rep penalty for 429
+_404_PENALTY = 20.0    # rep penalty for 404 (model unavailable/deprecated)
 _FAST_BONUS = 1.0      # rep bonus for fast responses
 
 # ── Runtime state ───────────────────────────────────────────────────
@@ -397,6 +398,10 @@ def _on_error(msg: str, status: int):
         if status == 429:
             _sin(mid, _429_PENALTY)
             LogUtils.warn(f"[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
+            _rotate_next()
+        elif status == 404:
+            _sin(mid, _404_PENALTY)
+            LogUtils.warn(f"[nvidia] 404 {mid} — rep -{_404_PENALTY:.0f}")
             _rotate_next()
         elif status in (400, 422):
             _sin(mid, 500)
