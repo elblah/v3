@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_URL="${REPO_URL:-https://github.com/msitarzewski/agency-agents.git}"
+AGENTS_DIR="${AGENTS_DIR:-$HOME/.config/aicoder-v3/agents/agency-agents}"
+
+# ── Sync repo ────────────────────────────────────────────────────────
+if [[ -d "$AGENTS_DIR/.git" ]]; then
+    cd "$AGENTS_DIR"
+    git pull --ff-only --depth 1 2>/dev/null || true
+else
+    mkdir -p "$(dirname "$AGENTS_DIR")"
+    git clone --depth 1 "$REPO_URL" "$AGENTS_DIR"
+fi
+
+# ── Find agent files ─────────────────────────────────────────────────
+mapfile -t FILES < <(
+    find "$AGENTS_DIR" -name '*.md' \
+        -not -path '*/node_modules/*' \
+        -not -name 'README.md' |
+    sort
+)
+
+if [[ ${#FILES[@]} -eq 0 ]]; then
+    echo "No agents found in $AGENTS_DIR" >&2
+    exit 1
+fi
+
+# ── Fzf selector ─────────────────────────────────────────────────────
+SELECTED=$(
+    printf '%s\n' "${FILES[@]}" |
+    fzf --exact \
+        --prompt="Agent > " \
+        --preview='head -25 {}' \
+        --preview-window=right:60%:wrap
+)
+
+[[ -z "$SELECTED" ]] && exit 1  # user cancelled
+
+# ── Strip YAML frontmatter, inject into env ──────────────────────────
+export AICODER_SYSTEM_PROMPT
+AICODER_SYSTEM_PROMPT=$(awk '
+    /^---$/ { c++; next }
+    c == 2 { print }
+' "$SELECTED")
+
+# ── Delegate to user launcher ────────────────────────────────────────
+LAUNCHER="${AICODER_LAUNCHER:-}"
+if [[ -z "$LAUNCHER" ]]; then
+    echo "Error: AICODER_LAUNCHER not set" >&2
+    echo "Point it to your aicoder launch script (sets API keys, base URL, then execs aicoder)" >&2
+    exit 1
+fi
+
+if [[ ! -x "$LAUNCHER" ]]; then
+    echo "Error: AICODER_LAUNCHER not executable: $LAUNCHER" >&2
+    exit 1
+fi
+
+exec "$LAUNCHER"
