@@ -73,6 +73,7 @@ class AICoder:
             stats=self.stats,
             plugin_system=self.plugin_system,
         )
+        self.command_handler.context.app = self
 
         # Socket server for external control
         self.socket_server = SocketServer(self)
@@ -176,13 +177,16 @@ class AICoder:
 
     def initialize_system_prompt(self) -> None:
         """Initialize with system prompt focused on internal tools"""
-        # Initialize prompt builder if needed
-        if not PromptBuilder.is_initialized():
-            PromptBuilder.initialize()
-
-        # Build and add system prompt (includes plugin contributions)
         system_prompt = PromptBuilder.build_complete_system_prompt(self.plugin_system)
         self.message_history.add_system_message(system_prompt)
+
+    def rebuild_system_prompt(self) -> None:
+        """Rebuild the system prompt from scratch (re-reads files, re-fires hooks)"""
+        old = self.message_history.get_initial_system_prompt()
+        old_len = len(old["content"]) if old else 0
+        new = PromptBuilder.build_complete_system_prompt(self.plugin_system)
+        self.message_history.replace_system_prompt(new)
+        LogUtils.success(f"Prompt rebuilt ({old_len} → {len(new)} chars)")
 
     def run(self) -> None:
         """Run the interactive AI Coder session"""
