@@ -43,34 +43,26 @@ class PromptOptions:
 class PromptBuilder:
     """Universal prompt builder for system prompts"""
 
-    _default_prompt_template = None
-
     @classmethod
-    def is_initialized(cls) -> bool:
-        """Check if the prompt builder is initialized"""
-        return cls._default_prompt_template is not None
-
-    @classmethod
-    def initialize(cls) -> None:
-        """Initialize the prompt builder by loading the default template"""
+    def _load_template(cls) -> str:
+        """Load the default system prompt template from disk"""
         # Try package-relative path first
         template_path = os.path.join(
             os.path.dirname(__file__), "..", "prompts", "default-system-prompt.md"
         )
-
         try:
             with open(template_path, "r", encoding="utf-8") as f:
-                cls._default_prompt_template = f.read()
-            return
+                return f.read()
         except Exception:
-            # Try current directory as fallback
-            template_path = "default-system-prompt.md"
-            try:
-                with open(template_path, "r", encoding="utf-8") as f:
-                    cls._default_prompt_template = f.read()
-            except Exception:
-                # Use minimal fallback
-                cls._default_prompt_template = """You are a helpful AI assistant.
+            pass
+        # Try current directory as fallback
+        try:
+            with open("default-system-prompt.md", "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            pass
+        # Minimal fallback
+        return """You are a helpful AI assistant.
 You have access to various tools for file operations, search, and command execution.
 Always follow user instructions carefully and provide helpful responses."""
 
@@ -81,8 +73,8 @@ Always follow user instructions carefully and provide helpful responses."""
         """Build the complete system prompt from template and context"""
         options = options or PromptOptions()
 
-        # Use override if provided, otherwise use default template
-        prompt = options.override_prompt or cls._default_prompt_template
+        # Use override if provided, otherwise load template from disk
+        prompt = options.override_prompt or cls._load_template()
 
         # Normalize template format to Python {variable} style
         if "${" in prompt:
@@ -158,10 +150,6 @@ search (grep), shell command execution, and more via API request."""
     @classmethod
     def build_system_prompt(cls) -> str:
         """Build system prompt with context information"""
-        # Initialize if needed
-        if not cls.is_initialized():
-            cls.initialize()
-
         # Create context
         context = PromptContext()
 

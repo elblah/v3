@@ -79,6 +79,7 @@ class TestDebugCommand:
         with patch('aicoder.core.commands.debug.Config') as mock_config:
             mock_config.debug.return_value = False
             mock_config.colors = {
+                "bold": "\033[1m",
                 "green": "\033[32m",
                 "yellow": "\033[33m",
                 "cyan": "\033[36m",

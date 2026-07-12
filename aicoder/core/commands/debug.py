@@ -46,6 +46,10 @@ class DebugCommand(BaseCommand):
         if action in ["prompt", "p", "system"]:
             return self._show_prompt()
 
+        # Handle prompt rebuild
+        if action in ["rebuild-prompt", "rp", "reload-prompt"]:
+            return self._rebuild_prompt()
+
         # Handle help/status
         if action in ["help", "h", "status", "s"]:
             return self._show_help()
@@ -71,6 +75,18 @@ class DebugCommand(BaseCommand):
         status = "ENABLED" if Config.debug() else "DISABLED"
         status_color = "green" if Config.debug() else "yellow"
 
+        subcmds = [
+            ("on",             "Enable debug mode"),
+            ("off",            "Disable debug mode"),
+            ("toggle",         "Toggle debug mode on/off"),
+            ("status",         "Show current debug status (default)"),
+            ("prompt",         "Print the full system prompt sent to the AI"),
+            ("rebuild-prompt", "Re-read all files and rebuild system prompt (rp, reload-prompt)"),
+            ("breakpoint",     "Trigger Python breakpoint() (bp, break, b)"),
+            ("help",           "Show this help message"),
+        ]
+        pad = max(len(n) for n, _ in subcmds) + 1
+
         lines = [
             f"{c['bold']}Debug Command{c['reset']}",
             f"{c['dim']}{'─' * 50}{c['reset']}",
@@ -80,17 +96,14 @@ class DebugCommand(BaseCommand):
             f"  /debug [subcommand]",
             "",
             f"{c['bold']}Subcommands:{c['reset']}",
-            f"  {c['green']}on{c['reset']}         Enable debug mode",
-            f"  {c['green']}off{c['reset']}        Disable debug mode",
-            f"  {c['green']}toggle{c['reset']}     Toggle debug mode on/off",
-            f"  {c['green']}status{c['reset']}     Show current debug status (default)",
-            f"  {c['green']}prompt{c['reset']}     Print the full system prompt sent to the AI",
-            f"  {c['green']}breakpoint{c['reset']} Trigger Python breakpoint() (aliases: bp, break, b)",
-            f"  {c['green']}help{c['reset']}       Show this help message",
+        ]
+        for name, desc in subcmds:
+            lines.append(f"  {c['green']}{name}{c['reset']}{' ' * (pad - len(name))}{desc}")
+        lines.extend([
             "",
             f"{c['bold']}Aliases:{c['reset']}",
             f"  /dbg = /debug",
-        ]
+        ])
 
         if Config.debug():
             lines.extend([
@@ -111,6 +124,12 @@ class DebugCommand(BaseCommand):
     def _show_status(self) -> CommandResult:
         """Show current debug status"""
         return self._show_help()
+
+    def _rebuild_prompt(self) -> CommandResult:
+        """Rebuild the system prompt from scratch"""
+        LogUtils.warn("[*] Rebuilding system prompt...")
+        self.context.app.rebuild_system_prompt()
+        return CommandResult(should_quit=False, run_api_call=False)
 
     def _show_prompt(self) -> CommandResult:
         """Print the current system prompt"""

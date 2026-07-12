@@ -95,6 +95,17 @@ class MessageHistory:
         if self._plugin_system:
             self._plugin_system.call_hooks("after_session_initialized", self.messages)
 
+    def replace_system_prompt(self, content: str) -> None:
+        """Replace the system prompt in-place (keeps conversation history)"""
+        for msg in self.messages:
+            if msg["role"] == "system":
+                msg["content"] = content
+                from .token_estimator import cache_message
+                cache_message(msg)
+                break
+        self.initial_system_prompt = self.messages[0] if self.messages and self.messages[0].get("role") == "system" else None
+        self.estimate_context()
+
     def add_user_message(self, content: str) -> None:
         """Add a user message (string text or pre-formatted multimodal dict)"""
         # Support multimodal messages from plugins (e.g., vision plugin)

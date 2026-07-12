@@ -9,13 +9,14 @@ from typing import Dict, List, Optional, Any
 class CommandContext:
     """Context provided to commands - using simple class instead of dataclass to avoid ~80ms import cost"""
 
-    __slots__ = ('message_history', 'input_handler', 'stats', 'command_handler')
+    __slots__ = ('message_history', 'input_handler', 'stats', 'command_handler', 'app')
 
-    def __init__(self, message_history, input_handler, stats, command_handler=None):
+    def __init__(self, message_history, input_handler, stats, command_handler=None, app=None):
         self.message_history = message_history
         self.input_handler = input_handler
         self.stats = stats
         self.command_handler = command_handler
+        self.app = app
 
 
 class CommandHandler(ABC):
