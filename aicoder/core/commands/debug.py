@@ -14,7 +14,7 @@ class DebugCommand(BaseCommand):
     def __init__(self, context):
         super().__init__(context)
         self._name = "debug"
-        self._description = "Toggle debug mode or trigger breakpoint"
+        self._description = "Debug mode toggle, breakpoint trigger, prompt viewer"
 
     def get_name(self) -> str:
         """Command name"""
@@ -46,6 +46,10 @@ class DebugCommand(BaseCommand):
         if action in ["prompt", "p", "system"]:
             return self._show_prompt()
 
+        # Handle help/status
+        if action in ["help", "h", "status", "s"]:
+            return self._show_help()
+
         # Handle on/off/toggle
         if action in ["on", "1", "enable", "true"]:
             return self._enable_debug()
@@ -56,31 +60,57 @@ class DebugCommand(BaseCommand):
                 return self._disable_debug()
             else:
                 return self._enable_debug()
-        else:
-            LogUtils.error(f"Invalid argument: {action}")
-            LogUtils.print("Usage: /debug [on|off|toggle|breakpoint]")
-            return CommandResult(should_quit=False, run_api_call=False)
 
-    def _show_status(self) -> CommandResult:
-        """Show current debug status"""
+        LogUtils.error(f"Unknown subcommand: {action}")
+        self._show_help()
+        return CommandResult(should_quit=False, run_api_call=False)
+
+    def _show_help(self) -> CommandResult:
+        """Show detailed debug command help"""
+        c = Config.colors
         status = "ENABLED" if Config.debug() else "DISABLED"
         status_color = "green" if Config.debug() else "yellow"
 
-        LogUtils.print(f"Debug Mode Status: {status}", color=status_color, bold=True)
+        lines = [
+            f"{c['bold']}Debug Command{c['reset']}",
+            f"{c['dim']}{'─' * 50}{c['reset']}",
+            f"  Status: {c[status_color]}{status}{c['reset']}",
+            "",
+            f"{c['bold']}Usage:{c['reset']}",
+            f"  /debug [subcommand]",
+            "",
+            f"{c['bold']}Subcommands:{c['reset']}",
+            f"  {c['green']}on{c['reset']}         Enable debug mode",
+            f"  {c['green']}off{c['reset']}        Disable debug mode",
+            f"  {c['green']}toggle{c['reset']}     Toggle debug mode on/off",
+            f"  {c['green']}status{c['reset']}     Show current debug status (default)",
+            f"  {c['green']}prompt{c['reset']}     Print the full system prompt sent to the AI",
+            f"  {c['green']}breakpoint{c['reset']} Trigger Python breakpoint() (aliases: bp, break, b)",
+            f"  {c['green']}help{c['reset']}       Show this help message",
+            "",
+            f"{c['bold']}Aliases:{c['reset']}",
+            f"  /dbg = /debug",
+        ]
 
         if Config.debug():
-            LogUtils.success("Debug logging is active")
-            LogUtils.info("Detailed output will be shown for API calls")
+            lines.extend([
+                "",
+                f"{c['bold']}Current State:{c['reset']}",
+                f"  {c['green']}●{c['reset']} Debug logging active — API details visible",
+            ])
         else:
-            LogUtils.warn("Debug logging is disabled")
-            LogUtils.info("Use /debug on to enable")
+            lines.extend([
+                "",
+                f"{c['bold']}Current State:{c['reset']}",
+                f"  {c['yellow']}●{c['reset']} Debug disabled — use {c['green']}/debug on{c['reset']} to enable",
+            ])
 
-        LogUtils.dim("\nQuick actions:")
-        LogUtils.dim("  /debug on|off|toggle - Manage debug mode")
-        LogUtils.dim("  /debug breakpoint|bp|break - Trigger Python breakpoint() for debugging")
-        LogUtils.dim("  /debug prompt|p|system - Print current system prompt")
-
+        LogUtils.print("\n".join(lines))
         return CommandResult(should_quit=False, run_api_call=False)
+
+    def _show_status(self) -> CommandResult:
+        """Show current debug status"""
+        return self._show_help()
 
     def _show_prompt(self) -> CommandResult:
         """Print the current system prompt"""
