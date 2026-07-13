@@ -145,7 +145,9 @@ def create_plugin(ctx):
         if should_confirm:
             msg_count = _count_messages()
             extra = f" ({msg_count} messages)" if msg_count else ""
-            answer = input(f"Load previous session from {session_file}{extra}? [Y/n] ").strip().lower()
+            c = Config.colors
+            answer = input(f"\n  {c['bold']}{c['brightYellow']}Load previous session from {session_file}{extra}? [Y/n]{c['reset']} ").strip().lower()
+            print()
             if answer in ("n", "no"):
                 LogUtils.print("[*] Skipping session load, starting fresh")
                 save_current_state()
