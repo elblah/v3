@@ -1,13 +1,15 @@
 """
 Git Aware Plugin - Adds git context to AI system prompt
 
-This plugin detects if the current directory is a git repository and adds
-context to the AI system prompt about git awareness and commit requirements.
-Runs git command only once at plugin load to cache branch name.
+Checks if current directory is a git repo using .git/HEAD stat (no subprocess
+at startup). Git subprocess only spawns on first context bar render or /git
+command. Non-git repos cost ~1 stat syscall at startup, nothing more.
 
 Commands:
 - /git commit-ai - Gather all git info and ask AI to commit in one shot
 """
+
+import os
 
 from aicoder.core.config import Config
 
@@ -20,8 +22,13 @@ def _get_subprocess():
         _subprocess = subprocess
     return _subprocess
 
-# Cache git branch at module level - run once at plugin load
+# None = not loaded yet, str = branch name, "" = failed to load
 _cached_git_branch = None
+
+
+def _is_git_repo():
+    """Fast check using .git/HEAD — no subprocess, works for worktrees too"""
+    return os.path.isfile('.git/HEAD')
 
 
 def _get_git_branch():
@@ -44,17 +51,27 @@ def create_plugin(ctx):
     """Git awareness plugin"""
     global _cached_git_branch
 
-    # Run git command once at load time
-    _cached_git_branch = _get_git_branch()
+    # Startup: NO git subprocess. Just stat .git/HEAD (~1 syscall).
+    is_git = _is_git_repo()
 
     if Config.debug():
-        if _cached_git_branch:
-            print(f"[*] Git aware: Branch = '{_cached_git_branch}'")
+        if is_git:
+            print("[*] Git aware: Repository detected")
         else:
             print("[*] Git aware: Not a git repository")
 
+    def _ensure_branch():
+        """Lazy-load branch on first access (context bar or /git)"""
+        global _cached_git_branch
+        if _cached_git_branch is None and is_git:
+            branch = _get_git_branch()
+            _cached_git_branch = branch if branch else ""
+        return _cached_git_branch if _cached_git_branch else None
+
     def _is_repo_dirty():
         """Check if repo has uncommitted changes"""
+        if not is_git:
+            return False
         try:
             result = _get_subprocess().run(
                 ["git", "status", "--porcelain"],
@@ -82,9 +99,8 @@ def create_plugin(ctx):
     def _gather_commit_info():
         """Gather all git info needed for AI commit"""
         sections = []
-
-        # 1. Branch
-        sections.append(f"Branch: {_cached_git_branch}")
+        branch = _ensure_branch()
+        sections.append(f"Branch: {branch}" if branch else "Branch: (unknown)")
 
         # 2. Status
         status = _run_git(["status", "--short"])
@@ -196,25 +212,21 @@ Create a meaningful commit message and run the appropriate git add/commit comman
 
     def on_system_prompt_append():
         """Contribute git context to system prompt during prompt build
-        
+
         Uses on_system_prompt_append (not before_user_prompt/before_ai_processing)
-        to avoid directly mutating msgs[0]. This hook fires during 
+        to avoid directly mutating msgs[0]. This hook fires during
         build_complete_system_prompt() (on compaction, reload, session init),
         and the returned string is baked into the prompt at build time —
         no desync with _skip_hooks_once, no spurious msg[0]: CHANGED.
         """
-        if not _cached_git_branch:
+        if not is_git:
             return None
 
-        return f"""
-
-Git Repository:
-- Branch: {_cached_git_branch}
-"""
+        return "\n\nGit repository detected."
 
     def on_context_bar():
         """Hook: Add git status to context bar"""
-        if not _cached_git_branch:
+        if not is_git:
             return None
 
         dirty = _is_repo_dirty()
