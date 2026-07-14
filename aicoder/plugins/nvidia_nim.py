@@ -52,6 +52,7 @@ _reputation: Dict[str, float] = {}  # model_id → score (100=none, lower=sinned
 _current_model: str = ""
 _req_start: float = 0.0
 _req_model: str = ""
+_saved_max_backoff: Optional[int] = None
 _lock = threading.Lock()
 
 # Reasoning format for NVIDIA — always "openai" (OpenAI-compatible API).
@@ -396,31 +397,45 @@ def _on_error(msg: str, status: int):
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
+    rotated = False
     try:
         if status == 429:
             _sin(mid, _429_PENALTY)
             LogUtils.warn(f"[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
             _rotate_next()
+            rotated = True
         elif status == 404:
             _sin(mid, _404_PENALTY)
             LogUtils.warn(f"[nvidia] 404 {mid} — rep -{_404_PENALTY:.0f}")
             _rotate_next()
+            rotated = True
         elif status == 503:
             _sin(mid, _429_PENALTY)
             LogUtils.warn(f"[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
             _rotate_next()
+            rotated = True
         elif status in (400, 422):
             _sin(mid, 500)
             LogUtils.warn(f"[nvidia] {status} {mid} — rep -500")
             _rotate_next()
+            rotated = True
         else:
             pass  # other 5xx = transient, don't rotate
     except Exception as e:
         LogUtils.warn(f"[nvidia] _on_error failed: {e}")
+    if rotated:
+        global _saved_max_backoff
+        if _saved_max_backoff is None:
+            _saved_max_backoff = Config.effective_max_backoff()
+        Config.set_runtime_max_backoff(2)
 
 
 def _after_usage(usage: dict):
     """Award reputation for fast responses, sin for slow."""
+    global _saved_max_backoff
+    if _saved_max_backoff is not None:
+        Config.set_runtime_max_backoff(_saved_max_backoff)
+        _saved_max_backoff = None
     completion = usage.get("completion_tokens", 0)
     if completion < 50:
         _rotate()  # still ensure best model is set for next request
