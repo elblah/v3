@@ -149,6 +149,9 @@ def _compact(messages, app, state, keep_percent=0):
     app.message_history.increment_compaction_count()
     state["awaiting"] = False
     state["fails"] = 0
+    app.set_next_prompt(
+        "Context compacted above. Continue working if you have an unfinished task."
+    )
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
@@ -195,6 +198,9 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     app.message_history.increment_compaction_count()
     state["awaiting"] = False
     state["fails"] = 0
+    app.set_next_prompt(
+        "Context compacted above. Continue working if you have an unfinished task."
+    )
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
