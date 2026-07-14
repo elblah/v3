@@ -66,6 +66,10 @@ FORCE_COMPACT_INSTRUCTION = (
 )
 
 
+# Regex to find [COMPACT_SUMMARY] on its own line (allows leading whitespace)
+_RE_COMPACT_TAG_LINE = re.compile(r"(?m)^\s*\[COMPACT_SUMMARY\]\s*$")
+
+
 def _content_str(content):
     if isinstance(content, str):
         return content
@@ -76,11 +80,25 @@ def _content_str(content):
     return ""
 
 
-def _is_summary_first_printable(text: str) -> bool:
-    """True if [COMPACT_SUMMARY] is the first printable content (ignoring leading whitespace/markdown)."""
+def _find_compact_tag(text: str) -> int:
+    """Find [COMPACT_SUMMARY] on its own line. Returns position of the tag, or -1."""
     if COMPACT_TAG not in text:
-        return False
-    return bool(_RE_COMPACT_TAG_LEADING.match(text))
+        return -1
+    m = _RE_COMPACT_TAG_LINE.search(text)
+    return m.start() if m else -1
+
+
+def _strip_before_tag(content: str) -> str:
+    """Strip everything before the line containing [COMPACT_SUMMARY]."""
+    idx = _find_compact_tag(content)
+    if idx > 0:
+        return content[idx:]
+    return content
+
+
+def _is_summary_first_printable(text: str) -> bool:
+    """True if [COMPACT_SUMMARY] is the sole content of a line."""
+    return _find_compact_tag(text) != -1
 
 
 def _select_recent_by_percent(messages, keep_percent, max_tokens):
@@ -124,7 +142,8 @@ def _compact(messages, app, state, keep_percent=0):
     # If there's already a [SUMMARY] user message, keep it as-is
     last = messages[-1]
     summary_content = _content_str(last.get("content", ""))
-    # Normalize: strip leading markdown/whitespace, convert [COMPACT_SUMMARY] → [SUMMARY]
+    summary_content = _strip_before_tag(summary_content)
+    # Normalize: convert [COMPACT_SUMMARY] → [SUMMARY]
     # so prune_old_summaries can find it on subsequent compactions
     m = _RE_COMPACT_TAG_LEADING.match(summary_content)
     if m:
@@ -189,6 +208,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     # Normalize assistant message: [COMPACT_SUMMARY] → [SUMMARY] for internal storage
     normalized = dict(assistant_msg)
     raw = _content_str(normalized.get("content", ""))
+    raw = _strip_before_tag(raw)
     m = _RE_COMPACT_TAG_LEADING.match(raw)
     if m:
         normalized["content"] = SUMMARY_TAG + raw[m.end(1):]
