@@ -175,7 +175,7 @@ def generate_preview(args):
             # Tool formats its own message (no colors - system handles display)
             safety_message = (
                 f"Path: {relative_path}\n"
-                "[!] Warning: The file must be read before editing."
+                "[x] Error: Must read file first before editing. Edit rejected."
             )
             
             return {

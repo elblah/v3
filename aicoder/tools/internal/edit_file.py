@@ -81,8 +81,8 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if not FileAccessTracker.was_file_read(path):
         return {
             "tool": "edit_file",
-            "friendly": f"WARNING: Must read file '{path}' first before editing",
-            "detailed": f"Must read file first. Use read_file('{path}') before editing."
+            "friendly": f"ERROR: Must read file '{path}' first before editing - edit rejected",
+            "detailed": f"ERROR: Must read file first. Use read_file('{path}') before editing."
         }
 
     try:
@@ -223,8 +223,8 @@ def generate_preview(args):
             from aicoder.utils.file_utils import get_relative_path
             relative_path = get_relative_path(path)
             can_approve = False
-            warning = "File was not read first - recommend reading file before editing"
-            safety_violation_content = f"Path: {relative_path}\n[!] Warning: Must read file first before editing to prevent accidental overwrites."
+            warning = "File was not read first - edit rejected"
+            safety_violation_content = f"Path: {relative_path}\n[x] Error: Must read file first before editing. Edit rejected."
 
         # Create temp files for diff preview
         temp_old = tempfile.NamedTemporaryFile(
