@@ -266,7 +266,7 @@ def _set_active(mid: str):
     os.environ["REASONING_EFFORT_VALID"] = ",".join(valid)
     Config.set_reasoning_effort(_best_effort(mid))
     _current_model = mid
-    LogUtils.tip(f"[nvidia] → {mid} (fmt: {fmt}, effort: {valid})")
+    LogUtils.tip(f"\n[nvidia] → {mid} (fmt: {fmt}, effort: {valid})\n")
 
 
 # ── Reputation ──────────────────────────────────────────────────────
