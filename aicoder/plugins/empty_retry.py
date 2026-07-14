@@ -185,6 +185,11 @@ How it works:
         if not EmptyRetryService.is_enabled():
             return None
 
+        # Don't override if another plugin already set next_prompt
+        if self.app.has_next_prompt():
+            EmptyRetryService.reset_retry()
+            return None
+
         # If AI made tool calls, it's not empty - reset counter
         if has_tool_calls:
             EmptyRetryService.reset_retry()
