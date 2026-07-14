@@ -254,6 +254,12 @@ def create_plugin(ctx):
             LogUtils.print(f"\n{'[memory] Memory Status':^40}", bold=True)
             LogUtils.dim(f"{'─' * 42}")
             LogUtils.print("  Disable via PLUGINS_DENY=...,memory (env var)")
+            if os.path.islink(MEMORY_DIR):
+                real = os.path.normpath(os.path.join(
+                    os.path.dirname(MEMORY_DIR), os.readlink(MEMORY_DIR)))
+                LogUtils.print(f"  Location: {real} (via symlink)")
+            else:
+                LogUtils.print(f"  Location: {MEMORY_DIR}")
             LogUtils.dim(f"{'─' * 42}")
             for fname, size in sorted(files):
                 LogUtils.print(f"  {fname:<30} {size:>7} bytes")
@@ -295,6 +301,47 @@ def create_plugin(ctx):
             except Exception as e:
                 LogUtils.error(f"[memory] Export failed: {e}")
 
+        elif subcmd == "move":
+            import shutil
+            target = parts[1] if len(parts) > 1 else None
+
+            if target:
+                # Move OUT: .aicoder/memory (real dir) → target, then symlink
+                if os.path.islink(MEMORY_DIR):
+                    link_dst = os.readlink(MEMORY_DIR)
+                    LogUtils.error(
+                        f"[memory] Already moved to {link_dst}. "
+                        "Use /memory move to undo first."
+                    )
+                    return
+                if not os.path.isdir(MEMORY_DIR):
+                    LogUtils.info("[memory] Not initialized — initializing first")
+                    _auto_init()
+                target = os.path.abspath(target)
+                if os.path.exists(target):
+                    LogUtils.error(f"[memory] Target already exists: {target}")
+                    return
+                parent = os.path.dirname(target)
+                if parent and not os.path.isdir(parent):
+                    LogUtils.error(f"[memory] Parent directory does not exist: {parent}")
+                    return
+                shutil.move(MEMORY_DIR, target)
+                os.symlink(target, MEMORY_DIR)
+                LogUtils.success(f"[memory] Moved to {target}, symlinked from {MEMORY_DIR}")
+            else:
+                # Move IN (undo): symlink back to real dir
+                if not os.path.islink(MEMORY_DIR):
+                    LogUtils.error("[memory] Not moved — nothing to undo")
+                    return
+                link_dst = os.readlink(MEMORY_DIR)
+                real_dir = os.path.normpath(os.path.join(os.path.dirname(MEMORY_DIR), link_dst))
+                if not os.path.isdir(real_dir):
+                    LogUtils.error(f"[memory] Symlink target not found: {real_dir}")
+                    return
+                os.unlink(MEMORY_DIR)
+                shutil.move(real_dir, MEMORY_DIR)
+                LogUtils.success(f"[memory] Moved back from {real_dir} to {MEMORY_DIR}")
+
         elif subcmd == "import":
             if len(parts) < 2:
                 LogUtils.error("[memory] Usage: /memory import <archive.tgz>")
@@ -325,6 +372,8 @@ def create_plugin(ctx):
 
         else:
             LogUtils.print("Memory plugin commands:", bold=True)
+            LogUtils.dim("  /memory move <path>  - Move memory to <path>, symlink from .aicoder/memory")
+            LogUtils.dim("  /memory move         - Undo: move memory back to .aicoder/memory")
             LogUtils.dim("  /memory export <path> - Export memory to archive (.tar.gz)")
             LogUtils.dim("  /memory import <file> - Import memory from archive (replaces files)")
             LogUtils.dim("  /memory rm-all       - Delete all memory (requires confirmation)")
