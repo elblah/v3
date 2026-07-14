@@ -37,11 +37,24 @@ from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
 # ── Constants ──────────────────────────────────────────────────────
-_RECOVERY_RATE = 5.0   # rep points recovered per minute toward base
-_SLOW_PENALTY = 10.0   # rep penalty for <3 tok/s
-_429_PENALTY = 10.0    # rep penalty for 429
-_404_PENALTY = 20.0    # rep penalty for 404 (model unavailable/deprecated)
-_FAST_BONUS = 1.0      # rep bonus for fast responses
+# All overridable via env vars (prefix NVIDIA_NIM_)
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(f"NVIDIA_NIM_{name}", str(default)))
+    except ValueError:
+        return default
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(f"NVIDIA_NIM_{name}", str(default)))
+    except ValueError:
+        return default
+
+_RECOVERY_RATE = _env_float("RECOVERY_RATE", 2.0)      # rep points recovered per minute toward base
+_SLOW_PENALTY = _env_float("SLOW_PENALTY", 10.0)       # rep penalty for <3 tok/s
+_429_PENALTY = _env_float("429_PENALTY", 10.0)          # rep penalty for 429
+_404_PENALTY = _env_float("404_PENALTY", 20.0)          # rep penalty for 404 (model unavailable/deprecated)
+_FAST_BONUS = _env_float("FAST_BONUS", 1.0)             # rep bonus for fast responses
 
 # ── Runtime state ───────────────────────────────────────────────────
 NIM_URL = "https://integrate.api.nvidia.com/v1"
@@ -440,11 +453,11 @@ def _is_timeout(msg: str) -> bool:
     return "timeout" in low or "timed out" in low or "timedout" in low or "time out" in low
 
 
-_STRIKE_WINDOW = 7200   # 2h — strikes older than this are ignored
-_STRIKE_LIMIT = 3        # strikes within window → ban
-_BAN_DURATION = 86400    # 24h
-_TRUST_THRESHOLD = 2     # successful responses needed to trust model
-_UNTRUSTED_TIMEOUT = 120  # 2 min leash for untrusted models
+_STRIKE_WINDOW = _env_int("STRIKE_WINDOW", 7200)      # 2h — strikes older than this are ignored
+_STRIKE_LIMIT = _env_int("STRIKE_LIMIT", 3)           # strikes within window → ban
+_BAN_DURATION = _env_int("BAN_DURATION", 86400)       # 24h
+_TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 2)     # successful responses needed to trust model
+_UNTRUSTED_TIMEOUT = _env_int("UNTRUSTED_TIMEOUT", 120)  # 2 min leash for untrusted models
 
 
 def _strike(mid: str):
