@@ -156,7 +156,7 @@ def _compact(messages, app, state, keep_percent=0):
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
         f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] "
-        f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}"
+        f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
     )
 
 
@@ -205,7 +205,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
         f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] (with tool_calls) "
-        f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}"
+        f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
     )
 
 
