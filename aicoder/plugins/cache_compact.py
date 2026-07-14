@@ -39,9 +39,9 @@ PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation 
 _RE_SUMMARY_LEADING = re.compile(r"^[*_`#\s]*(\[SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
 
-# Marker for autonomous-path injection (after_ai_processing). Filtered out of
-# recent messages during compaction (cache-safe — compaction already breaks prefix).
-_COMPACT_REQUEST_MARKER = "<!-- cache_compact -->"
+# Signature substring in injected compaction instructions. Used to filter
+# autonomous-path messages from recent window during compaction.
+_COMPACT_SIGNATURE = "COMPACTION REQUIRED"
 
 COMPACT_INSTRUCTION = (
     "SYSTEM: Context too large. COMPACTION REQUIRED.\n"
@@ -137,7 +137,7 @@ def _compact(messages, app, state, keep_percent=0):
             m for m in messages[1:-1]
             if not (m.get("role") == "user"
                     and isinstance(m.get("content"), str)
-                    and _COMPACT_REQUEST_MARKER in m["content"])
+                    and _COMPACT_SIGNATURE in m["content"])
         ]
         recent = _select_recent_by_percent(
             candidates, keep_percent, Config.context_size()
@@ -155,7 +155,7 @@ def _compact(messages, app, state, keep_percent=0):
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
-        f"{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] "
+        f"\n{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] "
         f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}"
     )
 
@@ -179,7 +179,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
                 m for m in messages[1:idx]
                 if not (m.get("role") == "user"
                         and isinstance(m.get("content"), str)
-                        and _COMPACT_REQUEST_MARKER in m["content"])
+                        and _COMPACT_SIGNATURE in m["content"])
             ]
             recent = _select_recent_by_percent(
                 candidates, keep_percent, Config.context_size()
@@ -204,7 +204,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
-        f"{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] (with tool_calls) "
+        f"\n{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] (with tool_calls) "
         f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}"
     )
 
@@ -296,7 +296,7 @@ def create_plugin(ctx):
         # Tool results are already in history; next process_with_ai() is automatic.
         instruction = FORCE_COMPACT_INSTRUCTION if cfg["force"] else COMPACT_INSTRUCTION
         app.message_history.add_user_message(
-            f"{_COMPACT_REQUEST_MARKER}\n<system-reminder>\n{instruction}\n</system-reminder>"
+            f"<system-reminder>\n{instruction}\n</system-reminder>"
         )
         state["awaiting"] = True
         if os.environ.get("CACHE_COMPACT_DEBUG"):
