@@ -53,6 +53,11 @@ _current_model: str = ""
 _req_start: float = 0.0
 _req_model: str = ""
 _saved_max_backoff: Optional[int] = None
+_strikes: Dict[str, List[float]] = {}  # model_id → [timestamps]
+_banned_until: Dict[str, float] = {}  # model_id → unix timestamp
+_success_count: Dict[str, int] = {}  # model_id → successful responses
+_struck_this_request: bool = False   # dedup: only one strike per request
+_saved_total_timeout: Optional[int] = None  # saved timeout for untrusted leash
 _lock = threading.Lock()
 
 # Reasoning format for NVIDIA — always "openai" (OpenAI-compatible API).
@@ -91,6 +96,7 @@ def create_plugin(ctx):
     _load_cache()
     _load_rep()
     _load_preference()
+    _load_bans()
 
     model = Config.model()
     if model != "auto":
@@ -206,7 +212,7 @@ def _load_preference():
     avail = {m["id"] for m in _models}
 
     if order:
-        ids = [x.strip() for x in order.split(",") if x.strip()]
+        ids = [x.strip() for x in order.replace(";", ",").split(",") if x.strip()]
         _preference = [x for x in ids if x in avail] if avail else [x for x in ids]
     else:
         _preference = [x for x in _DEFAULT_ORDER if x in avail] if avail else list(_DEFAULT_ORDER)
@@ -275,6 +281,7 @@ def _set_active(mid: str):
 # Sin pulls below base. Decay restores toward base at +1/min.
 # Preference order is always the attractor — forgiveness is automatic over time.
 _REP_PATH = os.path.join(os.getcwd(), ".aicoder", "nvidia-rep.json")
+_BANS_PATH = os.path.join(os.getcwd(), ".aicoder", "nvidia-bans.json")
 
 
 def _base(mid: str) -> float:
@@ -321,6 +328,38 @@ def _save_rep():
         LogUtils.warn(f"[nvidia] failed to save reputation: {e}")
 
 
+def _load_bans():
+    try:
+        if os.path.exists(_BANS_PATH):
+            with open(_BANS_PATH) as f:
+                data = json.load(f)
+            _strikes.clear()
+            _banned_until.clear()
+            _success_count.clear()
+            for mid, strikes in data.get("strikes", {}).items():
+                _strikes[mid] = [t for t in strikes if time.time() - t < 7200]
+            for mid, until in data.get("banned_until", {}).items():
+                if time.time() < until:
+                    _banned_until[mid] = until
+            _success_count.update(data.get("success_count", {}))
+    except (json.JSONDecodeError, IOError):
+        pass
+
+
+def _save_bans():
+    try:
+        os.makedirs(os.path.dirname(_BANS_PATH), exist_ok=True)
+        clean_strikes = {mid: ts for mid, ts in _strikes.items() if ts}
+        with open(_BANS_PATH, "w") as f:
+            json.dump({
+                "strikes": clean_strikes,
+                "banned_until": _banned_until,
+                "success_count": {mid: c for mid, c in _success_count.items() if c > 0},
+            }, f, indent=2)
+    except IOError as e:
+        LogUtils.warn(f"[nvidia] failed to save bans: {e}")
+
+
 def _rep(mid: str) -> float:
     """Current reputation. Decays toward base on access."""
     with _lock:
@@ -348,10 +387,18 @@ def _sin(mid: str, points: float):
 
 
 def _best_model() -> Optional[str]:
-    """Model with highest reputation. Preference order breaks ties."""
+    """Model with highest reputation. Skips banned models unless all banned."""
     best = None
     best_rep = -1
+    best_ban = float("inf")
+    now = time.time()
     for mid in _preference:
+        banned_until = _banned_until.get(mid, 0)
+        if now < banned_until:
+            if banned_until < best_ban:
+                best_ban = banned_until
+                best = mid
+            continue
         s = _rep(mid)
         if s > best_rep:
             best_rep = s
@@ -376,24 +423,64 @@ def _rotate_next():
     except ValueError:
         _rotate()
         return
+    now = time.time()
     for i in range(1, len(_preference)):
         nxt = _preference[(idx + i) % len(_preference)]
-        if nxt != _current_model:
+        if nxt != _current_model and now >= _banned_until.get(nxt, 0):
             _set_active(nxt)
             return
-    # Only one model in preference — stick with it
-    _set_active(_preference[0])
+    # All others banned — use best available (including earliest-expiring banned)
+    _set_active(_best_model() or _preference[0])
 
 
 # ── Hooks ────────────────────────────────────────────────────────────
+def _is_timeout(msg: str) -> bool:
+    """True if error message indicates a timeout (no response from model)."""
+    low = msg.lower()
+    return "timeout" in low or "timed out" in low or "timedout" in low or "time out" in low
+
+
+_STRIKE_WINDOW = 7200   # 2h — strikes older than this are ignored
+_STRIKE_LIMIT = 3        # strikes within window → ban
+_BAN_DURATION = 86400    # 24h
+_TRUST_THRESHOLD = 2     # successful responses needed to trust model
+_UNTRUSTED_TIMEOUT = 120  # 2 min leash for untrusted models
+
+
+def _strike(mid: str):
+    """Record a timeout strike. 3 strikes → 24h ban."""
+    now = time.time()
+    with _lock:
+        strikes = [t for t in _strikes.get(mid, []) if now - t < _STRIKE_WINDOW]
+        strikes.append(now)
+        _strikes[mid] = strikes
+        count = len(strikes)
+        if count >= _STRIKE_LIMIT:
+            _banned_until[mid] = now + _BAN_DURATION
+            _strikes[mid] = []
+            LogUtils.warn(f"[nvidia] {mid} — {count} strikes → banned for 24h")
+        else:
+            LogUtils.warn(f"[nvidia] {mid} — timeout strike {count}/{_STRIKE_LIMIT}")
+    _save_bans()
+
+
 def _before_request(endpoint: str, data: dict):
     """Record timing and model for after_usage. No data mutation."""
-    global _req_start, _req_model
+    global _req_start, _req_model, _struck_this_request, _saved_total_timeout
     _req_start = time.time()
     _req_model = data.get("model", Config.model())
+    _struck_this_request = False
+
+    # Untrusted models get a short leash — 2 min
+    mid = _req_model
+    if mid and _success_count.get(mid, 0) < _TRUST_THRESHOLD:
+        if _saved_total_timeout is None:
+            _saved_total_timeout = Config.total_timeout()
+            Config.set_runtime_total_timeout(_UNTRUSTED_TIMEOUT)
 
 
 def _on_error(msg: str, status: int):
+    global _struck_this_request
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
@@ -419,6 +506,13 @@ def _on_error(msg: str, status: int):
             LogUtils.warn(f"[nvidia] {status} {mid} — rep -500")
             _rotate_next()
             rotated = True
+        elif status == 0 and _is_timeout(msg):
+            # Model produced zero response within timeout window
+            if not _struck_this_request:
+                _struck_this_request = True
+                _strike(mid)
+            _rotate_next()
+            rotated = True
         else:
             pass  # other 5xx = transient, don't rotate
     except Exception as e:
@@ -432,14 +526,28 @@ def _on_error(msg: str, status: int):
 
 def _after_usage(usage: dict):
     """Award reputation for fast responses, sin for slow."""
-    global _saved_max_backoff
+    global _saved_max_backoff, _saved_total_timeout
     if _saved_max_backoff is not None:
         Config.set_runtime_max_backoff(_saved_max_backoff)
         _saved_max_backoff = None
+    if _saved_total_timeout is not None:
+        Config.set_runtime_total_timeout(_saved_total_timeout)
+        _saved_total_timeout = None
+
+    mid = _req_model
     completion = usage.get("completion_tokens", 0)
     if completion < 50:
-        _rotate()  # still ensure best model is set for next request
+        _rotate()
         return
+
+    # Trust: model responded with meaningful output
+    if mid:
+        prev = _success_count.get(mid, 0)
+        _success_count[mid] = prev + 1
+        if prev < _TRUST_THRESHOLD and prev + 1 >= _TRUST_THRESHOLD:
+            LogUtils.success(f"[nvidia] {mid} — trusted ({prev + 1} responses)")
+            _save_bans()
+
     elapsed = time.time() - _req_start
     tok_sec = completion / elapsed if elapsed > 0 else 999
     mid = _req_model
@@ -477,13 +585,22 @@ def _cmd(args: str) -> Optional[str]:
         return _refresh()
     if parts[0] == "forgive":
         return _forgive()
+    if parts[0] == "avoid":
+        return _avoid(parts[1] if len(parts) > 1 else "")
+    if parts[0] == "unban":
+        return _unban(parts[1] if len(parts) > 1 else "")
+    if parts[0] == "bans":
+        return _show_bans()
     return (
         "Usage:\n"
         "  /nvidia status   - show current state\n"
         "  /nvidia list     - list available models\n"
         "  /nvidia set ID   - force a model\n"
         "  /nvidia refresh  - refresh model cache\n"
-        "  /nvidia forgive  - reset all reputations to 100"
+        "  /nvidia forgive  - reset reputations + clear bans\n"
+        "  /nvidia avoid [M]- 24h ban for model (current if omitted)\n"
+        "  /nvidia unban M  - remove ban + strikes for model\n"
+        "  /nvidia bans     - show banned/striked models"
     )
 
 
@@ -542,9 +659,64 @@ def _refresh() -> str:
 
 
 def _forgive() -> str:
-    """Reset all reputations to 100."""
+    """Reset all reputations to 100 and clear all bans."""
     with _lock:
         _reputation.clear()
+        _strikes.clear()
+        _banned_until.clear()
     _save_rep()
-    LogUtils.success("[nvidia] all reputations reset to 100")
+    _save_bans()
+    LogUtils.success("[nvidia] all reputations reset, bans cleared")
     return "[nvidia] forgiven. All models start clean."
+
+
+def _avoid(mid: str) -> str:
+    """Manual 24h ban. If no model given, bans current."""
+    if not mid:
+        mid = _current_model
+    if not mid:
+        return "[nvidia] no model to avoid"
+    if mid not in _preference:
+        return f"[nvidia] '{mid}' not in model list"
+    _banned_until[mid] = time.time() + _BAN_DURATION
+    _strikes.pop(mid, None)
+    _save_bans()
+    LogUtils.warn(f"[nvidia] {mid} — avoided for 24h")
+    if mid == _current_model:
+        _rotate_next()
+    return f"[nvidia] avoided {mid} for 24h"
+
+
+def _unban(mid: str) -> str:
+    """Remove ban and strikes for a model."""
+    if not mid:
+        return "[nvidia] specify model to unban"
+    if mid not in _preference:
+        return f"[nvidia] '{mid}' not in model list"
+    _banned_until.pop(mid, None)
+    _strikes.pop(mid, None)
+    _save_bans()
+    LogUtils.success(f"[nvidia] {mid} — ban removed")
+    return f"[nvidia] unbanned {mid}"
+
+
+def _show_bans() -> str:
+    """Show banned models and strikes."""
+    now = time.time()
+    lines = ["[nvidia] Bans & Strikes"]
+    has_any = False
+    for mid in _preference:
+        until = _banned_until.get(mid, 0)
+        strikes = len([t for t in _strikes.get(mid, []) if now - t < _STRIKE_WINDOW])
+        if until > now:
+            remaining = until - now
+            h = int(remaining // 3600)
+            m = int((remaining % 3600) // 60)
+            lines.append(f"  {mid} — banned ({h}h{m:02d}m remaining)")
+            has_any = True
+        elif strikes:
+            lines.append(f"  {mid} — {strikes} strike(s)")
+            has_any = True
+    if not has_any:
+        lines.append("  (none)")
+    return "\n".join(lines)
