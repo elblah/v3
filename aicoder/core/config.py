@@ -399,6 +399,7 @@ class Config:
     # Retry Configuration
     _runtime_max_retries = None
     _runtime_max_backoff = None
+    _runtime_total_timeout = None
 
     @staticmethod
     def max_retries() -> int:
@@ -726,7 +727,14 @@ class Config:
         Get total timeout in seconds
 
         """
+        if Config._runtime_total_timeout is not None:
+            return Config._runtime_total_timeout
         return int(os.environ.get("TOTAL_TIMEOUT", "300"))
+
+    @classmethod
+    def set_runtime_total_timeout(cls, value: int | None) -> None:
+        """Set runtime total timeout override (None to restore env default)."""
+        cls._runtime_total_timeout = value
 
     @staticmethod
     def total_timeout_extension() -> int:
