@@ -2,13 +2,13 @@
 cache_compact.py - Cache-aware compaction
 
 Three injection paths:
-- Passive: system-prompt nudge for voluntary [SUMMARY] at natural breakpoints.
+- Passive: system-prompt nudge for voluntary [COMPACT_SUMMARY] at natural breakpoints.
 - User turn: after_user_prompt appends <system-reminder> to user's input.
 - Autonomous: after_ai_processing injects instruction into history when AI is
   in a tool-calling loop (no user input between turns).
 
 Compaction fires on after_assistant_message_added:
-- [SUMMARY] tag detected -> compact (existing path)
+- [COMPACT_SUMMARY] tag detected -> compact (existing path)
 - No tag -> fail, let after_ai_processing re-inject next turn
 
 Tier boundaries (coexists with existing tiers):
@@ -32,11 +32,12 @@ from aicoder.utils.log import LogUtils
 import re
 
 SUMMARY_TAG = "[SUMMARY]"
+COMPACT_TAG = "[COMPACT_SUMMARY]"
 
-PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with `[SUMMARY]`. If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
+PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with `[COMPACT_SUMMARY]`. If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
 
-# Detect [SUMMARY] even if dumb AIs wrap it in markdown formatting
-_RE_SUMMARY_LEADING = re.compile(r"^[*_`#\s]*(\[SUMMARY\])")
+# Detect [COMPACT_SUMMARY] even if dumb AIs wrap it in markdown formatting
+_RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
 
 # Signature substring in injected compaction instructions. Used to filter
@@ -46,7 +47,7 @@ _COMPACT_SIGNATURE = "COMPACTION REQUIRED"
 COMPACT_INSTRUCTION = (
     "SYSTEM: Context too large. COMPACTION REQUIRED.\n"
     "Produce a self-contained summary of the entire conversation above.\n"
-    "Begin with [SUMMARY]. Do NOT call any tools. Do NOT continue working.\n"
+    "Begin with [COMPACT_SUMMARY]. Do NOT call any tools. Do NOT continue working.\n"
     "Include: task, progress, key decisions with rationale, file paths and line numbers, "
     "current state, failed approaches, next steps.\n"
     "This summary becomes your ENTIRE memory — omit nothing critical."
@@ -56,7 +57,7 @@ FORCE_COMPACT_INSTRUCTION = (
     "⚠ SYSTEM REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
     "Context limit approaching. You MUST comply:\n"
     "1. Do NOT call any tools\n"
-    "2. Begin response with [SUMMARY]\n"
+    "2. Begin response with [COMPACT_SUMMARY]\n"
     "3. Write a self-contained summary of the ENTIRE conversation above\n"
     "4. Include: task, progress, key decisions with rationale, file paths and line numbers, "
     "current state, failed approaches, next steps\n"
@@ -76,10 +77,10 @@ def _content_str(content):
 
 
 def _is_summary_first_printable(text: str) -> bool:
-    """True if [SUMMARY] is the first printable content (ignoring leading whitespace/markdown)."""
-    if SUMMARY_TAG not in text:
+    """True if [COMPACT_SUMMARY] is the first printable content (ignoring leading whitespace/markdown)."""
+    if COMPACT_TAG not in text:
         return False
-    return bool(_RE_SUMMARY_LEADING.match(text))
+    return bool(_RE_COMPACT_TAG_LEADING.match(text))
 
 
 def _select_recent_by_percent(messages, keep_percent, max_tokens):
@@ -123,11 +124,11 @@ def _compact(messages, app, state, keep_percent=0):
     # If there's already a [SUMMARY] user message, keep it as-is
     last = messages[-1]
     summary_content = _content_str(last.get("content", ""))
-    # Normalize: strip leading markdown/whitespace, ensure [SUMMARY] prefix
+    # Normalize: strip leading markdown/whitespace, convert [COMPACT_SUMMARY] → [SUMMARY]
     # so prune_old_summaries can find it on subsequent compactions
-    m = _RE_SUMMARY_LEADING.match(summary_content)
+    m = _RE_COMPACT_TAG_LEADING.match(summary_content)
     if m:
-        summary_content = summary_content[m.start(1):]
+        summary_content = SUMMARY_TAG + summary_content[m.end(1):]
     else:
         summary_content = f"{SUMMARY_TAG} {summary_content}"
     summary_msg = {"role": "user", "content": summary_content}
@@ -155,7 +156,7 @@ def _compact(messages, app, state, keep_percent=0):
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
-        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] "
+        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [COMPACT_SUMMARY] "
         f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
     )
 
@@ -185,12 +186,12 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
                 candidates, keep_percent, Config.context_size()
             )
     prefix = [system_msg] if system_msg else []
-    # Normalize assistant message content so prune_old_summaries can find [SUMMARY]
+    # Normalize assistant message: [COMPACT_SUMMARY] → [SUMMARY] for internal storage
     normalized = dict(assistant_msg)
     raw = _content_str(normalized.get("content", ""))
-    m = _RE_SUMMARY_LEADING.match(raw)
+    m = _RE_COMPACT_TAG_LEADING.match(raw)
     if m:
-        normalized["content"] = raw[m.start(1):]
+        normalized["content"] = SUMMARY_TAG + raw[m.end(1):]
     new_msgs = prefix + recent + [normalized]
     before = len(messages)
     app.message_history.set_messages(new_msgs)
@@ -204,7 +205,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
-        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [SUMMARY] (with tool_calls) "
+        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [COMPACT_SUMMARY] (with tool_calls) "
         f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
     )
 
@@ -229,7 +230,7 @@ def create_plugin(ctx):
         return None
 
     def _on_assistant_message_added(message):
-        """after_assistant_message_added hook - detect [SUMMARY] tag."""
+        """after_assistant_message_added hook - detect [COMPACT_SUMMARY] tag."""
         if cfg["threshold"] <= 0:
             return
         content = _content_str(message.get("content", ""))
@@ -251,13 +252,13 @@ def create_plugin(ctx):
                         f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
                     )
             else:
-                # AI produced text without [SUMMARY] tag — count as fail
+                # AI produced text without [COMPACT_SUMMARY] tag — count as fail
                 state["awaiting"] = False
                 state["fails"] += 1
                 if os.environ.get("CACHE_COMPACT_DEBUG"):
                     c = Config.colors
                     LogUtils.print(
-                        f"{c['yellow']}[cache_compact] no [SUMMARY] tag "
+                        f"{c['yellow']}[cache_compact] no [COMPACT_SUMMARY] tag "
                         f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
                     )
 
@@ -273,7 +274,7 @@ def create_plugin(ctx):
             if os.environ.get("CACHE_COMPACT_DEBUG"):
                 c = Config.colors
                 LogUtils.print(
-                    f"{c['yellow']}[cache_compact] no [SUMMARY] received "
+                    f"{c['yellow']}[cache_compact] no [COMPACT_SUMMARY] received "
                     f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
                 )
 
@@ -321,7 +322,7 @@ def create_plugin(ctx):
             if os.environ.get("CACHE_COMPACT_DEBUG"):
                 c = Config.colors
                 LogUtils.print(
-                    f"{c['yellow']}[cache_compact] no [SUMMARY] received "
+                    f"{c['yellow']}[cache_compact] no [COMPACT_SUMMARY] received "
                     f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
                 )
 
