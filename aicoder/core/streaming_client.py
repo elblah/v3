@@ -175,6 +175,8 @@ class StreamingClient:
                         http_status = 0
                     if http_status:
                         self._plugin_system.call_hooks("on_api_error", str(error), http_status)
+                    else:
+                        self._plugin_system.call_hooks("on_api_error", str(error), 0)
 
                 # Wait before next retry (except for last attempt)
                 # In unlimited mode (max_retries=0), always wait and continue
