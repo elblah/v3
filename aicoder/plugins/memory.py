@@ -11,6 +11,7 @@ No special API calls or background processes needed.
 """
 
 import os
+import time
 from typing import List
 
 MEMORY_DIR = os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory")
@@ -18,10 +19,68 @@ AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
 MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
 
+# Nudge config
+NUDGE_ENABLED = os.environ.get("AICODER_MEMORY_NUDGE", "1").lower() not in ("0", "false", "no")
+NUDGE_CHARS = int(os.environ.get("AICODER_MEMORY_NUDGE_CHARS", "1000"))
+NUDGE_SECONDS = int(os.environ.get("AICODER_MEMORY_NUDGE_SECONDS", "300"))
+
 
 def create_plugin(ctx):
     """Memory plugin - persistent memory management"""
     _pending_check: List[str] = []
+
+    # Nudge tracking
+    _last_memory_write: float = 0.0
+    _substantial_response: bool = False
+
+    def _is_memory_path(path: str) -> bool:
+        """Check if a file path is inside the memory directory."""
+        try:
+            return os.path.commonpath([os.path.abspath(path), os.path.abspath(MEMORY_DIR)]) == os.path.abspath(MEMORY_DIR)
+        except ValueError:
+            return False
+
+    def _on_after_file_write(path: str, _content: str):
+        """Track writes to memory directory + autoload size check."""
+        nonlocal _last_memory_write, _substantial_response
+        if _is_memory_path(path):
+            _last_memory_write = time.time()
+            _substantial_response = False
+        on_autoload_write(path, _content)
+
+    def _on_after_assistant_message(message) -> None:
+        """Track substantial assistant responses for nudging."""
+        nonlocal _substantial_response
+        if not NUDGE_ENABLED:
+            return
+        content = message.get("content", "")
+        if isinstance(content, list):
+            text = "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+        else:
+            text = str(content)
+        if len(text) >= NUDGE_CHARS:
+            _substantial_response = True
+
+    def _on_after_user_prompt(user_input: str) -> str:
+        """Nudge AI to write memory if substantial work done and memory is stale."""
+        nonlocal _substantial_response
+        if not NUDGE_ENABLED:
+            return user_input
+        if not _substantial_response:
+            return user_input
+        if _last_memory_write > 0 and (time.time() - _last_memory_write) < NUDGE_SECONDS:
+            return user_input
+        _substantial_response = False
+        return (
+            f"{user_input}\n\n<system-reminder>\n"
+            "If you learned anything worth persisting across sessions, "
+            "update your memory notes now (in .aicoder/memory/).\n"
+            "</system-reminder>"
+        )
 
     def _auto_init():
         """Auto-init memory dir + seed files if missing"""
@@ -198,6 +257,12 @@ def create_plugin(ctx):
             LogUtils.dim(f"{'─' * 42}")
             for fname, size in sorted(files):
                 LogUtils.print(f"  {fname:<30} {size:>7} bytes")
+            LogUtils.dim(f"{'─' * 42}")
+            nudge_state = "on" if NUDGE_ENABLED else "off"
+            LogUtils.print(f"  Nudge: {nudge_state} (chars>{NUDGE_CHARS}, stale>{NUDGE_SECONDS}s)")
+            if _last_memory_write > 0:
+                ago = int(time.time() - _last_memory_write)
+                LogUtils.print(f"  Last memory write: {ago}s ago")
             LogUtils.dim(f"{'─' * 42}\n")
 
         elif subcmd == "export":
@@ -267,9 +332,11 @@ def create_plugin(ctx):
             LogUtils.dim("  Disable via PLUGINS_DENY=...,memory env var")
 
     # Register hooks
-    ctx.register_hook("after_file_write", on_autoload_write)
+    ctx.register_hook("after_file_write", _on_after_file_write)
     ctx.register_hook("after_tool_results", on_tool_results)
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
+    ctx.register_hook("after_assistant_message_added", _on_after_assistant_message)
+    ctx.register_hook("after_user_prompt", _on_after_user_prompt)
 
     # Register command
     ctx.register_command("memory", handle_command, description="Persistent memory management (.aicoder/memory/)")
@@ -280,8 +347,10 @@ def create_plugin(ctx):
         "description": "Persistent memory management (.aicoder/memory/)",
         "command": handle_command,
         "hooks": {
-            "after_file_write": on_autoload_write,
+            "after_file_write": _on_after_file_write,
             "after_tool_results": on_tool_results,
             "on_system_prompt_append": on_system_prompt_append,
+            "after_assistant_message_added": _on_after_assistant_message,
+            "after_user_prompt": _on_after_user_prompt,
         },
     }
