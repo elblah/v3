@@ -94,8 +94,9 @@ class EmptyRetryService:
 class EmptyRetryCommand:
     """Command handler for empty retry plugin"""
 
-    def __init__(self, app):
-        self.app = app
+    def __init__(self, ctx):
+        self.ctx = ctx
+        self.app = ctx.app
 
     def show_help(self) -> str:
         return """
@@ -218,8 +219,9 @@ How it works:
             EmptyRetryService.reset_retry()
             return None
 
-        # Empty response detected - retry
+        # Empty response detected - notify other plugins, then retry
         EmptyRetryService.increment_retry()
+        self.ctx.app.plugin_system.call_hooks("on_empty_assistant_message")
         delay = EmptyRetryService.get_delay()
         count = EmptyRetryService.get_retry_count()
 
@@ -231,7 +233,7 @@ How it works:
 
 def create_plugin(ctx):
     """Empty retry plugin"""
-    cmd = EmptyRetryCommand(ctx.app)
+    cmd = EmptyRetryCommand(ctx)
 
     # Check env var once at load time
     env_msg = os.environ.get("AICODER_EMPTY_RETRY_MESSAGE")
