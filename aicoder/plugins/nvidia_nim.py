@@ -11,17 +11,17 @@ Features:
   - Maintains ordered preference list of tool_call+reasoning models
   - Detects 429/503 and rotates to next available model
   - 404 penalizes 2x (model deprecated/unavailable)
-  - Configurable cooldown per model (env var NVIDIA_NIM_COOLDOWN)
+  - Sticky model: once a model works, hold it for N seconds before testing others
   - Caches filtered NVIDIA model data from models.dev in .aicoder/models.json
   - Stale cache preserved if refresh fails — never lose last good data
 
 Env vars:
   NVIDIA_NIM_ORDER     - comma-separated model ID preference list (default: _DEFAULT_ORDER)
                          Example: NVIDIA_NIM_ORDER="z-ai/glm-5.2,moonshotai/kimi-k2.6,deepseek-ai/deepseek-v4-flash,minimaxai/minimax-m3,minimaxai/minimax-m2.7,stepfun-ai/step-3.7-flash"
-  NVIDIA_NIM_COOLDOWN  - comma-separated model:seconds (e.g., glm:1800,kimi:1200)
+  NVIDIA_NIM_STICKY     - seconds to hold a working model before retesting others (default: 420)
 
 Commands:
-  /nvidia status   - current model, cooldowns, preference
+  /nvidia status   - current model, sticky status, preference
   /nvidia list     - available models with tool_call+reasoning
   /nvidia set ID   - force a specific model
   /nvidia refresh  - refresh model cache from models.dev
@@ -55,6 +55,8 @@ _SLOW_PENALTY = _env_float("SLOW_PENALTY", 10.0)       # rep penalty for <3 tok/
 _429_PENALTY = _env_float("429_PENALTY", 10.0)          # rep penalty for 429
 _404_PENALTY = _env_float("404_PENALTY", 20.0)          # rep penalty for 404 (model unavailable/deprecated)
 _FAST_BONUS = _env_float("FAST_BONUS", 1.0)             # rep bonus for fast responses
+_STICKY_DURATION = _env_int("STICKY", 420)             # seconds to hold a working model
+_STICKY_BREAK_TPS = _env_float("STICKY_BREAK_TPS", 1.0)  # tok/s below this breaks sticky
 
 # ── Runtime state ───────────────────────────────────────────────────
 NIM_URL = "https://integrate.api.nvidia.com/v1"
@@ -72,6 +74,8 @@ _success_count: Dict[str, int] = {}  # model_id → successful responses
 _struck_this_request: bool = False   # dedup: only one strike per request
 _saved_total_timeout: Optional[int] = None  # saved timeout for untrusted leash
 _lock = threading.Lock()
+_sticky_until: float = 0              # unix timestamp — next rotation allowed
+_current_sticky_model: str = ""       # model that earned the sticky
 
 # Reasoning format for NVIDIA — always "openai" (OpenAI-compatible API).
 # NVIDIA doesn't support the `thinking` extra_body that "deepseek"/"glm"
@@ -116,14 +120,14 @@ def create_plugin(ctx):
         # Manual mode — user chose a specific model, plugin only provides commands
         ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
         if Config.debug():
-            LogUtils.printc(f"[nvidia] manual mode — {model}", color="dim")
+            LogUtils.printc(f"\n[nvidia] manual mode — {model}", color="dim")
         return
 
     _rotate()
 
     # Only register hooks if we have models to work with
     if not _models:
-        LogUtils.warn("[nvidia] no model data — plugin inactive until /nvidia refresh succeeds")
+        LogUtils.warn("\n[nvidia] no model data — plugin inactive until /nvidia refresh succeeds")
         ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
         return
 
@@ -134,7 +138,7 @@ def create_plugin(ctx):
     ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
 
     if Config.debug():
-        LogUtils.printc(f"[nvidia] auto mode — {_current_model}", color="cyan")
+        LogUtils.printc(f"\n[nvidia] auto mode — {_current_model}", color="cyan")
 
 
 # ── Cache ────────────────────────────────────────────────────────────
@@ -169,13 +173,13 @@ def _load_cache():
     # Fetch failed — use stale cache if we have it
     if stale is not None:
         _models[:] = stale
-        LogUtils.warn(f"[nvidia] refresh failed, using cached data ({len(stale)} models)")
+        LogUtils.warn(f"\n[nvidia] refresh failed, using cached data ({len(stale)} models)")
         return
 
     # No cache at all — populate from default order so rotation still works
     _models[:] = [{"id": mid, "name": mid.split("/")[-1], "ctx": 0, "out": 0}
                    for mid in _DEFAULT_ORDER]
-    LogUtils.warn(f"[nvidia] no cache, using {len(_models)} built-in models")
+    LogUtils.warn(f"\n[nvidia] no cache, using {len(_models)} built-in models")
 
 
 def _fetch_models(path) -> bool:
@@ -189,7 +193,7 @@ def _fetch_models(path) -> bool:
         with urllib.request.urlopen(req, timeout=15) as r:
             raw = json.loads(r.read().decode())
     except Exception as e:
-        LogUtils.warn(f"[nvidia] fetch failed: {e}")
+        LogUtils.warn(f"\n[nvidia] fetch failed: {e}")
         return False
 
     nvidia = raw.get("nvidia", {})
@@ -206,7 +210,7 @@ def _fetch_models(path) -> bool:
             })
 
     if not filtered:
-        LogUtils.warn("[nvidia] no tool_call+reasoning models in response")
+        LogUtils.warn("\n[nvidia] no tool_call+reasoning models in response")
         return False
 
     filtered.sort(key=lambda x: (-x["ctx"], x["name"]))
@@ -214,7 +218,7 @@ def _fetch_models(path) -> bool:
     with open(path, "w") as f:
         json.dump({"_ts": time.time(), "models": filtered}, f, indent=2)
     _models[:] = filtered
-    LogUtils.success(f"[nvidia] cached {len(filtered)} models")
+    LogUtils.success(f"\n[nvidia] cached {len(filtered)} models")
     return True
 
 
@@ -393,7 +397,7 @@ def _save_rep():
                          for mid in _preference},
             }, f, indent=2)
     except IOError as e:
-        LogUtils.warn(f"[nvidia] failed to save reputation: {e}")
+        LogUtils.warn(f"\n[nvidia] failed to save reputation: {e}")
 
 
 def _load_bans():
@@ -425,7 +429,7 @@ def _save_bans():
                 "success_count": {mid: c for mid, c in _success_count.items() if c > 0},
             }, f, indent=2)
     except IOError as e:
-        LogUtils.warn(f"[nvidia] failed to save bans: {e}")
+        LogUtils.warn(f"\n[nvidia] failed to save bans: {e}")
 
 
 def _rep(mid: str) -> float:
@@ -458,6 +462,7 @@ def _best_model() -> Optional[str]:
     """Model with highest reputation. Skips banned models unless all banned."""
     best = None
     best_rep = -1
+    best_banned = None
     best_ban = float("inf")
     now = time.time()
     for mid in _preference:
@@ -465,12 +470,15 @@ def _best_model() -> Optional[str]:
         if now < banned_until:
             if banned_until < best_ban:
                 best_ban = banned_until
-                best = mid
+                best_banned = mid
             continue
         s = _rep(mid)
         if s > best_rep:
             best_rep = s
             best = mid
+    # All models banned — return the one with soonest-expiring ban
+    if best is None:
+        best = best_banned
     return best
 
 
@@ -526,9 +534,9 @@ def _strike(mid: str):
         if count >= _STRIKE_LIMIT:
             _banned_until[mid] = now + _BAN_DURATION
             _strikes[mid] = []
-            LogUtils.warn(f"[nvidia] {mid} — {count} strikes → banned for 24h")
+            LogUtils.warn(f"\n[nvidia] {mid} — {count} strikes → banned for 24h")
         else:
-            LogUtils.warn(f"[nvidia] {mid} — timeout strike {count}/{_STRIKE_LIMIT}")
+            LogUtils.warn(f"\n[nvidia] {mid} — timeout strike {count}/{_STRIKE_LIMIT}")
     _save_bans()
 
 
@@ -552,26 +560,33 @@ def _on_error(msg: str, status: int):
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
+    # Error breaks sticky — let rotation find a working model
+    global _sticky_until, _current_sticky_model
+    _sticky_until = 0
+    _current_sticky_model = ""
     rotated = False
     try:
         if status == 429:
             _sin(mid, _429_PENALTY)
-            LogUtils.warn(f"[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
+            LogUtils.warn(f"\n[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
             _rotate_next()
             rotated = True
         elif status == 404:
             _sin(mid, _404_PENALTY)
-            LogUtils.warn(f"[nvidia] 404 {mid} — rep -{_404_PENALTY:.0f}")
+            _banned_until[mid] = time.time() + _BAN_DURATION
+            _strikes[mid] = []
+            _save_bans()
+            LogUtils.warn(f"\n[nvidia] 404 {mid} — banned 24h (model unavailable)")
             _rotate_next()
             rotated = True
         elif status == 503:
             _sin(mid, _429_PENALTY)
-            LogUtils.warn(f"[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
+            LogUtils.warn(f"\n[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
             _rotate_next()
             rotated = True
         elif status in (400, 422):
             _sin(mid, 500)
-            LogUtils.warn(f"[nvidia] {status} {mid} — rep -500")
+            LogUtils.warn(f"\n[nvidia] {status} {mid} — rep -500")
             _rotate_next()
             rotated = True
         elif status == 0 and _is_timeout(msg):
@@ -584,7 +599,7 @@ def _on_error(msg: str, status: int):
         else:
             pass  # other 5xx = transient, don't rotate
     except Exception as e:
-        LogUtils.warn(f"[nvidia] _on_error failed: {e}")
+        LogUtils.warn(f"\n[nvidia] _on_error failed: {e}")
     if rotated:
         global _saved_max_backoff
         if _saved_max_backoff is None:
@@ -594,7 +609,7 @@ def _on_error(msg: str, status: int):
 
 def _after_usage(usage: dict):
     """Award reputation for fast responses, sin for slow."""
-    global _saved_max_backoff, _saved_total_timeout
+    global _saved_max_backoff, _saved_total_timeout, _sticky_until, _current_sticky_model
     if _saved_max_backoff is not None:
         Config.set_runtime_max_backoff(_saved_max_backoff)
         _saved_max_backoff = None
@@ -613,7 +628,7 @@ def _after_usage(usage: dict):
         prev = _success_count.get(mid, 0)
         _success_count[mid] = prev + 1
         if prev < _TRUST_THRESHOLD and prev + 1 >= _TRUST_THRESHOLD:
-            LogUtils.success(f"[nvidia] {mid} — trusted ({prev + 1} responses)")
+            LogUtils.success(f"\n[nvidia] {mid} — trusted ({prev + 1} responses)")
             _save_bans()
 
     elapsed = time.time() - _req_start
@@ -621,7 +636,17 @@ def _after_usage(usage: dict):
     mid = _req_model
     if tok_sec < 3:
         _sin(mid, _SLOW_PENALTY)
-        LogUtils.warn(f"[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}")
+        LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}")
+        # Slow = untrust — next request gets 2min leash
+        if _success_count.get(mid, 0) >= _TRUST_THRESHOLD:
+            _success_count[mid] = 0
+            LogUtils.warn(f"\n[nvidia] trust revoked — {mid} too slow")
+        # Below break threshold → break sticky, rotation can find faster model
+        if tok_sec < _STICKY_BREAK_TPS:
+            if _current_sticky_model == _current_model:
+                _sticky_until = 0
+                _current_sticky_model = ""
+                LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
     elif tok_sec > 20:
         base = _base(mid)
         s = _rep(mid)
@@ -629,6 +654,16 @@ def _after_usage(usage: dict):
             pass  # already decaying toward base naturally
         elif s < base + 5:
             _sin(mid, -_FAST_BONUS)  # small above-base boost
+
+    # Sticky: once a model produces good output, hold it for _STICKY_DURATION
+    if mid and completion >= 50 and tok_sec >= 3:
+        _sticky_until = time.time() + _STICKY_DURATION
+        _current_sticky_model = _current_model
+
+    # Skip rotation if sticky is active for the current model
+    if _current_sticky_model and _current_sticky_model == _current_model and time.time() < _sticky_until:
+        return
+
     _rotate()  # ensure best model is active for next request
 
 
@@ -676,6 +711,9 @@ def _status() -> str:
     lines = ["[nvidia] Status"]
     lines.append(f"  Base:    {Config.base_url()}")
     lines.append(f"  Current: {_current_model}")
+    if _current_sticky_model and time.time() < _sticky_until:
+        rem = _sticky_until - time.time()
+        lines.append(f"  Sticky:  {_current_sticky_model} (remaining: {rem:.0f}s)")
     lines.append(f"  Pref:    {len(_preference)} models")
     lines.append("  Reputation:")
     for mid in _preference:
@@ -731,7 +769,7 @@ def _forgive() -> str:
         _banned_until.clear()
     _save_rep()
     _save_bans()
-    LogUtils.success("[nvidia] all reputations reset, bans cleared")
+    LogUtils.success("\n[nvidia] all reputations reset, bans cleared")
     return "[nvidia] forgiven. All models start clean."
 
 
@@ -746,7 +784,7 @@ def _avoid(mid: str) -> str:
     _banned_until[mid] = time.time() + _BAN_DURATION
     _strikes.pop(mid, None)
     _save_bans()
-    LogUtils.warn(f"[nvidia] {mid} — avoided for 24h")
+    LogUtils.warn(f"\n[nvidia] {mid} — avoided for 24h")
     if mid == _current_model:
         _rotate_next()
     return f"[nvidia] avoided {mid} for 24h"
@@ -761,7 +799,7 @@ def _unban(mid: str) -> str:
     _banned_until.pop(mid, None)
     _strikes.pop(mid, None)
     _save_bans()
-    LogUtils.success(f"[nvidia] {mid} — ban removed")
+    LogUtils.success(f"\n[nvidia] {mid} — ban removed")
     return f"[nvidia] unbanned {mid}"
 
 
