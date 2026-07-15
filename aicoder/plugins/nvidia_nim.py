@@ -516,7 +516,8 @@ def _is_timeout(msg: str) -> bool:
 _STRIKE_WINDOW = _env_int("STRIKE_WINDOW", 7200)      # 2h — strikes older than this are ignored
 _STRIKE_LIMIT = _env_int("STRIKE_LIMIT", 3)           # strikes within window → ban
 _BAN_DURATION = _env_int("BAN_DURATION", 86400)       # 24h (strikes, /avoid)
-_BAN_DURATION_404 = _env_int("BAN_DURATION_404", 3600)  # 1h (model not found — may come back)
+_BAN_DURATION_404 = _env_int("BAN_DURATION_404_MIN", 60) * 60   # 404: model not found, may come back
+_BAN_DURATION_SLOW = _env_int("BAN_DURATION_SLOW_MIN", 30) * 60 # slow: model degraded, may recover
 _TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 2)     # successful responses needed to trust model
 _UNTRUSTED_TIMEOUT = _env_int("UNTRUSTED_TIMEOUT", 120)  # 2 min leash for untrusted models
 
@@ -574,7 +575,7 @@ def _on_error(msg: str, status: int):
             _banned_until[mid] = time.time() + _BAN_DURATION_404
             _strikes[mid] = []
             _save_bans()
-            LogUtils.warn(f"\n[nvidia] 404 {mid} — banned 1h (model unavailable)")
+            LogUtils.warn(f"\n[nvidia] 404 {mid} — banned {_BAN_DURATION_404 // 60}m (model unavailable)")
             _rotate_next()
             rotated = True
         elif status == 503:
@@ -645,6 +646,10 @@ def _after_usage(usage: dict):
                 _sticky_until = 0
                 _current_sticky_model = ""
                 LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
+        # Ban slow model to let it recover
+        _banned_until[mid] = time.time() + _BAN_DURATION_SLOW
+        _save_bans()
+        _rotate_next()
     elif tok_sec > 20:
         base = _base(mid)
         s = _rep(mid)
