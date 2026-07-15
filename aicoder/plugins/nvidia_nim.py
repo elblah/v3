@@ -407,13 +407,11 @@ def _load_bans():
                 data = json.load(f)
             _strikes.clear()
             _banned_until.clear()
-            _success_count.clear()
             for mid, strikes in data.get("strikes", {}).items():
                 _strikes[mid] = [t for t in strikes if time.time() - t < 7200]
             for mid, until in data.get("banned_until", {}).items():
                 if time.time() < until:
                     _banned_until[mid] = until
-            _success_count.update(data.get("success_count", {}))
     except (json.JSONDecodeError, IOError):
         pass
 
@@ -426,7 +424,6 @@ def _save_bans():
             json.dump({
                 "strikes": clean_strikes,
                 "banned_until": _banned_until,
-                "success_count": {mid: c for mid, c in _success_count.items() if c > 0},
             }, f, indent=2)
     except IOError as e:
         LogUtils.warn(f"\n[nvidia] failed to save bans: {e}")
