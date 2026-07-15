@@ -219,6 +219,40 @@ def _fetch_models(path) -> bool:
 
 
 # ── Preference ───────────────────────────────────────────────────────
+def _resolve_model(partial: str, avail: set) -> Optional[str]:
+    """Resolve partial model ID to full ID: exact → suffix → substring (first match)."""
+    if partial in avail:
+        return partial
+    for mid in avail:
+        if mid.endswith("/" + partial):
+            return mid
+    for mid in avail:
+        if partial in mid:
+            return mid
+    return None
+
+
+def _resolve_models(partial: str) -> list:
+    """Resolve partial model ID to all matching models, sorted by context size desc.
+    Exact → matches ending with '/partial' → substring match."""
+    matches = []
+    for m in _models:
+        mid = m["id"]
+        if mid == partial:
+            return [mid]
+        if mid.endswith("/" + partial):
+            matches.append(mid)
+    if matches:
+        matches.sort(key=lambda mid: next((m["ctx"] for m in _models if m["id"] == mid), 0), reverse=True)
+        return matches
+    for m in _models:
+        if partial in m["id"]:
+            matches.append(m["id"])
+    if matches:
+        matches.sort(key=lambda mid: next((m["ctx"] for m in _models if m["id"] == mid), 0), reverse=True)
+    return matches
+
+
 def _load_preference():
     global _preference
     order = os.environ.get("NVIDIA_NIM_ORDER", "").strip()
@@ -226,9 +260,30 @@ def _load_preference():
 
     if order:
         ids = [x.strip() for x in order.replace(";", ",").split(",") if x.strip()]
-        _preference = [x for x in ids if x in avail] if avail else [x for x in ids]
+        seen = set()
+        _preference = []
+        for pid in ids:
+            if avail:
+                matches = _resolve_models(pid)
+                for mid in matches:
+                    if mid not in seen:
+                        _preference.append(mid)
+                        seen.add(mid)
+            elif pid not in seen:
+                _preference.append(pid)
+                seen.add(pid)
     else:
-        _preference = [x for x in _DEFAULT_ORDER if x in avail] if avail else list(_DEFAULT_ORDER)
+        seen = set()
+        _preference = []
+        for pid in _DEFAULT_ORDER:
+            if avail:
+                mid = _resolve_model(pid, avail)
+                if mid and mid not in seen:
+                    _preference.append(mid)
+                    seen.add(mid)
+            elif pid not in seen:
+                _preference.append(pid)
+                seen.add(pid)
 
     # Append any cache models not in preference
     _preference += [m["id"] for m in _models if m["id"] not in _preference]
@@ -649,11 +704,8 @@ def _list() -> str:
 
 
 def _set(mid: str) -> str:
-    match = None
-    for m in _models:
-        if m["id"] == mid or m["id"].endswith("/" + mid) or mid in m["id"]:
-            match = m["id"]
-            break
+    avail = {m["id"] for m in _models}
+    match = _resolve_model(mid, avail)
     if not match:
         return f"[nvidia] '{mid}' not found. See /nvidia list"
     _sin(match, 0)  # reset reputation to current (no net change, just freshen)
