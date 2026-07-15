@@ -515,7 +515,8 @@ def _is_timeout(msg: str) -> bool:
 
 _STRIKE_WINDOW = _env_int("STRIKE_WINDOW", 7200)      # 2h — strikes older than this are ignored
 _STRIKE_LIMIT = _env_int("STRIKE_LIMIT", 3)           # strikes within window → ban
-_BAN_DURATION = _env_int("BAN_DURATION", 86400)       # 24h
+_BAN_DURATION = _env_int("BAN_DURATION", 86400)       # 24h (strikes, /avoid)
+_BAN_DURATION_404 = _env_int("BAN_DURATION_404", 3600)  # 1h (model not found — may come back)
 _TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 2)     # successful responses needed to trust model
 _UNTRUSTED_TIMEOUT = _env_int("UNTRUSTED_TIMEOUT", 120)  # 2 min leash for untrusted models
 
@@ -570,10 +571,10 @@ def _on_error(msg: str, status: int):
             rotated = True
         elif status == 404:
             _sin(mid, _404_PENALTY)
-            _banned_until[mid] = time.time() + _BAN_DURATION
+            _banned_until[mid] = time.time() + _BAN_DURATION_404
             _strikes[mid] = []
             _save_bans()
-            LogUtils.warn(f"\n[nvidia] 404 {mid} — banned 24h (model unavailable)")
+            LogUtils.warn(f"\n[nvidia] 404 {mid} — banned 1h (model unavailable)")
             _rotate_next()
             rotated = True
         elif status == 503:
