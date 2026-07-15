@@ -31,6 +31,7 @@ fi
 
 # Remote skills: "display_name|user/repo|skill_dir_in_tarball"
 REMOTE_SKILLS=(
+    "hallmark|nutlope/hallmark|skills/hallmark"
     "caveman|JuliusBrussee/caveman|skills/caveman"
     "caveman-commit|JuliusBrussee/caveman|skills/caveman-commit"
     "caveman-review|JuliusBrussee/caveman|skills/caveman-review"
