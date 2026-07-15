@@ -72,7 +72,6 @@ _strikes: Dict[str, List[float]] = {}  # model_id → [timestamps]
 _banned_until: Dict[str, float] = {}  # model_id → unix timestamp
 _ban_count: Dict[str, int] = {}       # model_id → consecutive ban count (escalation)
 _success_count: Dict[str, int] = {}  # model_id → successful responses
-_struck_this_request: bool = False   # dedup: only one strike per request
 _saved_total_timeout: Optional[int] = None  # saved timeout for untrusted leash
 _lock = threading.Lock()
 _sticky_until: float = 0              # unix timestamp — next rotation allowed
@@ -552,7 +551,7 @@ _BAN_DURATION_SLOW = _env_int("BAN_DURATION_SLOW_MIN", 30) * 60 # slow: model de
 _BAN_DURATION_ESCALATE = _env_int("BAN_DURATION_ESCALATE_MIN", 15) * 60  # base for escalating bans
 _BAN_DURATION_MAX = _env_int("BAN_DURATION_MAX_MIN", 480) * 60  # cap for escalated bans (8h)
 _TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 8)     # successful responses needed to trust model
-_UNTRUSTED_TIMEOUT = _env_int("UNTRUSTED_TIMEOUT", 120)  # 2 min leash for untrusted models
+_UNTRUSTED_TIMEOUT = _env_int("UNTRUSTED_TIMEOUT", 180)  # 3 min leash for untrusted models
 
 
 def _strike(mid: str):
@@ -578,12 +577,11 @@ def _strike(mid: str):
 
 def _before_request(endpoint: str, data: dict):
     """Record timing and model for after_usage. No data mutation."""
-    global _req_start, _req_model, _struck_this_request, _saved_total_timeout
+    global _req_start, _req_model, _saved_total_timeout
     _req_start = time.time()
     _req_model = data.get("model", Config.model())
-    _struck_this_request = False
 
-    # Untrusted models get a short leash — 2 min
+    # Untrusted models get a short leash — 3 min
     mid = _req_model
     if mid and _success_count.get(mid, 0) < _TRUST_THRESHOLD:
         if _saved_total_timeout is None:
@@ -607,7 +605,6 @@ def _on_empty_response():
 
 
 def _on_error(msg: str, status: int):
-    global _struck_this_request
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
@@ -650,10 +647,9 @@ def _on_error(msg: str, status: int):
             _rotate_next()
             rotated = True
         elif status == 0 and _is_timeout(msg):
-            # Model produced zero response within timeout window
-            if not _struck_this_request:
-                _struck_this_request = True
-                _strike(mid)
+            # Model is slow (not broken) — rotate, light rep nudge, no strike
+            _sin(mid, 2)
+            LogUtils.warn(f"\n[nvidia] timeout {mid} — rep -2, rotated")
             _rotate_next()
             rotated = True
         else:
