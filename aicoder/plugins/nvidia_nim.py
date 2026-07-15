@@ -600,7 +600,7 @@ def _on_empty_response():
     _sticky_until = 0
     _current_sticky_model = ""
     _sin(mid, _EMPTY_RESPONSE_PENALTY)
-    _rotate_next(mid)
+    _rotate_next()
     LogUtils.warn(f"\n[nvidia] empty response from {mid} — rep -{_EMPTY_RESPONSE_PENALTY}, rotated")
 
 
