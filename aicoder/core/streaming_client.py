@@ -109,6 +109,7 @@ class StreamingClient:
                 if self._plugin_system:
                     self._plugin_system.call_hooks("before_api_request", endpoint, request_data)
 
+                response = None
                 response = fetch(
                     endpoint,
                     {
