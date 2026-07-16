@@ -664,6 +664,7 @@ def _on_error(msg: str, status: int):
             if _rotate_key():
                 LogUtils.warn(f"\n[nvidia] retrying {mid} with next key")
             else:
+                LogUtils.warn(f"\n[nvidia] all {len(_keys)} keys exhausted for {mid} — rotating model")
                 _rotate_next()
                 rotated = True
         elif status == 404:
