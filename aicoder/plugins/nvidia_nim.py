@@ -774,6 +774,8 @@ def _on_context_bar() -> Optional[str]:
     if not _current_model:
         return None
     s = _rep(_current_model)
+    if len(_keys) > 1:
+        return f"score:{s:.0f} ({_key_index+1}/{len(_keys)})"
     return f"score:{s:.0f}"
 
 
