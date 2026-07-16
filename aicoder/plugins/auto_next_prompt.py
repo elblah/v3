@@ -133,6 +133,17 @@ def create_plugin(ctx):
     def _get_messages():
         return app.message_history.messages
 
+    def _status() -> str:
+        """Build multi-line status display"""
+        c = Config.colors
+        lines = [
+            f"{c['bold']}Auto-next-prompt{c['reset']}",
+            f"  State:       {'ON' if _enabled else 'OFF'}{' (waiting for <prompt>, ' + str(_attempts) + '/' + str(_max_attempts) + ')' if _awaiting_tag else ''}",
+            f"  Goal:        {_goal if _goal else c['dim'] + '(none)' + c['reset']}",
+            f"  Clean-slate: {'ON' if _clean_slate else 'OFF'}",
+        ]
+        return "\n".join(lines)
+
     def _handle_command(args_str: str) -> str:
         global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
 
@@ -142,7 +153,7 @@ def create_plugin(ctx):
             _enabled = True
             _awaiting_tag = False
             _attempts = 0
-            return "Auto-next-prompt enabled."
+            return _status()
 
         if args.lower() == "off":
             _enabled = False
@@ -185,14 +196,7 @@ def create_plugin(ctx):
             return f"Clean-slate: {'ON' if _clean_slate else 'OFF'}"
 
         # Show status (multi-line)
-        c = Config.colors
-        lines = [
-            f"{c['bold']}Auto-next-prompt{c['reset']}",
-            f"  State:       {'ON' if _enabled else 'OFF'}{' (waiting for <prompt>, ' + str(_attempts) + '/' + str(_max_attempts) + ')' if _awaiting_tag else ''}",
-            f"  Goal:        {_goal if _goal else c['dim'] + '(none)' + c['reset']}",
-            f"  Clean-slate: {'ON' if _clean_slate else 'OFF'}",
-        ]
-        return "\n".join(lines)
+        return _status()
 
     def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
         global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
