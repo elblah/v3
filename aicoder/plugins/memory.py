@@ -72,6 +72,9 @@ def create_plugin(ctx):
             return user_input
         if not _substantial_response:
             return user_input
+        # Skip nudge on commands — they're not conversational turns
+        if user_input.strip().startswith("/"):
+            return user_input
         if _last_memory_write > 0 and (time.time() - _last_memory_write) < NUDGE_SECONDS:
             return user_input
         _substantial_response = False
