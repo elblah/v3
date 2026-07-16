@@ -736,30 +736,32 @@ def _after_usage(usage: dict):
     elapsed = time.time() - _req_start
     tok_sec = completion / elapsed if elapsed > 0 else 999
     mid = _req_model
-    if tok_sec < 3:
-        _sin(mid, _SLOW_PENALTY)
-        LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}")
-        # Slow = untrust — next request gets 2min leash
-        if _success_count.get(mid, 0) >= _TRUST_THRESHOLD:
-            _success_count[mid] = 0
-            LogUtils.warn(f"\n[nvidia] trust revoked — {mid} too slow")
-        # Below break threshold → break sticky, rotation can find faster model
-        if tok_sec < _STICKY_BREAK_TPS:
-            if _current_sticky_model == _current_model:
-                _sticky_until = 0
-                _current_sticky_model = ""
-                LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
-        # Ban slow model to let it recover
-        _banned_until[mid] = time.time() + _BAN_DURATION_SLOW
-        _save_bans()
-        _rotate_next()
-    elif tok_sec > 20:
-        base = _base(mid)
-        s = _rep(mid)
-        if s < base:
-            pass  # already decaying toward base naturally
-        elif s < base + 5:
-            _sin(mid, -_FAST_BONUS)  # small above-base boost
+    # tok/s meaningless for short responses — latency dominates
+    if completion >= 20:
+        if tok_sec < 3:
+            _sin(mid, _SLOW_PENALTY)
+            LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}")
+            # Slow = untrust — next request gets 2min leash
+            if _success_count.get(mid, 0) >= _TRUST_THRESHOLD:
+                _success_count[mid] = 0
+                LogUtils.warn(f"\n[nvidia] trust revoked — {mid} too slow")
+            # Below break threshold → break sticky, rotation can find faster model
+            if tok_sec < _STICKY_BREAK_TPS:
+                if _current_sticky_model == _current_model:
+                    _sticky_until = 0
+                    _current_sticky_model = ""
+                    LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
+            # Ban slow model to let it recover
+            _banned_until[mid] = time.time() + _BAN_DURATION_SLOW
+            _save_bans()
+            _rotate_next()
+        elif tok_sec > 20:
+            base = _base(mid)
+            s = _rep(mid)
+            if s < base:
+                pass  # already decaying toward base naturally
+            elif s < base + 5:
+                _sin(mid, -_FAST_BONUS)  # small above-base boost
 
     # Sticky: once a model produces good output, hold it for _STICKY_DURATION
     if mid and completion >= 50 and tok_sec >= 3:
