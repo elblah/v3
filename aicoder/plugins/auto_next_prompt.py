@@ -10,6 +10,7 @@ Commands:
 - /auto-next-prompt goal ...        - Set/clear goal for drift guard
 - /auto-next-prompt clean-slate on  - Wipe history before each prompt
 - /auto-next-prompt clean-slate off - Keep history (default)
+- /auto-next-prompt history         - Show prompt history with timings
 - /auto-next-prompt help            - Show usage
 
 Env vars:
@@ -22,6 +23,7 @@ Hook: after_ai_processing - returns next prompt or continuation request
 import json
 import os
 import re
+import time
 from typing import Optional
 
 from aicoder.utils.log import LogUtils
@@ -76,7 +78,7 @@ _enabled = False
 _awaiting_tag = False
 _attempts = 0
 _goal = ""
-_last_prompt = ""
+_prompt_history = []  # list of {"prompt": str, "started_at": float, "ended_at": float|None}
 _clean_slate = os.environ.get("AUTO_NEXT_CLEAN_SLATE", "1") == "1"
 _max_attempts = int(os.environ.get("AUTO_NEXT_MAX_ATTEMPTS", "2"))
 
@@ -171,7 +173,7 @@ def create_plugin(ctx):
                 "  goal off        - clear goal\n"
                 "  clean-slate on  - wipe history before next prompt\n"
                 "  clean-slate off - keep history (default)\n"
-                "  last-prompt     - show last <prompt> extracted\n"
+                "  history         - show prompt history with timings\n"
                 "  help            - this message"
             )
 
@@ -197,16 +199,30 @@ def create_plugin(ctx):
                 return "Clean-slate: OFF"
             return f"Clean-slate: {'ON' if _clean_slate else 'OFF'}"
 
-        if args.lower() == "last-prompt":
-            if _last_prompt:
-                return f"Last <prompt>:\n{_last_prompt}"
-            return "No <prompt> extracted yet."
+        if args.lower() in ("history", "last-prompt"):
+            if not _prompt_history:
+                return "No prompts in history."
+            c = Config.colors
+            lines = []
+            now = time.time()
+            for i, entry in enumerate(_prompt_history, 1):
+                prompt = entry["prompt"]
+                elapsed = now - entry["started_at"]
+                if entry["ended_at"] is not None:
+                    duration = entry["ended_at"] - entry["started_at"]
+                    status = f"took {duration/60:.1f} min"
+                else:
+                    status = f"ongoing for {elapsed/60:.1f} min"
+                lines.append(f"{c['bold']}{i}{c['reset']} - {c['dim']}{status}{c['reset']}")
+                lines.append(f"    {prompt}")
+                lines.append("")
+            return "\n".join(lines).rstrip()
 
         # Show status (multi-line)
         return _status()
 
     def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
-        global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate, _last_prompt
+        global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate, _prompt_history
         c = Config.colors
 
         if not _enabled:
@@ -225,7 +241,12 @@ def create_plugin(ctx):
         if prompt:
             _awaiting_tag = False
             _attempts = 0
-            _last_prompt = prompt
+
+            # Close previous prompt timing
+            if _prompt_history and _prompt_history[-1]["ended_at"] is None:
+                _prompt_history[-1]["ended_at"] = time.time()
+            # Record new prompt
+            _prompt_history.append({"prompt": prompt, "started_at": time.time(), "ended_at": None})
 
             if prompt.upper() == "TASK_COMPLETE":
                 _enabled = False
