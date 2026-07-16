@@ -76,6 +76,7 @@ _enabled = False
 _awaiting_tag = False
 _attempts = 0
 _goal = ""
+_last_prompt = ""
 _clean_slate = os.environ.get("AUTO_NEXT_CLEAN_SLATE", "1") == "1"
 _max_attempts = int(os.environ.get("AUTO_NEXT_MAX_ATTEMPTS", "2"))
 
@@ -170,6 +171,7 @@ def create_plugin(ctx):
                 "  goal off        - clear goal\n"
                 "  clean-slate on  - wipe history before next prompt\n"
                 "  clean-slate off - keep history (default)\n"
+                "  last-prompt     - show last <prompt> extracted\n"
                 "  help            - this message"
             )
 
@@ -195,11 +197,16 @@ def create_plugin(ctx):
                 return "Clean-slate: OFF"
             return f"Clean-slate: {'ON' if _clean_slate else 'OFF'}"
 
+        if args.lower() == "last-prompt":
+            if _last_prompt:
+                return f"Last <prompt>:\n{_last_prompt}"
+            return "No <prompt> extracted yet."
+
         # Show status (multi-line)
         return _status()
 
     def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
-        global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
+        global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate, _last_prompt
         c = Config.colors
 
         if not _enabled:
@@ -218,6 +225,7 @@ def create_plugin(ctx):
         if prompt:
             _awaiting_tag = False
             _attempts = 0
+            _last_prompt = prompt
 
             if prompt.upper() == "TASK_COMPLETE":
                 _enabled = False
