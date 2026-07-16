@@ -77,6 +77,10 @@ _lock = threading.Lock()
 _sticky_until: float = 0              # unix timestamp — next rotation allowed
 _current_sticky_model: str = ""       # model that earned the sticky
 
+# Key rotation — multiple API keys to spread 429 limits
+_keys: List[str] = []   # available API keys
+_key_index: int = 0     # current key index in _keys
+
 # Reasoning format for NVIDIA — always "openai" (OpenAI-compatible API).
 # NVIDIA doesn't support the `thinking` extra_body that "deepseek"/"glm"
 # formats send. Only top-level `reasoning_effort` works.
@@ -104,6 +108,44 @@ _DEFAULT_ORDER = [
 ]
 
 
+# ── Key rotation ─────────────────────────────────────────────────────
+def _load_keys():
+    global _keys, _key_index
+    raw = os.environ.get("NVIDIA_NIM_KEYS", "").strip()
+    if not raw:
+        return
+    _keys = [k.strip() for k in raw.split(",") if k.strip()]
+    if _keys:
+        _key_index = 0
+        os.environ["OPENAI_API_KEY"] = _keys[0]
+        LogUtils.warn(f"\n[nvidia] loaded {len(_keys)} API keys")
+
+
+def _rotate_key() -> bool:
+    """Rotate to next key. Returns True if rotated, False if exhausted."""
+    if len(_keys) <= 1:
+        return False
+    global _key_index
+    _key_index += 1
+    if _key_index >= len(_keys):
+        return False  # all keys tried, exhausted
+    new_key = _keys[_key_index]
+    os.environ["OPENAI_API_KEY"] = new_key
+    mask = new_key[:8] + "..." if len(new_key) > 8 else new_key
+    LogUtils.warn(f"\n[nvidia] key rotated → {_key_index+1}/{len(_keys)} ({mask})")
+    return True
+
+
+def _reset_key():
+    """Reset to first key (call when switching models)."""
+    if len(_keys) <= 1:
+        return
+    global _key_index
+    _key_index = 0
+    os.environ["OPENAI_API_KEY"] = _keys[0]
+    LogUtils.warn(f"\n[nvidia] key reset → 1/{len(_keys)}")
+
+
 # ── Plugin entry ─────────────────────────────────────────────────────
 def create_plugin(ctx):
     base = Config.base_url().rstrip("/")
@@ -114,6 +156,7 @@ def create_plugin(ctx):
     _load_rep()
     _load_preference()
     _load_bans()
+    _load_keys()
 
     model = Config.model()
     if model != "auto":
@@ -358,6 +401,7 @@ def _set_active(mid: str):
     global _current_model
     if not mid or mid == _current_model:
         return
+    _reset_key()
     os.environ["API_MODEL"] = mid
     os.environ["OPENAI_MODEL"] = mid  # Config.model() reads OPENAI_MODEL first
     fmt = _fmt(mid)
@@ -617,8 +661,11 @@ def _on_error(msg: str, status: int):
         if status == 429:
             _sin(mid, _429_PENALTY)
             LogUtils.warn(f"\n[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
-            _rotate_next()
-            rotated = True
+            if _rotate_key():
+                LogUtils.warn(f"\n[nvidia] retrying {mid} with next key")
+            else:
+                _rotate_next()
+                rotated = True
         elif status == 404:
             _sin(mid, _404_PENALTY)
             _banned_until[mid] = time.time() + _BAN_DURATION_404
@@ -772,6 +819,9 @@ def _status() -> str:
     lines = ["[nvidia] Status"]
     lines.append(f"  Base:    {Config.base_url()}")
     lines.append(f"  Current: {_current_model}")
+    if _keys:
+        key_label = _keys[_key_index][:8] + "..." if len(_keys[_key_index]) > 8 else _keys[_key_index]
+        lines.append(f"  Key:     {_key_index+1}/{len(_keys)} ({key_label})")
     if _current_sticky_model and time.time() < _sticky_until:
         rem = _sticky_until - time.time()
         lines.append(f"  Sticky:  {_current_sticky_model} (remaining: {rem:.0f}s)")
