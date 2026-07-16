@@ -8,12 +8,15 @@ Commands:
   /timeit stats         - Show current session stats
   /timeit history       - Show task history
   /timeit reset         - Clear history
+  /timeit session on|off  - Show session time in context bar
   /timeit               - Toggle display (on/off)
 
 Also prints a dimmed timing line before each user/AI prompt when enabled.
 """
 
 import time
+from typing import Optional
+
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 from aicoder.utils.shell_utils import execute_command_sync
@@ -27,6 +30,7 @@ def create_plugin(ctx):
 
     # Display toggle
     display_enabled = False
+    session_display_enabled = False
 
     # Current task state
     current_task = None  # None means no task tracking
@@ -94,7 +98,7 @@ def create_plugin(ctx):
     def handle_timeit_command(args_raw):
         """Handle /timeit command"""
         nonlocal current_task, task_start, task_name, task_count, task_history
-        nonlocal display_enabled, task_api_time_sum
+        nonlocal display_enabled, session_display_enabled, task_api_time_sum
 
         args = args_raw.strip().split() if args_raw else []
         action = args[0] if args else ""
@@ -114,8 +118,22 @@ def create_plugin(ctx):
             else:
                 LogUtils.print(f"{Config.colors['dim']}No active task tracking{Config.colors['reset']}")
             display = f"{Config.colors['green']}ON{Config.colors['reset']}" if display_enabled else f"{Config.colors['dim']}OFF{Config.colors['reset']}"
+            session_disp = f"{Config.colors['green']}ON{Config.colors['reset']}" if session_display_enabled else f"{Config.colors['dim']}OFF{Config.colors['reset']}"
             LogUtils.print(f"Display: {display}")
+            LogUtils.print(f"Session display: {session_disp}")
             LogUtils.print(f"Session total: {fmt_duration(elapsed)}")
+
+        elif action == "session":
+            sub = rest.lower()
+            if sub == "on":
+                session_display_enabled = True
+                LogUtils.print(f"{Config.colors['green']}[+] Session time in context bar: ON{Config.colors['reset']}")
+            elif sub == "off":
+                session_display_enabled = False
+                LogUtils.print(f"{Config.colors['dim']}[-] Session time in context bar: OFF{Config.colors['reset']}")
+            else:
+                state = "ON" if session_display_enabled else "OFF"
+                LogUtils.print(f"Session time in context bar: {state}")
 
         elif action == "start":
             # Auto-stop any running task before starting a new one
@@ -221,6 +239,13 @@ def create_plugin(ctx):
         if display_enabled:
             print_timing_line()
 
+    def _on_context_bar() -> Optional[str]:
+        """Show session elapsed in context bar"""
+        if not session_display_enabled:
+            return None
+        elapsed = (time.time() - session_start) / 60
+        return f"{elapsed:.1f}m"
+
     # Hook before user prompt - timing line
     def _before_prompt_hook():
         if current_task or display_enabled:
@@ -234,6 +259,8 @@ def create_plugin(ctx):
             print_timing_line()
 
     ctx.register_hook("before_ai_processing", _before_ai_hook)
+
+    ctx.register_hook("on_context_bar", _on_context_bar)
 
     # Register the /timeit command
     ctx.register_command("timeit", handle_timeit_command, "Time tracking for tasks")
