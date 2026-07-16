@@ -80,6 +80,7 @@ _current_sticky_model: str = ""       # model that earned the sticky
 # Key rotation — multiple API keys to spread 429 limits
 _keys: List[str] = []   # available API keys
 _key_index: int = 0     # current key index in _keys
+_key_tries: int = 0     # consecutive key rotations (reset on success/model switch)
 
 # Reasoning format for NVIDIA — always "openai" (OpenAI-compatible API).
 # NVIDIA doesn't support the `thinking` extra_body that "deepseek"/"glm"
@@ -122,13 +123,14 @@ def _load_keys():
 
 
 def _rotate_key() -> bool:
-    """Rotate to next key. Returns True if rotated, False if exhausted."""
+    """Rotate to next key (wraps around). Returns True if rotated, False if all keys tried."""
     if len(_keys) <= 1:
         return False
-    global _key_index
-    _key_index += 1
-    if _key_index >= len(_keys):
-        return False  # all keys tried, exhausted
+    global _key_index, _key_tries
+    _key_tries += 1
+    if _key_tries >= len(_keys):
+        return False  # all keys tried in this round
+    _key_index = (_key_index + 1) % len(_keys)
     new_key = _keys[_key_index]
     os.environ["OPENAI_API_KEY"] = new_key
     mask = new_key[:8] + "..." if len(new_key) > 8 else new_key
@@ -137,11 +139,12 @@ def _rotate_key() -> bool:
 
 
 def _reset_key():
-    """Reset to first key (call when switching models)."""
+    """Reset to first key (call when switching models or on success)."""
     if len(_keys) <= 1:
         return
-    global _key_index
+    global _key_index, _key_tries
     _key_index = 0
+    _key_tries = 0
     os.environ["OPENAI_API_KEY"] = _keys[0]
     LogUtils.warn(f"\n[nvidia] key reset → 1/{len(_keys)}")
 
@@ -713,13 +716,16 @@ def _on_error(msg: str, status: int):
 
 def _after_usage(usage: dict):
     """Award reputation for fast responses, sin for slow."""
-    global _saved_max_backoff, _saved_total_timeout, _sticky_until, _current_sticky_model
+    global _saved_max_backoff, _saved_total_timeout, _sticky_until, _current_sticky_model, _key_tries
     if _saved_max_backoff is not None:
         Config.set_runtime_max_backoff(_saved_max_backoff)
         _saved_max_backoff = None
     if _saved_total_timeout is not None:
         Config.set_runtime_total_timeout(_saved_total_timeout)
         _saved_total_timeout = None
+
+    # Reset key rotation tracking on successful response
+    _key_tries = 0
 
     mid = _req_model
     completion = usage.get("completion_tokens", 0)
