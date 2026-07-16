@@ -723,9 +723,6 @@ def _after_usage(usage: dict):
 
     mid = _req_model
     completion = usage.get("completion_tokens", 0)
-    if completion < 50:
-        _rotate()
-        return
 
     # Trust: model responded with meaningful output
     if mid:
