@@ -19,6 +19,7 @@ Env vars:
 Hook: after_ai_processing - returns next prompt or continuation request
 """
 
+import json
 import os
 import re
 from typing import Optional
@@ -78,6 +79,33 @@ _goal = ""
 _clean_slate = os.environ.get("AUTO_NEXT_CLEAN_SLATE", "1") == "1"
 _max_attempts = int(os.environ.get("AUTO_NEXT_MAX_ATTEMPTS", "2"))
 
+_STATE_FILE = os.path.join(os.getcwd(), ".aicoder", "auto-next-prompt.json")
+
+
+def _load_state() -> None:
+    """Load persisted goal and clean_slate from disk"""
+    global _goal, _clean_slate
+    try:
+        with open(_STATE_FILE) as f:
+            data = json.load(f)
+        if "goal" in data:
+            _goal = data["goal"]
+        if "clean_slate" in data:
+            _clean_slate = data["clean_slate"]
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+
+def _save_state() -> None:
+    """Persist goal and clean_slate to disk"""
+    global _goal, _clean_slate
+    os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
+    try:
+        with open(_STATE_FILE, "w") as f:
+            json.dump({"goal": _goal, "clean_slate": _clean_slate}, f)
+    except OSError:
+        pass
+
 
 def _get_last_response(messages: list) -> str:
     """Get the last AI response content"""
@@ -97,6 +125,8 @@ def create_plugin(ctx):
     """Create auto-next-prompt plugin"""
 
     global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
+
+    _load_state()
 
     app = ctx.app
 
@@ -136,32 +166,33 @@ def create_plugin(ctx):
             rest = args[4:].strip()
             if rest.lower() in ("off", "clear", ""):
                 _goal = ""
+                _save_state()
                 return "Goal cleared."
             _goal = rest
+            _save_state()
             return f"Goal set: {_goal}"
 
         if args.lower().startswith("clean-slate"):
             rest = args[11:].strip().lower()
             if rest == "on":
                 _clean_slate = True
+                _save_state()
                 return "Clean-slate: ON (history wiped before each prompt)"
             if rest == "off":
                 _clean_slate = False
+                _save_state()
                 return "Clean-slate: OFF"
             return f"Clean-slate: {'ON' if _clean_slate else 'OFF'}"
 
-        # Show status
-        parts = []
-        if _enabled:
-            parts.append("enabled")
-            if _awaiting_tag:
-                parts.append(f"(waiting for <prompt>, {_attempts}/{_max_attempts})")
-        else:
-            parts.append("disabled")
-        if _goal:
-            parts.append(f"| goal: {_goal}")
-        parts.append(f"| clean-slate: {'ON' if _clean_slate else 'OFF'}")
-        return "Auto-next-prompt: " + " ".join(parts)
+        # Show status (multi-line)
+        c = Config.colors
+        lines = [
+            f"{c['bold']}Auto-next-prompt{c['reset']}",
+            f"  State:       {'ON' if _enabled else 'OFF'}{' (waiting for <prompt>, ' + str(_attempts) + '/' + str(_max_attempts) + ')' if _awaiting_tag else ''}",
+            f"  Goal:        {_goal if _goal else c['dim'] + '(none)' + c['reset']}",
+            f"  Clean-slate: {'ON' if _clean_slate else 'OFF'}",
+        ]
+        return "\n".join(lines)
 
     def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
         global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
