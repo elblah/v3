@@ -780,7 +780,7 @@ class Config:
         Get context compact percentage
         
         """
-        return int(os.environ.get("CONTEXT_COMPACT_PERCENTAGE", "0"))
+        return int(os.environ.get("CONTEXT_COMPACT_PERCENTAGE", "95"))
 
     @staticmethod
     def auto_compact_threshold() -> int:
