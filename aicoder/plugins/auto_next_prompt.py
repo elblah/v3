@@ -4,10 +4,17 @@ Auto-Next-Prompt Plugin - Automatically suggest next actions
 Monitors AI completion and generates continuation prompts.
 
 Commands:
-- /auto-next-prompt on       - Enable auto-continuation
-- /auto-next-prompt off      - Disable
-- /auto-next-prompt          - Show status
-- /auto-next-prompt goal ... - Set/clear goal for drift guard
+- /auto-next-prompt on              - Enable auto-continuation
+- /auto-next-prompt off             - Disable
+- /auto-next-prompt                 - Show status
+- /auto-next-prompt goal ...        - Set/clear goal for drift guard
+- /auto-next-prompt clean-slate on  - Wipe history before each prompt
+- /auto-next-prompt clean-slate off - Keep history (default)
+- /auto-next-prompt help            - Show usage
+
+Env vars:
+- AUTO_NEXT_CLEAN_SLATE=1  (default: 1) wipe history before prompt
+- AUTO_NEXT_MAX_ATTEMPTS=N (default: 2)
 
 Hook: after_ai_processing - returns next prompt or continuation request
 """
@@ -68,6 +75,7 @@ _enabled = False
 _awaiting_tag = False
 _attempts = 0
 _goal = ""
+_clean_slate = os.environ.get("AUTO_NEXT_CLEAN_SLATE", "1") == "1"
 _max_attempts = int(os.environ.get("AUTO_NEXT_MAX_ATTEMPTS", "2"))
 
 
@@ -88,7 +96,7 @@ def _get_last_response(messages: list) -> str:
 def create_plugin(ctx):
     """Create auto-next-prompt plugin"""
 
-    global _enabled, _awaiting_tag, _attempts, _goal
+    global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
 
     app = ctx.app
 
@@ -96,7 +104,7 @@ def create_plugin(ctx):
         return app.message_history.messages
 
     def _handle_command(args_str: str) -> str:
-        global _enabled, _awaiting_tag, _attempts, _goal
+        global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
 
         args = args_str.strip()
 
@@ -115,11 +123,13 @@ def create_plugin(ctx):
         if args.lower() in ("help", "?"):
             return (
                 "Auto-next-prompt subcommands:\n"
-                "  on           - enable auto-continuation\n"
-                "  off          - disable\n"
-                "  goal <text>  - set task goal (drift guard)\n"
-                "  goal off     - clear goal\n"
-                "  help         - this message"
+                "  on              - enable auto-continuation\n"
+                "  off             - disable\n"
+                "  goal <text>     - set task goal (drift guard)\n"
+                "  goal off        - clear goal\n"
+                "  clean-slate on  - wipe history before next prompt\n"
+                "  clean-slate off - keep history (default)\n"
+                "  help            - this message"
             )
 
         if args.lower().startswith("goal"):
@@ -130,22 +140,31 @@ def create_plugin(ctx):
             _goal = rest
             return f"Goal set: {_goal}"
 
+        if args.lower().startswith("clean-slate"):
+            rest = args[11:].strip().lower()
+            if rest == "on":
+                _clean_slate = True
+                return "Clean-slate: ON (history wiped before each prompt)"
+            if rest == "off":
+                _clean_slate = False
+                return "Clean-slate: OFF"
+            return f"Clean-slate: {'ON' if _clean_slate else 'OFF'}"
+
         # Show status
         parts = []
         if _enabled:
             parts.append("enabled")
             if _awaiting_tag:
                 parts.append(f"(waiting for <prompt>, {_attempts}/{_max_attempts})")
-            if _goal:
-                parts.append(f"| goal: {_goal}")
-            return "Auto-next-prompt: " + " ".join(parts)
         else:
-            if _goal:
-                return f"Auto-next-prompt: disabled | goal: {_goal}"
-            return "Auto-next-prompt: disabled"
+            parts.append("disabled")
+        if _goal:
+            parts.append(f"| goal: {_goal}")
+        parts.append(f"| clean-slate: {'ON' if _clean_slate else 'OFF'}")
+        return "Auto-next-prompt: " + " ".join(parts)
 
     def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
-        global _enabled, _awaiting_tag, _attempts, _goal
+        global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate
         c = Config.colors
 
         if not _enabled:
@@ -162,9 +181,18 @@ def create_plugin(ctx):
         prompt = _extract_prompt_tag(response)
 
         if prompt:
-            # Found it - use this as next prompt
             _awaiting_tag = False
             _attempts = 0
+
+            if prompt.upper() == "TASK_COMPLETE":
+                _enabled = False
+                LogUtils.print()
+                LogUtils.print(f"{c['brightMagenta']}[auto-next-prompt]{c['reset']} {c['green']}task complete - auto-next-prompt disabled{c['reset']}")
+                return None
+
+            if _clean_slate:
+                app.message_history.clear()
+                LogUtils.print(f"{c['brightMagenta']}[auto-next-prompt]{c['reset']} {c['dim']}history wiped (clean-slate){c['reset']}")
             LogUtils.print()  # separator
             LogUtils.print(f"{c['brightMagenta']}[auto-next-prompt]{c['reset']} {c['brightCyan']}Next action:{c['reset']} {prompt}")
             return prompt
