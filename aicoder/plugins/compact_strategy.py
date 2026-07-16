@@ -5,9 +5,9 @@ Triggers compaction when context reaches threshold, but preserves
 configurable amount of context instead of brutal full compaction.
 
 Env vars:
-  COMPACT_STRATEGY_THRESHOLD     - Trigger compaction at X% of context size (default: disabled)
+  COMPACT_STRATEGY_THRESHOLD     - Trigger compaction at X% of context size (default: 80)
   COMPACT_STRATEGY_KEEP_MESSAGES - Keep N newest messages (mutually exclusive with KEEP_PERCENT)
-  COMPACT_STRATEGY_KEEP_PERCENT  - Keep N% of tokens from newest messages (mutually exclusive)
+  COMPACT_STRATEGY_KEEP_PERCENT  - Keep N% of tokens from newest messages (default: 15, mutually exclusive)
 
 Example:
   COMPACT_STRATEGY_THRESHOLD=50 COMPACT_STRATEGY_KEEP_MESSAGES=30 aicoder
@@ -15,6 +15,9 @@ Example:
 
   COMPACT_STRATEGY_THRESHOLD=50 COMPACT_STRATEGY_KEEP_PERCENT=20 aicoder
   # When context > 50%, compact but keep 20% of current tokens
+
+Three-tier compaction:
+  cache_compact (65-80%) → compact_strategy (80-95%) → core auto-compact (95%)
 """
 
 import os
@@ -28,8 +31,8 @@ def create_plugin(ctx):
     """Create compact strategy plugin"""
     app = ctx.app
 
-    # Read configuration
-    threshold_pct = int(os.environ.get("COMPACT_STRATEGY_THRESHOLD", "0"))
+    # Read configuration — env without defaults for mutual exclusion check
+    threshold_pct = int(os.environ.get("COMPACT_STRATEGY_THRESHOLD", "80"))
     keep_messages = os.environ.get("COMPACT_STRATEGY_KEEP_MESSAGES")
     keep_percent = os.environ.get("COMPACT_STRATEGY_KEEP_PERCENT")
 
@@ -39,6 +42,10 @@ def create_plugin(ctx):
     if keep_messages and keep_percent:
         LogUtils.error("[!] compact_strategy: KEEP_MESSAGES and KEEP_PERCENT are mutually exclusive")
         return {}
+
+    # Apply defaults
+    if not keep_messages and not keep_percent:
+        keep_percent = "15"
 
     # Track last compaction size to avoid re-triggering
     _last_compact_size = 0

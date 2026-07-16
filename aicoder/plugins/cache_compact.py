@@ -17,11 +17,11 @@ Tier boundaries (coexists with existing tiers):
 - [95%, 100%] -> core auto-compact (brutal, untouched)
 
 Env:
-- CACHE_COMPACT_THRESHOLD  trigger % of context size (default 50, 0 = disabled)
+- CACHE_COMPACT_THRESHOLD  trigger % of context size (default 65, 0 = disabled)
 - CACHE_COMPACT_DEFER      upper bound % to defer to existing tiers (default 80)
 - CACHE_COMPACT_MAXFAILS   consecutive failures before standing down (default 3)
-- CACHE_COMPACT_FORCE=1    use ultra-forceful instruction (default: forceful)
-- CACHE_COMPACT_KEEP_PERCENT  keep N% of recent context after [SUMMARY] (default 0 = brutal)
+- CACHE_COMPACT_FORCE=1    use ultra-forceful instruction (default: soft)
+- CACHE_COMPACT_KEEP_PERCENT  keep N% of recent context after [SUMMARY] (default 15)
 - CACHE_COMPACT_DEBUG=1    verbose log: per-msg fail count & suggestion events
 """
 
@@ -170,7 +170,12 @@ def _compact(messages, app, state, keep_percent=0):
     state["awaiting"] = False
     state["fails"] = 0
     app.set_next_prompt(
-        "Context compacted above. Continue working if you have an unfinished task."
+        "<system-reminder>\n"
+        "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
+        "from a previous context window — you wrote it, not the user. "
+        "This is an automatic continuation prompt, not a user message. "
+        "Resume your task from where you left off.\n"
+        "</system-reminder>"
     )
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
@@ -220,7 +225,12 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     state["awaiting"] = False
     state["fails"] = 0
     app.set_next_prompt(
-        "Context compacted above. Continue working if you have an unfinished task."
+        "<system-reminder>\n"
+        "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
+        "from a previous context window — you wrote it, not the user. "
+        "This is an automatic continuation prompt, not a user message. "
+        "Resume your task from where you left off.\n"
+        "</system-reminder>"
     )
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
@@ -234,12 +244,12 @@ def create_plugin(ctx):
     app = ctx.app
 
     cfg = {
-        "threshold": int(os.environ.get("CACHE_COMPACT_THRESHOLD", "50")),
+        "threshold": int(os.environ.get("CACHE_COMPACT_THRESHOLD", "65")),
         "defer": int(os.environ.get("CACHE_COMPACT_DEFER", "80")),
         "max_fails": int(os.environ.get("CACHE_COMPACT_MAXFAILS", "3")),
         "force": os.environ.get("CACHE_COMPACT_FORCE", "").lower()
         in ("1", "true", "yes"),
-        "keep_percent": int(os.environ.get("CACHE_COMPACT_KEEP_PERCENT", "0")),
+        "keep_percent": int(os.environ.get("CACHE_COMPACT_KEEP_PERCENT", "15")),
     }
 
     state = {"awaiting": False, "fails": 0}
