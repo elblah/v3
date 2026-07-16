@@ -319,8 +319,18 @@ def create_plugin(ctx):
         LogUtils.print(f"{c['brightMagenta']}[auto-next-prompt]{c['reset']} asking for next action...")
         return _build_inject_message(_goal, _task_complete)
 
+    def _on_context_bar() -> Optional[str]:
+        """Append prompt count + elapsed time to context bar"""
+        if not _enabled or not _prompt_history:
+            return None
+        idx = len(_prompt_history)
+        last = _prompt_history[-1]
+        elapsed = (time.time() - last["started_at"]) / 60
+        return f"auto#{idx} ({elapsed:.1f}min)"
+
     # Register hooks
     ctx.register_hook("after_ai_processing", _on_after_ai_processing)
+    ctx.register_hook("on_context_bar", _on_context_bar)
 
     # Register command
     ctx.register_command("auto-next-prompt", _handle_command, description="Auto-generate next prompts based on goal")
