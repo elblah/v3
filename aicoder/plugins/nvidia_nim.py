@@ -51,7 +51,8 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 _RECOVERY_RATE = _env_float("RECOVERY_RATE", 2.0)      # rep points recovered per minute toward base
-_SLOW_PENALTY = _env_float("SLOW_PENALTY", 10.0)       # rep penalty for <3 tok/s
+_SLOW_PENALTY = _env_float("SLOW_PENALTY", 10.0)
+_TRUST_DECREMENT_SLOW = _env_int("TRUST_DECREMENT_SLOW", 1)  # levels lost per slow response       # rep penalty for <3 tok/s
 _429_PENALTY = _env_float("429_PENALTY", 10.0)          # rep penalty for 429
 _404_PENALTY = _env_float("404_PENALTY", 20.0)          # rep penalty for 404 (model unavailable/deprecated)
 _FAST_BONUS = _env_float("FAST_BONUS", 1.0)             # rep bonus for fast responses
@@ -597,8 +598,9 @@ _BAN_DURATION_404 = _env_int("BAN_DURATION_404_MIN", 60) * 60   # 404: model not
 _BAN_DURATION_SLOW = _env_int("BAN_DURATION_SLOW_MIN", 30) * 60 # slow: model degraded, may recover
 _BAN_DURATION_ESCALATE = _env_int("BAN_DURATION_ESCALATE_MIN", 15) * 60  # base for escalating bans
 _BAN_DURATION_MAX = _env_int("BAN_DURATION_MAX_MIN", 480) * 60  # cap for escalated bans (8h)
-_TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 8)     # successful responses needed to trust model
-_UNTRUSTED_TIMEOUT = _env_int("UNTRUSTED_TIMEOUT", 180)  # 3 min leash for untrusted models
+_TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 8)     # successes to be considered trusted
+_TRUST_LEVEL_CAP = _env_int("TRUST_LEVEL_CAP", 5)      # max trust level
+_TRUST_LEVEL_MINUTES = _env_int("TRUST_LEVEL_MINUTES", 1)  # minutes per trust level
 
 
 def _strike(mid: str):
@@ -628,27 +630,32 @@ def _before_request(endpoint: str, data: dict):
     _req_start = time.time()
     _req_model = data.get("model", Config.model())
 
-    # Untrusted models get a short leash — 3 min
+    # Trust-level based timeout: level 1 → 1 min, level 5 → 5 min cap
+    # Level = successful responses + 1 (starts at 1 minute)
     mid = _req_model
-    if mid and _success_count.get(mid, 0) < _TRUST_THRESHOLD:
+    if mid:
+        level = _success_count.get(mid, 0)
+        timeout_min = min(level, _TRUST_LEVEL_CAP - 1) + 1
+        timeout_sec = timeout_min * _TRUST_LEVEL_MINUTES * 60
         if _saved_total_timeout is None:
             _saved_total_timeout = Config.total_timeout()
-            Config.set_runtime_total_timeout(_UNTRUSTED_TIMEOUT)
+        Config.set_runtime_total_timeout(timeout_sec)
 
 
 _EMPTY_RESPONSE_PENALTY = int(os.environ.get("NIM_EMPTY_RESPONSE_PENALTY", "3"))
 
 def _on_empty_response():
-    """Model returned empty response — break sticky, light rep nudge to break loops."""
+    """Model returned empty response — break sticky, rotate, reset trust level."""
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
     global _sticky_until, _current_sticky_model
     _sticky_until = 0
     _current_sticky_model = ""
+    _success_count[mid] = 0
     _sin(mid, _EMPTY_RESPONSE_PENALTY)
     _rotate_next()
-    LogUtils.warn(f"\n[nvidia] empty response from {mid} — rep -{_EMPTY_RESPONSE_PENALTY}, rotated")
+    LogUtils.warn(f"\n[nvidia] empty response from {mid} — trust→1, rotated")
 
 
 def _on_error(msg: str, status: int):
@@ -699,8 +706,10 @@ def _on_error(msg: str, status: int):
             rotated = True
         elif status == 0 and _is_timeout(msg):
             # Model is slow (not broken) — rotate, light rep nudge, no strike
+            # Reset trust level — model couldn't deliver in its time window
+            _success_count[mid] = 0
             _sin(mid, 2)
-            LogUtils.warn(f"\n[nvidia] timeout {mid} — rep -2, rotated")
+            LogUtils.warn(f"\n[nvidia] timeout {mid} — rep -2, trust→1, rotated")
             _rotate_next()
             rotated = True
         else:
@@ -731,37 +740,37 @@ def _after_usage(usage: dict):
     completion = usage.get("completion_tokens", 0)
 
     # Trust: model responded with meaningful output
-    if mid:
+    elapsed = time.time() - _req_start
+    tok_sec = completion / elapsed if elapsed > 0 else 999
+    mid = _req_model
+    # tok/s meaningless for short responses — latency dominates
+    if completion >= 20 and tok_sec < 3:
+        _sin(mid, _SLOW_PENALTY)
+        if tok_sec < _STICKY_BREAK_TPS:
+            # Severe: model is crawling — full trust reset, break sticky, ban, rotate
+            _success_count[mid] = 0
+            LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust→1")
+            if _current_sticky_model == _current_model:
+                _sticky_until = 0
+                _current_sticky_model = ""
+                LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
+            _banned_until[mid] = time.time() + _BAN_DURATION_SLOW
+            _save_bans()
+            _rotate_next()
+        else:
+            # Moderate: model is functional but slow — decrement trust, no ban, no rotate
+            prev = _success_count.get(mid, 0)
+            new_level = max(0, prev - _TRUST_DECREMENT_SLOW)
+            _success_count[mid] = new_level
+            LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust {prev}→{new_level}")
+    elif mid:
         prev = _success_count.get(mid, 0)
         _success_count[mid] = prev + 1
         if prev < _TRUST_THRESHOLD and prev + 1 >= _TRUST_THRESHOLD:
             LogUtils.success(f"\n[nvidia] {mid} — trusted ({prev + 1} responses)")
             _ban_count.pop(mid, None)  # reset escalation — model proven good
             _save_bans()
-
-    elapsed = time.time() - _req_start
-    tok_sec = completion / elapsed if elapsed > 0 else 999
-    mid = _req_model
-    # tok/s meaningless for short responses — latency dominates
-    if completion >= 20:
-        if tok_sec < 3:
-            _sin(mid, _SLOW_PENALTY)
-            LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}")
-            # Slow = untrust — next request gets 2min leash
-            if _success_count.get(mid, 0) >= _TRUST_THRESHOLD:
-                _success_count[mid] = 0
-                LogUtils.warn(f"\n[nvidia] trust revoked — {mid} too slow")
-            # Below break threshold → break sticky, rotation can find faster model
-            if tok_sec < _STICKY_BREAK_TPS:
-                if _current_sticky_model == _current_model:
-                    _sticky_until = 0
-                    _current_sticky_model = ""
-                    LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
-            # Ban slow model to let it recover
-            _banned_until[mid] = time.time() + _BAN_DURATION_SLOW
-            _save_bans()
-            _rotate_next()
-        elif tok_sec > 20:
+        if completion >= 20 and tok_sec > 20:
             base = _base(mid)
             s = _rep(mid)
             if s < base:
