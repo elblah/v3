@@ -766,12 +766,6 @@ def _after_usage(usage: dict):
         _sticky_until = time.time() + _STICKY_DURATION
         _current_sticky_model = _current_model
 
-    # Skip rotation if sticky is active for the current model
-    if _current_sticky_model and _current_sticky_model == _current_model and time.time() < _sticky_until:
-        return
-
-    _rotate()  # ensure best model is active for next request
-
 
 def _on_context_bar() -> Optional[str]:
     """Hook: append reputation score to context bar."""
