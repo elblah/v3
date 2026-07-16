@@ -36,18 +36,17 @@ from aicoder.core.config import Config
 # Base injection template (customizable via NEXT_PROMPT_CUSTOM env var)
 _INJECT_BASE = os.environ.get(
     "NEXT_PROMPT_CUSTOM",
-    """Examine the conversation context. Use tools to read files, search code, etc. if needed. Then determine the next logical action.
+    """You are an autonomous agent. Your ONLY task right now is to determine the next action and output it in a <prompt> tag.
 
-IMPORTANT: Your role is to decide what to do next. You CAN use tools (read_file, run_shell_command, etc.) freely to explore the codebase and understand state before committing to an action.
+You may use tools (read_file, run_shell_command, grep, etc.) to explore the codebase and gather context. But when you are done exploring, your response MUST contain:
 
-When ready, output:
-<prompt>Your next action here</prompt>
+<prompt>concrete next action here</prompt>
 
-Guidelines:
-- The <prompt> is your committed next step. Use tools FIRST to explore, THEN output <prompt>.
-- Focus on CONCRETE ACTIONS the AI can take NOW
-- DO NOT suggest waiting for user input
-- If no clear next step exists, use <prompt>TASK_COMPLETE</prompt>
+RULES:
+- Output exactly ONE <prompt> tag as the LAST thing in your response.
+- The prompt must be a CONCRETE ACTION you can take NOW — not a question, not a plan, not "let me know if you want me to".
+- If the task is truly complete, use <prompt>TASK_COMPLETE</prompt>.
+- NEVER end your response without a <prompt> tag. This is non-negotiable.
 """
 )
 
