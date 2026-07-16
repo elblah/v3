@@ -18,7 +18,8 @@ Features:
 Env vars:
   NVIDIA_NIM_ORDER     - comma-separated model ID preference list (default: _DEFAULT_ORDER)
                          Example: NVIDIA_NIM_ORDER="z-ai/glm-5.2,moonshotai/kimi-k2.6,deepseek-ai/deepseek-v4-flash,minimaxai/minimax-m3,minimaxai/minimax-m2.7,stepfun-ai/step-3.7-flash"
-  NVIDIA_NIM_STICKY     - seconds to hold a working model before retesting others (default: 420)
+  NVIDIA_NIM_STICKY_MAX - max sticky duration for top-priority model (default: 900)
+  NVIDIA_NIM_STICKY_MIN - min sticky duration for bottom-priority model (default: 180)
 
 Commands:
   /nvidia status   - current model, sticky status, preference
@@ -56,7 +57,8 @@ _TRUST_DECREMENT_SLOW = _env_int("TRUST_DECREMENT_SLOW", 1)  # levels lost per s
 _429_PENALTY = _env_float("429_PENALTY", 10.0)          # rep penalty for 429
 _404_PENALTY = _env_float("404_PENALTY", 20.0)          # rep penalty for 404 (model unavailable/deprecated)
 _FAST_BONUS = _env_float("FAST_BONUS", 1.0)             # rep bonus for fast responses
-_STICKY_DURATION = _env_int("STICKY", 420)             # seconds to hold a working model
+_STICKY_MAX = _env_int("STICKY_MAX", 900)             # max sticky seconds (top priority model)
+_STICKY_MIN = _env_int("STICKY_MIN", 180)             # min sticky seconds (bottom priority model)
 _STICKY_BREAK_TPS = _env_float("STICKY_BREAK_TPS", 1.0)  # tok/s below this breaks sticky
 
 # ── Runtime state ───────────────────────────────────────────────────
@@ -66,6 +68,7 @@ _models: List[Dict] = []
 _preference: List[str] = []
 _reputation: Dict[str, float] = {}  # model_id → score (100=none, lower=sinned)
 _current_model: str = ""
+_activated_at: float = 0.0           # when _current_model was last set
 _req_start: float = 0.0
 _req_model: str = ""
 _saved_max_backoff: Optional[int] = None
@@ -402,7 +405,7 @@ def _fmt(model_id: str) -> str:
 
 
 def _set_active(mid: str):
-    global _current_model
+    global _current_model, _activated_at
     if not mid or mid == _current_model:
         return
     _reset_key()
@@ -418,6 +421,7 @@ def _set_active(mid: str):
     else:
         os.environ["REASONING_EFFORT_VALID"] = ""
         Config.set_reasoning_effort(None)
+    _activated_at = time.time()
     _current_model = mid
     LogUtils.tip(f"\n[nvidia] → {mid} (fmt: {fmt}, effort: {effort or 'toggle'})\n")
 
@@ -564,27 +568,35 @@ def _rotate():
 
 
 def _rotate_next():
-    """Rotate to next model in preference order after current (for 429 rotation)."""
+    """Rotate to highest-preference non-banned model (not current)."""
     global _current_model
     if not _preference or not _current_model:
         _rotate()
         return
-    try:
-        idx = _preference.index(_current_model)
-    except ValueError:
-        _rotate()
-        return
     now = time.time()
-    for i in range(1, len(_preference)):
-        nxt = _preference[(idx + i) % len(_preference)]
-        if nxt != _current_model and now >= _banned_until.get(nxt, 0):
-            _set_active(nxt)
+    for mid in _preference:
+        if mid != _current_model and now >= _banned_until.get(mid, 0):
+            _set_active(mid)
             return
     # All others banned — use best available (including earliest-expiring banned)
     _set_active(_best_model() or _preference[0])
 
 
 # ── Hooks ────────────────────────────────────────────────────────────
+def _sticky_duration(mid: str) -> int:
+    """Sticky time proportional to preference rank (top=longest, bottom=shortest)."""
+    n = len(_preference)
+    if n <= 1:
+        return _STICKY_MAX
+    try:
+        idx = _preference.index(mid)
+    except ValueError:
+        return _STICKY_MIN
+    # Linear: top(idx0)=max, bottom(idx n-1)=min
+    frac = idx / (n - 1)
+    return max(_STICKY_MIN, int(_STICKY_MAX - frac * (_STICKY_MAX - _STICKY_MIN)))
+
+
 def _is_timeout(msg: str) -> bool:
     """True if error message indicates a timeout (no response from model)."""
     low = msg.lower()
@@ -598,6 +610,7 @@ _BAN_DURATION_404 = _env_int("BAN_DURATION_404_MIN", 60) * 60   # 404: model not
 _BAN_DURATION_SLOW = _env_int("BAN_DURATION_SLOW_MIN", 30) * 60 # slow: model degraded, may recover
 _BAN_DURATION_ESCALATE = _env_int("BAN_DURATION_ESCALATE_MIN", 15) * 60  # base for escalating bans
 _BAN_DURATION_MAX = _env_int("BAN_DURATION_MAX_MIN", 480) * 60  # cap for escalated bans (8h)
+_BAN_DURATION_429_COOLDOWN = _env_int("429_COOLDOWN_SEC", 900)  # cooldown after all keys 429 (15min)
 _TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 8)     # successes to be considered trusted
 _TRUST_LEVEL_CAP = _env_int("TRUST_LEVEL_CAP", 5)      # max trust level
 _TRUST_LEVEL_MINUTES = _env_int("TRUST_LEVEL_MINUTES", 1)  # minutes per trust level
@@ -675,6 +688,8 @@ def _on_error(msg: str, status: int):
                 LogUtils.warn(f"\n[nvidia] retrying {mid} with next key")
             else:
                 LogUtils.warn(f"\n[nvidia] all {len(_keys)} keys exhausted for {mid} — rotating model")
+                _banned_until[mid] = time.time() + _BAN_DURATION_429_COOLDOWN
+                LogUtils.warn(f"\n[nvidia] {mid} cooldown {_BAN_DURATION_429_COOLDOWN // 60}m — will retest after timeout")
                 _rotate_next()
                 rotated = True
         elif status == 404:
@@ -778,20 +793,50 @@ def _after_usage(usage: dict):
             elif s < base + 5:
                 _sin(mid, -_FAST_BONUS)  # small above-base boost
 
-    # Sticky: once a model produces good output, hold it for _STICKY_DURATION
+    # Sticky: hold a working model for proportional duration. Do NOT reset on
+    # every response — let it expire so higher-priority models get retested.
+    # Rotation only on natural expiry (sticky was actually running), not after
+    # error recovery where _sticky_until is 0 but _current_sticky_model is "".
     if mid and completion >= 50 and tok_sec >= 3:
-        _sticky_until = time.time() + _STICKY_DURATION
-        _current_sticky_model = _current_model
+        now = time.time()
+        if now > _sticky_until:
+            # Only rotate UP on natural expiry, not after error recovery
+            if _current_sticky_model:
+                candidate = None
+                for pref_mid in _preference:
+                    if now >= _banned_until.get(pref_mid, 0):
+                        candidate = pref_mid
+                        break
+                if candidate and candidate != _current_model:
+                    try:
+                        cur_idx = _preference.index(_current_model)
+                        cand_idx = _preference.index(candidate)
+                    except ValueError:
+                        cur_idx = len(_preference)
+                        cand_idx = len(_preference)
+                    if cand_idx < cur_idx:
+                        LogUtils.tip(f"\n[nvidia] sticky expired — trying higher-priority {candidate}")
+                        _set_active(candidate)
+            _sticky_until = now + _sticky_duration(_current_model)
+            _current_sticky_model = _current_model
 
 
 def _on_context_bar() -> Optional[str]:
-    """Hook: append reputation score to context bar."""
+    """Hook: append reputation score, trust, sticky to context bar."""
     if not _current_model:
         return None
-    s = _rep(_current_model)
+    parts = [f"s={_rep(_current_model):.0f}"]
     if len(_keys) > 1:
-        return f"score:{s:.0f} ({_key_index+1}/{len(_keys)})"
-    return f"score:{s:.0f}"
+        parts.append(f"k={_key_index+1}/{len(_keys)}")
+    t = _success_count.get(_current_model, 0)
+    parts.append(f"t={t}")
+    if _activated_at:
+        elapsed = time.time() - _activated_at
+        parts.append(f"u={elapsed/60:.0f}m")
+    if _current_sticky_model and time.time() < _sticky_until:
+        rem = _sticky_until - time.time()
+        parts.append(f"stk={rem/60:.1f}m")
+    return " ".join(parts)
 
 
 # ── Commands ─────────────────────────────────────────────────────────
@@ -884,16 +929,19 @@ def _refresh() -> str:
 
 
 def _forgive() -> str:
-    """Reset all reputations to 100 and clear all bans."""
+    """Reset all reputations to 100, clear all bans, clear sticky."""
+    global _sticky_until, _current_sticky_model
     with _lock:
         _reputation.clear()
         _strikes.clear()
         _banned_until.clear()
         _ban_count.clear()
         _success_count.clear()
+        _sticky_until = 0
+        _current_sticky_model = ""
     _save_rep()
     _save_bans()
-    LogUtils.success("\n[nvidia] all reputations reset, bans cleared")
+    LogUtils.success("\n[nvidia] all reputations reset, bans cleared, sticky cleared")
     return "[nvidia] forgiven. All models start clean."
 
 

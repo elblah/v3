@@ -4,7 +4,7 @@ Statistics tracking for AI Coder
 Stateful: class needed for maintaining counters
 """
 
-from typing import List, Dict, Any
+import time
 from aicoder.utils.log import LogUtils
 
 
@@ -29,6 +29,7 @@ class Stats:
         self.current_prompt_size = 0
         self.current_prompt_size_estimated = False
         self.last_user_prompt = ""
+        self.start_time = time.time()
 
     def increment_api_requests(self) -> None:
         """
@@ -51,13 +52,13 @@ class Stats:
         """
         self.api_errors += 1
 
-    def add_api_time(self, time: float) -> None:
+    def add_api_time(self, seconds: float) -> None:
         """
         Add time to API time spent
         
         """
-        self.api_time_spent += time
-        self.last_api_time = time
+        self.api_time_spent += seconds
+        self.last_api_time = seconds
 
     def increment_messages_sent(self) -> None:
         """
@@ -126,6 +127,8 @@ class Stats:
         else:
             LogUtils.print(f"API Time Spent: {self.api_time_spent:.2f}s")
         LogUtils.print(f"Messages Sent: {self.messages_sent}")
+        elapsed = time.time() - self.start_time
+        LogUtils.print(f"Session Time: {elapsed:.0f}s ({elapsed/60:.1f}m)")
 
         LogUtils.print("--- Session ---")
         LogUtils.print(f"  Prompt Tokens: {self.prompt_tokens:,}")
@@ -161,3 +164,4 @@ class Stats:
         self.last_user_prompt = ""
         self.last_prompt_tokens = 0
         self.last_completion_tokens = 0
+        self.start_time = time.time()

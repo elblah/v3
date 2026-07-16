@@ -12,6 +12,8 @@
 # bind -n M-f run-shell -b "$AICODER_MENU_BIN sandbox"
 # bind -n M-s run-shell -b "$AICODER_MENU_BIN save"
 # bind -n M-i run-shell -b "$AICODER_MENU_BIN inject"
+# Quick-inject with command-prompt: prompt, set-buffer (tmux cmd, no shell), then run script
+# bind -n M-I command-prompt -p "Inject:" "set-buffer -b aicoder-inject \"%1\" \; run-shell -b '$AICODER_MENU_BIN inject-raw'"
 # bind -n M-x run-shell -b "$AICODER_MENU_BIN stop"
 # bind -n M-k run-shell -b "$AICODER_MENU_BIN kill"
 # bind -n M-g run-shell -b "$AICODER_MENU_BIN debug"
@@ -328,10 +330,12 @@ if [ ! -S "$SOCKET" ]; then
     exit
 fi
 
-# Handle inject-raw: take raw text from tmux command-prompt, base64, send via socket
+# Handle inject-raw: read from tmux buffer (set by command-prompt via set-buffer).
+# Using set-buffer avoids shell injection — tmux command, not sh -c.
+# NOTE: double-quotes in input may truncate (minor data loss, not injection).
 if [[ "$1" == "inject-raw" ]]; then
-    shift
-    msg="$*"
+    msg=$(tmux show-buffer -b aicoder-inject 2>/dev/null)
+    tmux delete-buffer -b aicoder-inject 2>/dev/null
     if [[ -z "$msg" ]]; then
         exit 0
     fi
