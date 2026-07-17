@@ -793,32 +793,36 @@ def _after_usage(usage: dict):
             elif s < base + 5:
                 _sin(mid, -_FAST_BONUS)  # small above-base boost
 
-    # Sticky: hold a working model for proportional duration. Do NOT reset on
-    # every response — let it expire so higher-priority models get retested.
-    # Rotation only on natural expiry (sticky was actually running), not after
-    # error recovery where _sticky_until is 0 but _current_sticky_model is "".
+    # Sticky expiry check: run on ANY response, not just high-quality ones.
+    # Short/text-only responses (e.g. `.`, `Qué?` from a failing model) should
+    # still trigger rotation when sticky expires — otherwise a model that never
+    # produces >=50 tokens will hold indefinitely.
+    now = time.time()
+    if mid and now > _sticky_until and _current_sticky_model:
+        candidate = None
+        for pref_mid in _preference:
+            if now >= _banned_until.get(pref_mid, 0):
+                candidate = pref_mid
+                break
+        if candidate and candidate != _current_model:
+            try:
+                cur_idx = _preference.index(_current_model)
+                cand_idx = _preference.index(candidate)
+            except ValueError:
+                cur_idx = len(_preference)
+                cand_idx = len(_preference)
+            if cand_idx < cur_idx:
+                LogUtils.tip(f"\n[nvidia] sticky expired — trying higher-priority {candidate}")
+                _set_active(candidate)
+        # Whether or not we rotated, mark sticky as no longer active so this
+        # block doesn't re-fire on every subsequent short response
+        _current_sticky_model = ""
+        _sticky_until = 0
+
+    # Sticky set: only set new sticky on genuinely good responses
     if mid and completion >= 50 and tok_sec >= 3:
-        now = time.time()
-        if now > _sticky_until:
-            # Only rotate UP on natural expiry, not after error recovery
-            if _current_sticky_model:
-                candidate = None
-                for pref_mid in _preference:
-                    if now >= _banned_until.get(pref_mid, 0):
-                        candidate = pref_mid
-                        break
-                if candidate and candidate != _current_model:
-                    try:
-                        cur_idx = _preference.index(_current_model)
-                        cand_idx = _preference.index(candidate)
-                    except ValueError:
-                        cur_idx = len(_preference)
-                        cand_idx = len(_preference)
-                    if cand_idx < cur_idx:
-                        LogUtils.tip(f"\n[nvidia] sticky expired — trying higher-priority {candidate}")
-                        _set_active(candidate)
-            _sticky_until = now + _sticky_duration(_current_model)
-            _current_sticky_model = _current_model
+        _sticky_until = now + _sticky_duration(_current_model)
+        _current_sticky_model = _current_model
 
 
 def _on_context_bar() -> Optional[str]:
