@@ -18,6 +18,8 @@ Features:
 Env vars:
   NVIDIA_NIM_ORDER     - comma-separated model ID preference list (default: _DEFAULT_ORDER)
                          Example: NVIDIA_NIM_ORDER="z-ai/glm-5.2,moonshotai/kimi-k2.6,deepseek-ai/deepseek-v4-flash,minimaxai/minimax-m3,minimaxai/minimax-m2.7,stepfun-ai/step-3.7-flash"
+  NVIDIA_NIM_FLOOR     - model ID floor: never use models below this in preference order
+                         Example: NVIDIA_NIM_FLOOR="minimaxai/minimax-m2.7"
   NVIDIA_NIM_STICKY_MAX - max sticky duration for top-priority model (default: 900)
   NVIDIA_NIM_STICKY_MIN - min sticky duration for bottom-priority model (default: 180)
 
@@ -356,6 +358,15 @@ def _load_preference():
         removed = before - len(_preference)
         if removed:
             LogUtils.warn(f"\n[nvidia] NVIDIA_NIM_AVOID: filtered {removed} models")
+
+    # Apply model floor — prevent selection of models below this priority
+    floor = os.environ.get("NVIDIA_NIM_FLOOR", "").strip()
+    if floor:
+        try:
+            idx = _preference.index(floor)
+            _preference[:] = _preference[:idx + 1]
+        except ValueError:
+            pass
 
 
 # ── Model ops ────────────────────────────────────────────────────────
