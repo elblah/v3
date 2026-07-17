@@ -512,7 +512,7 @@ def main():
     print(f"    Avg Output/Day:      {total['c'] / day_secs:,.0f}")
     print(f"    Avg Cache Hit/Day:   {total['cr'] / day_secs:,.0f}")
     print(f"    Avg Cache Miss/Day:  {total['cm'] / day_secs:,.0f}")
-    print(f"    Total Time:          {total['t']:.2f}s")
+    print(f"    Total Time:          {total['t']:.2f}s ({total['t'] / 60:.0f}m)")
     print(f"    Avg Time/Request:    {total['t'] / n:.2f}s")
     print(f"    Total Output tok/s:  {total['c'] / total['t']:.1f}")
     if total["cost"] > 0:
