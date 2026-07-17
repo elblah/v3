@@ -21,16 +21,16 @@ from aicoder.core.config import Config
 OVER_TAG = "[OVER]"
 OVER_INSTRUCTION = (
     "\n\n<system-reminder>\n"
-    "IMPORTANT: You MUST end your response with exactly [OVER] on its OWN LINE with nothing else on that line.\n"
-    "Example ending:\n"
-    "  ...rest of your response.\n"
-    "  [OVER]\n"
-    "This is a radio protocol to confirm your response was not cut off. Do NOT forget.\n"
+    "IMPORTANT: YOUR RESPONSE MUST CONTAIN [OVER] SOMEWHERE.\n"
+    "Any line, any position — just have [OVER] in the text.\n"
+    "If missing, system assumes response was cut off and will retry.\n"
+    "THIS IS A RADIO PROTOCOL. DO NOT FORGET.\n"
     "</system-reminder>"
 )
 CONTINUE_PROMPT = (
     "Your previous response was cut off (missing [OVER] tag). "
-    "Continue exactly where you left off. End with [OVER] this time."
+    "Continue exactly where you left off. "
+    "Your response MUST contain [OVER] somewhere — any line, any position."
 )
 
 
@@ -130,18 +130,10 @@ class OverCommand:
 
         content = last_assistant.get("content", "")
 
-        # Check if [OVER] is on its own line anywhere in the response
-        lines = content.rstrip().split('\n')
-        over_idx = None
-        for i, line in enumerate(lines):
-            if line.strip() == OVER_TAG:
-                over_idx = i
-                break
-
-        if over_idx is not None:
-            # Strip [OVER] line from stored message
-            remaining = [line for i, line in enumerate(lines) if i != over_idx]
-            last_assistant["content"] = '\n'.join(remaining).rstrip()
+        # Check if [OVER] appears anywhere in the response
+        if OVER_TAG in content:
+            # Strip [OVER] from stored message
+            last_assistant["content"] = content.replace(OVER_TAG, "").rstrip()
             OverService.reset_retry()
             return None
 
