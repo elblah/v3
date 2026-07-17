@@ -480,6 +480,7 @@ def main():
             print(f"        Output Tokens:  {d['c']:,}")
             print(f"        Cache Hit:      {d['cr']:,} ({pct_hit:.1f}%)")
             print(f"        Cache Miss:     {d['cm']:,} ({pct_miss:.1f}%)")
+            print(f"        Total Time:     {d['t']:.2f}s ({d['t'] / 60:.0f}m)")
             if d["cost"] > 0:
                 print(f"        Cost:           ${d['cost']:.6f}")
             print(f"        Avg Req Time:   {avg:.2f}s")
