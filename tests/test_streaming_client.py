@@ -3,6 +3,8 @@ Test StreamingClient class
 Simple tests for API existence
 """
 
+import socket
+
 import pytest
 from unittest.mock import MagicMock
 from aicoder.core.streaming_client import StreamingClient
@@ -81,3 +83,35 @@ def test_colorization(streaming_client):
     # Test with plain text
     result = streaming_client.process_with_colorization("plain text")
     assert result is not None
+
+
+def test_timeout_hint_injects_message():
+    """on_stream_timeout with tool call injects hint into message history"""
+    from aicoder.plugins.timeout_hint import create_plugin
+
+    messages = []
+
+    class FakeHistory:
+        def add_user_message(self, text):
+            messages.append(text)
+
+    class FakeApp:
+        message_history = FakeHistory()
+
+    hooks = {}
+
+    class FakeCtx:
+        app = FakeApp()
+
+        def register_hook(self, name, fn):
+            hooks[name] = fn
+
+    create_plugin(FakeCtx())
+
+    # Fire hook with a tool call present in raw_response
+    raw = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"write_file"}}]}}]}'
+    hooks["on_stream_timeout"](raw)
+
+    assert len(messages) == 1
+    assert "system-reminder" in messages[0]
+    assert "smaller" in messages[0].lower()

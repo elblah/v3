@@ -1,6 +1,7 @@
 """Streaming API client for AI requests"""
 
 import json
+import socket
 import sys
 import time
 import itertools
@@ -435,9 +436,12 @@ class StreamingClient:
 
             # Read response incrementally
             while True:
-                line_bytes = (
-                    response.readline()
-                )  # Read one SSE line at a time
+                try:
+                    line_bytes = response.readline()
+                except socket.timeout:
+                    if self._plugin_system:
+                        self._plugin_system.call_hooks("on_stream_timeout", raw_response)
+                    raise
                 if not line_bytes:
                     break
 
