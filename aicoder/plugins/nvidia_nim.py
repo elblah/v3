@@ -80,6 +80,7 @@ _saved_total_timeout: Optional[int] = None  # saved timeout for untrusted leash
 _lock = threading.Lock()
 _sticky_until: float = 0              # unix timestamp — next rotation allowed
 _current_sticky_model: str = ""       # model that earned the sticky
+_last_sticky_model: str = ""          # prevents same model earning sticky twice consecutively
 
 # Key rotation — multiple API keys to spread 429 limits
 _keys: List[str] = []   # available API keys
@@ -597,6 +598,22 @@ def _sticky_duration(mid: str) -> int:
     return max(_STICKY_MIN, int(_STICKY_MAX - frac * (_STICKY_MAX - _STICKY_MIN)))
 
 
+def _gain_sticky(mid: str, completion: int, tok_sec: float) -> None:
+    """Set sticky ONCE per model. Never renews. Never same model twice consecutively."""
+    global _sticky_until, _current_sticky_model, _last_sticky_model
+    if not mid:
+        return
+    if _current_sticky_model:
+        return  # sticky already active — never renew
+    if mid == _last_sticky_model:
+        return  # already had sticky last time — give others a turn
+    if completion < 50 or tok_sec < 3:
+        return
+    _sticky_until = time.time() + _sticky_duration(mid)
+    _current_sticky_model = mid
+    _last_sticky_model = mid
+
+
 def _is_timeout(msg: str) -> bool:
     """True if error message indicates a timeout (no response from model)."""
     low = msg.lower()
@@ -662,7 +679,9 @@ def _on_empty_response():
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
-    global _sticky_until, _current_sticky_model
+    global _sticky_until, _current_sticky_model, _last_sticky_model
+    if _current_sticky_model:
+        _last_sticky_model = _current_sticky_model
     _sticky_until = 0
     _current_sticky_model = ""
     _success_count[mid] = 0
@@ -676,7 +695,9 @@ def _on_error(msg: str, status: int):
     if not mid:
         return
     # Error breaks sticky — let rotation find a working model
-    global _sticky_until, _current_sticky_model
+    global _sticky_until, _current_sticky_model, _last_sticky_model
+    if _current_sticky_model:
+        _last_sticky_model = _current_sticky_model
     _sticky_until = 0
     _current_sticky_model = ""
     rotated = False
@@ -740,7 +761,7 @@ def _on_error(msg: str, status: int):
 
 def _after_usage(usage: dict):
     """Award reputation for fast responses, sin for slow."""
-    global _saved_max_backoff, _saved_total_timeout, _sticky_until, _current_sticky_model, _key_tries
+    global _saved_max_backoff, _saved_total_timeout, _sticky_until, _current_sticky_model, _key_tries, _last_sticky_model
     if _saved_max_backoff is not None:
         Config.set_runtime_max_backoff(_saved_max_backoff)
         _saved_max_backoff = None
@@ -766,6 +787,7 @@ def _after_usage(usage: dict):
             _success_count[mid] = 0
             LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust→1")
             if _current_sticky_model == _current_model:
+                _last_sticky_model = _current_sticky_model
                 _sticky_until = 0
                 _current_sticky_model = ""
                 LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
@@ -816,13 +838,12 @@ def _after_usage(usage: dict):
                 _set_active(candidate)
         # Whether or not we rotated, mark sticky as no longer active so this
         # block doesn't re-fire on every subsequent short response
+        _last_sticky_model = _current_sticky_model
         _current_sticky_model = ""
         _sticky_until = 0
 
-    # Sticky set: only set new sticky on genuinely good responses
-    if mid and completion >= 50 and tok_sec >= 3:
-        _sticky_until = now + _sticky_duration(_current_model)
-        _current_sticky_model = _current_model
+    # Sticky set: only set new sticky on genuinely good responses (via _gain_sticky — never renews)
+    _gain_sticky(mid, completion, tok_sec)
 
 
 def _on_context_bar() -> Optional[str]:
@@ -856,6 +877,8 @@ def _cmd(args: str) -> Optional[str]:
         return _refresh()
     if parts[0] in ("forgive", "F"):
         return _forgive()
+    if parts[0] == "unstick":
+        return _unstick()
     if parts[0] == "avoid":
         return _avoid(parts[1] if len(parts) > 1 else "")
     if parts[0] == "unban":
@@ -869,6 +892,7 @@ def _cmd(args: str) -> Optional[str]:
         "  /nvidia set ID   - force a model\n"
         "  /nvidia refresh  - refresh model cache\n"
         "  /nvidia forgive  - reset reputations + clear bans (alias: F)\n"
+        "  /nvidia unstick  - clear sticky (keep reps/bans)\n"
         "  /nvidia avoid [M]- 24h ban for model (current if omitted)\n"
         "  /nvidia unban M  - remove ban + strikes for model\n"
         "  /nvidia bans     - show banned/striked models"
@@ -934,7 +958,7 @@ def _refresh() -> str:
 
 def _forgive() -> str:
     """Reset all reputations to 100, clear all bans, clear sticky."""
-    global _sticky_until, _current_sticky_model
+    global _sticky_until, _current_sticky_model, _last_sticky_model
     with _lock:
         _reputation.clear()
         _strikes.clear()
@@ -943,10 +967,21 @@ def _forgive() -> str:
         _success_count.clear()
         _sticky_until = 0
         _current_sticky_model = ""
+        _last_sticky_model = ""
     _save_rep()
     _save_bans()
     LogUtils.success("\n[nvidia] all reputations reset, bans cleared, sticky cleared")
     return "[nvidia] forgiven. All models start clean."
+
+
+def _unstick() -> str:
+    """Clear sticky only — keep reputations/bans intact."""
+    global _sticky_until, _current_sticky_model, _last_sticky_model
+    _last_sticky_model = _current_sticky_model
+    _sticky_until = 0
+    _current_sticky_model = ""
+    LogUtils.warn(f"\n[nvidia] unstick — {_last_sticky_model} released")
+    return f"[nvidia] unstick — {_last_sticky_model} released, rotation enabled"
 
 
 def _avoid(mid: str) -> str:
