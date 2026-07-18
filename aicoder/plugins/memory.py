@@ -11,6 +11,7 @@ No special API calls or background processes needed.
 """
 
 import os
+import sys
 import time
 from typing import List
 
@@ -138,7 +139,8 @@ def create_plugin(ctx):
             with open(AUTOLOAD_FILE, "w", encoding="utf-8") as f:
                 f.write("_No persistent memories yet._")
         from aicoder.utils.log import LogUtils
-        LogUtils.info(f"[memory] auto-initialized at {MEMORY_DIR}")
+        if sys.stdout.isatty():
+            LogUtils.printc(f"[memory] auto-initialized at {MEMORY_DIR}", color="blue", stderr=True)
 
     def get_autoload() -> str | None:
         """Read autoload.md content, truncated if over limit"""
@@ -153,8 +155,9 @@ def create_plugin(ctx):
 
         if len(content) > MAX_AUTOLOAD_BYTES:
             from aicoder.utils.log import LogUtils
-            LogUtils.warn(f"[memory] autoload.md truncated "
-                          f"({len(content)} bytes, max {MAX_AUTOLOAD_BYTES})")
+            if sys.stdout.isatty():
+                LogUtils.warn(f"[memory] autoload.md truncated "
+                              f"({len(content)} bytes, max {MAX_AUTOLOAD_BYTES})")
             trunc_note = f"\n\n[... truncated to {MAX_AUTOLOAD_BYTES} bytes ...]"
             content = content[:MAX_AUTOLOAD_BYTES - len(trunc_note)] + trunc_note
 
@@ -195,7 +198,8 @@ def create_plugin(ctx):
                     f"under {MAX_AUTOLOAD_BYTES} bytes, or you will lose memory each session."
                 )
                 from aicoder.utils.log import LogUtils
-                LogUtils.warn(f"[memory] {msg}")
+                if sys.stdout.isatty():
+                    LogUtils.warn(f"[memory] {msg}")
                 if ctx.app and ctx.app.message_history:
                     ctx.app.message_history.add_user_message(msg)
 
@@ -446,7 +450,8 @@ def create_plugin(ctx):
     _project_limit_now = _load_project_limit()
     if _project_limit_now is not None:
         from aicoder.utils.log import LogUtils
-        LogUtils.info(f"[memory] Project memory limit: {_project_limit_now} bytes ({LIMIT_FILE})")
+        if sys.stdout.isatty():
+            LogUtils.info(f"[memory] Project memory limit: {_project_limit_now} bytes ({LIMIT_FILE})")
 
     # Register hooks
     ctx.register_hook("after_file_write", _on_after_file_write)

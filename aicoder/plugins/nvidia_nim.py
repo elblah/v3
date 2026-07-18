@@ -22,6 +22,10 @@ Env vars:
                          Example: NVIDIA_NIM_FLOOR="minimaxai/minimax-m2.7"
   NVIDIA_NIM_STICKY_MAX - max sticky duration for top-priority model (default: 900)
   NVIDIA_NIM_STICKY_MIN - min sticky duration for bottom-priority model (default: 180)
+  NVIDIA_NIM_YOLO_FLOOR - lowest trustworthy model in preference. Models at or
+                         below this position auto-disable YOLO. Value can be full
+                         model ID or substring to match first model in preference.
+                         Example: NVIDIA_NIM_YOLO_FLOOR="minimaxai/minimax-m3"
 
 Commands:
   /nvidia status   - current model, sticky status, preference
@@ -32,12 +36,20 @@ Commands:
 
 import os
 import json
+import sys
 import time
 import threading
 from typing import Dict, List, Optional
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+
+
+def _nv_log(msg: str, level: str = "warn", **kwargs):
+    """Log [nvidia] msg only when stdout is a TTY (suppress in pipe mode like vet)."""
+    if sys.stdout.isatty():
+        getattr(LogUtils, level)(msg, **kwargs)
+
 
 # ── Constants ──────────────────────────────────────────────────────
 # All overridable via env vars (prefix NVIDIA_NIM_)
@@ -61,6 +73,9 @@ _404_PENALTY = _env_float("404_PENALTY", 20.0)          # rep penalty for 404 (m
 _STICKY_MAX = _env_int("STICKY_MAX", 900)             # max sticky seconds (top priority model)
 _STICKY_MIN = _env_int("STICKY_MIN", 180)             # min sticky seconds (bottom priority model)
 _STICKY_BREAK_TPS = _env_float("STICKY_BREAK_TPS", 1.0)  # tok/s below this breaks sticky
+
+# YOLO floor: when active model is at/below this in preference, disable YOLO for safety
+_YOLO_FLOOR = os.environ.get("NVIDIA_NIM_YOLO_FLOOR", "").strip()
 
 # ── Runtime state ───────────────────────────────────────────────────
 NIM_URL = "https://integrate.api.nvidia.com/v1"
@@ -125,7 +140,7 @@ def _load_keys():
     if _keys:
         _key_index = 0
         os.environ["OPENAI_API_KEY"] = _keys[0]
-        LogUtils.warn(f"\n[nvidia] loaded {len(_keys)} API keys")
+        _nv_log(f"\n[nvidia] loaded {len(_keys)} API keys")
 
 
 def _rotate_key() -> bool:
@@ -140,7 +155,7 @@ def _rotate_key() -> bool:
     new_key = _keys[_key_index]
     os.environ["OPENAI_API_KEY"] = new_key
     mask = new_key[:8] + "..." if len(new_key) > 8 else new_key
-    LogUtils.warn(f"\n[nvidia] key rotated → {_key_index+1}/{len(_keys)} ({mask})")
+    _nv_log(f"\n[nvidia] key rotated → {_key_index+1}/{len(_keys)} ({mask})")
     return True
 
 
@@ -152,7 +167,7 @@ def _reset_key():
     _key_index = 0
     _key_tries = 0
     os.environ["OPENAI_API_KEY"] = _keys[0]
-    LogUtils.warn(f"\n[nvidia] key reset → 1/{len(_keys)}")
+    _nv_log(f"\n[nvidia] key reset → 1/{len(_keys)}")
 
 
 # ── Plugin entry ─────────────────────────────────────────────────────
@@ -172,14 +187,14 @@ def create_plugin(ctx):
         # Manual mode — user chose a specific model, plugin only provides commands
         ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
         if Config.debug():
-            LogUtils.printc(f"\n[nvidia] manual mode — {model}", color="dim")
+            _nv_log(f"\n[nvidia] manual mode — {model}", "printc", color="dim")
         return
 
     _rotate()
 
     # Only register hooks if we have models to work with
     if not _models:
-        LogUtils.warn("\n[nvidia] no model data — plugin inactive until /nvidia refresh succeeds")
+        _nv_log("\n[nvidia] no model data — plugin inactive until /nvidia refresh succeeds")
         ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
         return
 
@@ -191,7 +206,7 @@ def create_plugin(ctx):
     ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
 
     if Config.debug():
-        LogUtils.printc(f"\n[nvidia] auto mode — {_current_model}", color="cyan")
+        _nv_log(f"\n[nvidia] auto mode — {_current_model}", "printc", color="cyan")
 
 
 # ── Cache ────────────────────────────────────────────────────────────
@@ -226,13 +241,13 @@ def _load_cache():
     # Fetch failed — use stale cache if we have it
     if stale is not None:
         _models[:] = stale
-        LogUtils.warn(f"\n[nvidia] refresh failed, using cached data ({len(stale)} models)")
+        _nv_log(f"\n[nvidia] refresh failed, using cached data ({len(stale)} models)")
         return
 
     # No cache at all — populate from default order so rotation still works
     _models[:] = [{"id": mid, "name": mid.split("/")[-1], "ctx": 0, "out": 0}
                    for mid in _DEFAULT_ORDER]
-    LogUtils.warn(f"\n[nvidia] no cache, using {len(_models)} built-in models")
+    _nv_log(f"\n[nvidia] no cache, using {len(_models)} built-in models")
 
 
 def _fetch_models(path) -> bool:
@@ -246,7 +261,7 @@ def _fetch_models(path) -> bool:
         with urllib.request.urlopen(req, timeout=15) as r:
             raw = json.loads(r.read().decode())
     except Exception as e:
-        LogUtils.warn(f"\n[nvidia] fetch failed: {e}")
+        _nv_log(f"\n[nvidia] fetch failed: {e}")
         return False
 
     nvidia = raw.get("nvidia", {})
@@ -263,7 +278,7 @@ def _fetch_models(path) -> bool:
             })
 
     if not filtered:
-        LogUtils.warn("\n[nvidia] no tool_call+reasoning models in response")
+        _nv_log("\n[nvidia] no tool_call+reasoning models in response")
         return False
 
     filtered.sort(key=lambda x: (-x["ctx"], x["name"]))
@@ -271,7 +286,7 @@ def _fetch_models(path) -> bool:
     with open(path, "w") as f:
         json.dump({"_ts": time.time(), "models": filtered}, f, indent=2)
     _models[:] = filtered
-    LogUtils.success(f"\n[nvidia] cached {len(filtered)} models")
+    _nv_log(f"\n[nvidia] cached {len(filtered)} models", "success")
     return True
 
 
@@ -356,7 +371,7 @@ def _load_preference():
         _preference[:] = [m for m in _preference if not _is_avoided(m)]
         removed = before - len(_preference)
         if removed:
-            LogUtils.warn(f"\n[nvidia] NVIDIA_NIM_AVOID: filtered {removed} models")
+            _nv_log(f"\n[nvidia] NVIDIA_NIM_AVOID: filtered {removed} models")
 
     # Apply model floor — prevent selection of models below this priority
     floor = os.environ.get("NVIDIA_NIM_FLOOR", "").strip()
@@ -434,7 +449,23 @@ def _set_active(mid: str):
         Config.set_reasoning_effort(None)
     _activated_at = time.time()
     _current_model = mid
-    LogUtils.tip(f"\n[nvidia] → {mid} (fmt: {fmt}, effort: {effort or 'toggle'})\n")
+
+    # YOLO floor: disable YOLO if active model is at/below the floor in preference
+    if _YOLO_FLOOR and mid in _preference:
+        floor_idx = None
+        if _YOLO_FLOOR in _preference:
+            floor_idx = _preference.index(_YOLO_FLOOR)
+        else:
+            for i, m in enumerate(_preference):
+                if _YOLO_FLOOR in m:
+                    floor_idx = i
+                    break
+        if floor_idx is not None and _preference.index(mid) >= floor_idx:
+            if Config.yolo_mode():
+                Config.set_yolo_mode(False)
+                _nv_log(f"\n[nvidia] {mid} at/below floor '{_YOLO_FLOOR}' — YOLO disabled")
+
+    _nv_log(f"\n[nvidia] → {mid} (fmt: {fmt}, effort: {effort or 'toggle'})\n", "tip")
 
 
 # ── Reputation ──────────────────────────────────────────────────────
@@ -489,7 +520,7 @@ def _save_rep():
                          for mid in _preference},
             }, f, indent=2)
     except IOError as e:
-        LogUtils.warn(f"\n[nvidia] failed to save reputation: {e}")
+        _nv_log(f"\n[nvidia] failed to save reputation: {e}")
 
 
 def _load_bans():
@@ -522,7 +553,7 @@ def _save_bans():
                 "ban_count": _ban_count,
             }, f, indent=2)
     except IOError as e:
-        LogUtils.warn(f"\n[nvidia] failed to save bans: {e}")
+        _nv_log(f"\n[nvidia] failed to save bans: {e}")
 
 
 def _rep(mid: str) -> float:
@@ -669,9 +700,9 @@ def _strike(mid: str):
             _banned_until[mid] = now + duration
             _strikes[mid] = []
             _ban_count[mid] = bc + 1
-            LogUtils.warn(f"\n[nvidia] {mid} — {count} strikes → banned for {duration // 60}m (ban #{bc + 1})")
+            _nv_log(f"\n[nvidia] {mid} — {count} strikes → banned for {duration // 60}m (ban #{bc + 1})")
         else:
-            LogUtils.warn(f"\n[nvidia] {mid} — timeout strike {count}/{_STRIKE_LIMIT}")
+            _nv_log(f"\n[nvidia] {mid} — timeout strike {count}/{_STRIKE_LIMIT}")
     _save_bans()
 
 
@@ -708,7 +739,7 @@ def _on_empty_response():
     _success_count[mid] = 0
     _sin(mid, _EMPTY_RESPONSE_PENALTY)
     _rotate_next()
-    LogUtils.warn(f"\n[nvidia] empty response from {mid} — trust→1, rotated")
+    _nv_log(f"\n[nvidia] empty response from {mid} — trust→1, rotated")
 
 
 def _on_error(msg: str, status: int):
@@ -725,13 +756,13 @@ def _on_error(msg: str, status: int):
     try:
         if status == 429:
             _sin(mid, _429_PENALTY)
-            LogUtils.warn(f"\n[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
+            _nv_log(f"\n[nvidia] 429 {mid} — rep -{_429_PENALTY:.0f}")
             if _rotate_key():
-                LogUtils.warn(f"\n[nvidia] retrying {mid} with next key")
+                _nv_log(f"\n[nvidia] retrying {mid} with next key")
             else:
-                LogUtils.warn(f"\n[nvidia] all {len(_keys)} keys exhausted for {mid} — rotating model")
+                _nv_log(f"\n[nvidia] all {len(_keys)} keys exhausted for {mid} — rotating model")
                 _banned_until[mid] = time.time() + _BAN_DURATION_429_COOLDOWN
-                LogUtils.warn(f"\n[nvidia] {mid} cooldown {_BAN_DURATION_429_COOLDOWN // 60}m — will retest after timeout")
+                _nv_log(f"\n[nvidia] {mid} cooldown {_BAN_DURATION_429_COOLDOWN // 60}m — will retest after timeout")
                 _rotate_next()
                 rotated = True
         elif status == 404:
@@ -739,12 +770,12 @@ def _on_error(msg: str, status: int):
             _banned_until[mid] = time.time() + _BAN_DURATION_404
             _strikes[mid] = []
             _save_bans()
-            LogUtils.warn(f"\n[nvidia] 404 {mid} — banned {_BAN_DURATION_404 // 60}m (model unavailable)")
+            _nv_log(f"\n[nvidia] 404 {mid} — banned {_BAN_DURATION_404 // 60}m (model unavailable)")
             _rotate_next()
             rotated = True
         elif status == 503:
             _sin(mid, _429_PENALTY)
-            LogUtils.warn(f"\n[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
+            _nv_log(f"\n[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
             _rotate_next()
             rotated = True
         elif status in (400, 422):
@@ -755,10 +786,10 @@ def _on_error(msg: str, status: int):
                 _banned_until[mid] = time.time() + _BAN_DURATION_404
                 _strikes[mid] = []
                 _save_bans()
-                LogUtils.warn(f"\n[nvidia] {status} {mid} — degraded/function ban {_BAN_DURATION_404 // 60}m")
+                _nv_log(f"\n[nvidia] {status} {mid} — degraded/function ban {_BAN_DURATION_404 // 60}m")
             else:
                 _sin(mid, _429_PENALTY)
-                LogUtils.warn(f"\n[nvidia] {status} {mid} — rep -{_429_PENALTY:.0f}")
+                _nv_log(f"\n[nvidia] {status} {mid} — rep -{_429_PENALTY:.0f}")
             _rotate_next()
             rotated = True
         elif status == 0 and _is_timeout(msg):
@@ -766,13 +797,13 @@ def _on_error(msg: str, status: int):
             # Reset trust level — model couldn't deliver in its time window
             _success_count[mid] = 0
             _sin(mid, 2)
-            LogUtils.warn(f"\n[nvidia] timeout {mid} — rep -2, trust→1, rotated")
+            _nv_log(f"\n[nvidia] timeout {mid} — rep -2, trust→1, rotated")
             _rotate_next()
             rotated = True
         else:
             pass  # other 5xx = transient, don't rotate
     except Exception as e:
-        LogUtils.warn(f"\n[nvidia] _on_error failed: {e}")
+        _nv_log(f"\n[nvidia] _on_error failed: {e}")
     if rotated:
         global _saved_max_backoff
         if _saved_max_backoff is None:
@@ -806,12 +837,12 @@ def _after_usage(usage: dict):
         if tok_sec < _STICKY_BREAK_TPS:
             # Severe: model is crawling — full trust reset, break sticky, ban, rotate
             _success_count[mid] = 0
-            LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust→1")
+            _nv_log(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust→1")
             if _current_sticky_model == _current_model:
                 _last_sticky_model = _current_sticky_model
                 _sticky_until = 0
                 _current_sticky_model = ""
-                LogUtils.warn(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
+                _nv_log(f"\n[nvidia] sticky broken — {mid} too slow ({tok_sec:.1f} < {_STICKY_BREAK_TPS:.1f} t/s)")
             _banned_until[mid] = time.time() + _BAN_DURATION_SLOW
             _save_bans()
             _rotate_next()
@@ -820,12 +851,12 @@ def _after_usage(usage: dict):
             prev = _success_count.get(mid, 0)
             new_level = max(0, prev - _TRUST_DECREMENT_SLOW)
             _success_count[mid] = new_level
-            LogUtils.warn(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust {prev}→{new_level}")
+            _nv_log(f"\n[nvidia] slow {mid}: {tok_sec:.1f} tok/s — rep -{_SLOW_PENALTY:.0f}, trust {prev}→{new_level}")
     elif mid:
         prev = _success_count.get(mid, 0)
         _success_count[mid] = prev + 1
         if prev < _TRUST_THRESHOLD and prev + 1 >= _TRUST_THRESHOLD:
-            LogUtils.success(f"\n[nvidia] {mid} — trusted ({prev + 1} responses)")
+            _nv_log(f"\n[nvidia] {mid} — trusted ({prev + 1} responses)", "success")
             _ban_count.pop(mid, None)  # reset escalation — model proven good
             _save_bans()
         # Rep stays clamped at base — successful responses don't push above
@@ -851,7 +882,7 @@ def _after_usage(usage: dict):
                 cur_idx = len(_preference)
                 cand_idx = len(_preference)
             if cand_idx < cur_idx:
-                LogUtils.tip(f"\n[nvidia] sticky expired — trying higher-priority {candidate}")
+                _nv_log(f"\n[nvidia] sticky expired — trying higher-priority {candidate}", "tip")
                 _set_active(candidate)
         # Whether or not we rotated, mark sticky as no longer active so this
         # block doesn't re-fire on every subsequent short response
@@ -927,6 +958,9 @@ def _status() -> str:
         rem = _sticky_until - time.time()
         lines.append(f"  Sticky:  {_current_sticky_model} (remaining: {rem:.0f}s)")
     lines.append(f"  Pref:    {len(_preference)} models")
+    if _YOLO_FLOOR:
+        yolo_forced_off = " (force-off)" if not Config.yolo_mode() else ""
+        lines.append(f"  YOLO fl: {_YOLO_FLOOR}{yolo_forced_off}")
     lines.append("  Reputation:")
     for mid in _preference:
         s = _rep(mid)
@@ -987,7 +1021,7 @@ def _forgive() -> str:
         _last_sticky_model = ""
     _save_rep()
     _save_bans()
-    LogUtils.success("\n[nvidia] all reputations reset, bans cleared, sticky cleared")
+    _nv_log("\n[nvidia] all reputations reset, bans cleared, sticky cleared", "success")
     return "[nvidia] forgiven. All models start clean."
 
 
@@ -997,7 +1031,7 @@ def _unstick() -> str:
     _last_sticky_model = _current_sticky_model
     _sticky_until = 0
     _current_sticky_model = ""
-    LogUtils.warn(f"\n[nvidia] unstick — {_last_sticky_model} released")
+    _nv_log(f"\n[nvidia] unstick — {_last_sticky_model} released")
     return f"[nvidia] unstick — {_last_sticky_model} released, rotation enabled"
 
 
@@ -1012,7 +1046,7 @@ def _avoid(mid: str) -> str:
     _banned_until[mid] = time.time() + _BAN_DURATION
     _strikes.pop(mid, None)
     _save_bans()
-    LogUtils.warn(f"\n[nvidia] {mid} — avoided for 24h")
+    _nv_log(f"\n[nvidia] {mid} — avoided for 24h")
     if mid == _current_model:
         _rotate_next()
     return f"[nvidia] avoided {mid} for 24h"
@@ -1027,7 +1061,7 @@ def _unban(mid: str) -> str:
     _banned_until.pop(mid, None)
     _strikes.pop(mid, None)
     _save_bans()
-    LogUtils.success(f"\n[nvidia] {mid} — ban removed")
+    _nv_log(f"\n[nvidia] {mid} — ban removed", "success")
     return f"[nvidia] unbanned {mid}"
 
 
