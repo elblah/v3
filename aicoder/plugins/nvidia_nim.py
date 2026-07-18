@@ -58,7 +58,6 @@ _SLOW_PENALTY = _env_float("SLOW_PENALTY", 10.0)
 _TRUST_DECREMENT_SLOW = _env_int("TRUST_DECREMENT_SLOW", 1)  # levels lost per slow response       # rep penalty for <3 tok/s
 _429_PENALTY = _env_float("429_PENALTY", 10.0)          # rep penalty for 429
 _404_PENALTY = _env_float("404_PENALTY", 20.0)          # rep penalty for 404 (model unavailable/deprecated)
-_FAST_BONUS = _env_float("FAST_BONUS", 1.0)             # rep bonus for fast responses
 _STICKY_MAX = _env_int("STICKY_MAX", 900)             # max sticky seconds (top priority model)
 _STICKY_MIN = _env_int("STICKY_MIN", 180)             # min sticky seconds (bottom priority model)
 _STICKY_BREAK_TPS = _env_float("STICKY_BREAK_TPS", 1.0)  # tok/s below this breaks sticky
@@ -469,8 +468,11 @@ def _load_rep():
                     # Below base — apply recovery
                     recovered = score + (now - ts) * _RECOVERY_RATE / 60
                     _reputation[mid] = min(base, recovered)
+                elif score > base:
+                    # Legacy above-base data — decay down toward base
+                    decayed = score - (now - ts) * _RECOVERY_RATE / 60
+                    _reputation[mid] = max(base, decayed)
                 else:
-                    # At or above base — preserve as-is (fast bonus)
                     _reputation[mid] = score
                 _reputation[f"{mid}_ts"] = ts  # restore timestamp for future decay
     except (json.JSONDecodeError, IOError):
@@ -524,27 +526,35 @@ def _save_bans():
 
 
 def _rep(mid: str) -> float:
-    """Current reputation. Decays toward base on access."""
+    """Current reputation. Decays toward base on access (from either side)."""
     with _lock:
         base = _base(mid)
         s = _reputation.get(mid, base)
+        ts = _reputation.get(f"{mid}_ts") or _reputation.get("_ts", time.time())
         if s < base:
-            ts = _reputation.get(f"{mid}_ts") or _reputation.get("_ts", time.time())
             s = min(base, s + (time.time() - ts) * _RECOVERY_RATE / 60)
+            _reputation[mid] = s
+        elif s > base:
+            # Above base from legacy data — decay down toward base at recovery rate
+            s = max(base, s - (time.time() - ts) * _RECOVERY_RATE / 60)
             _reputation[mid] = s
         return s
 
 
 def _sin(mid: str, points: float):
-    """Reduce reputation below base. Floor 0. Recovers naturally."""
+    """Adjust reputation. Floor 0, ceiling = base. Recovers naturally toward base."""
     with _lock:
         base = _base(mid)
         curr = _reputation.get(mid, base)
-        # decay first
+        # decay toward base first (only meaningful below base — above already decays via _rep)
         if curr < base:
             ts = _reputation.get(f"{mid}_ts") or _reputation.get("_ts", time.time())
             curr = min(base, curr + (time.time() - ts) * _RECOVERY_RATE / 60)
-        _reputation[mid] = max(0.0, curr - points)
+        new = curr - points
+        # Hard clamp: floor 0, ceiling = base. Fast/successful models must not
+        # outrank slower-but-higher-preference models in _best_model() selection.
+        new = max(0.0, min(base, new))
+        _reputation[mid] = new
         _reputation[f"{mid}_ts"] = time.time()
     _save_rep()
 
@@ -818,13 +828,9 @@ def _after_usage(usage: dict):
             LogUtils.success(f"\n[nvidia] {mid} — trusted ({prev + 1} responses)")
             _ban_count.pop(mid, None)  # reset escalation — model proven good
             _save_bans()
-        if completion >= 20 and tok_sec > 20:
-            base = _base(mid)
-            s = _rep(mid)
-            if s < base:
-                pass  # already decaying toward base naturally
-            elif s < base + 5:
-                _sin(mid, -_FAST_BONUS)  # small above-base boost
+        # Rep stays clamped at base — successful responses don't push above
+        # preference rank (a fast model must not outrank a slower-but-higher
+        # preference model). Below-base decay handles errors naturally.
 
     # Sticky expiry check: run on ANY response, not just high-quality ones.
     # Short/text-only responses (e.g. `.`, `Qué?` from a failing model) should
