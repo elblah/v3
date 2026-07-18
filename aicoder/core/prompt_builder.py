@@ -161,8 +161,9 @@ search (grep), shell command execution, and more via API request."""
         from .config import Config
 
         env_prompt = Config.system_prompt()
-        if env_prompt and sys.stdout.isatty():
-            LogUtils.info("Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
+        if env_prompt:
+            if sys.stdout.isatty():
+                LogUtils.info("Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
             options.override_prompt = env_prompt
         else:
             options.override_prompt = cls.load_prompt_override()
@@ -172,8 +173,9 @@ search (grep), shell command execution, and more via API request."""
 
         # Append additional content from AICODER_SYSTEM_PROMPT_APPEND
         append_content = Config.system_prompt_append()
-        if append_content and sys.stdout.isatty():
-            LogUtils.info("Appending AICODER_SYSTEM_PROMPT_APPEND to system prompt")
+        if append_content:
+            if sys.stdout.isatty():
+                LogUtils.info("Appending AICODER_SYSTEM_PROMPT_APPEND to system prompt")
             prompt += "\n\n" + append_content
 
         return prompt

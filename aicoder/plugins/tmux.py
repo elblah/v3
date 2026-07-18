@@ -6,6 +6,7 @@ Session markers for pane scrollback, restore-session, and wintitle.
 
 import os
 import subprocess
+import sys
 from datetime import datetime
 
 MARKER_PREFIX = "[tmux]"
@@ -33,8 +34,9 @@ def create_plugin(ctx):
     reset = colors.get("reset", "")
     dim = colors.get("dim", "")
 
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    LogUtils.print(f"{dim}{MARKER_PREFIX} {MARKER_TEXT} {ts}{reset}")
+    if sys.stdout.isatty():
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        LogUtils.printc(f"{dim}{MARKER_PREFIX} {MARKER_TEXT} {ts}{reset}", stderr=True)
 
     def _wintitle_filepath():
         return os.path.join(os.getcwd(), WINTITLE_FILE)

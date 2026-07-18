@@ -21,8 +21,8 @@ def create_plugin(ctx):
     """Create session autosaver plugin"""
     
     session_file = os.environ.get("SESSION_FILE")
-    if not session_file:
-        return None  # Silent disable if no SESSION_FILE
+    if not session_file or session_file == "/dev/null":
+        return None  # Silent disable if no SESSION_FILE or explicitly disabled
     
     session_path = Path(session_file)
     is_jsonl = session_path.suffix.lower() == ".jsonl"

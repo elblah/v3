@@ -340,8 +340,17 @@ if [[ "$1" == "inject-raw" ]]; then
         exit 0
     fi
     encoded=$(echo -n "$msg" | base64 -w0 2>/dev/null || echo -n "$msg" | base64)
-    resp=$(echo "inject-text $encoded" | nc -U "$SOCKET" 2>/dev/null)
-    tmux display-message -d 2000 "AI Coder: injected"
+    resp=$(echo "inject-text $encoded" | nc -N -w 3 -U "$SOCKET" 2>/dev/null)
+    rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        show_error "Socket error (exit $rc)"
+    fi
+    if echo "$resp" | jq -e '.status=="success" and .data.injected==true' >/dev/null 2>&1; then
+        tmux display-message -d 5000 "#[fg=black,bg=green]AI Coder: injected ok"
+    else
+        err=$(echo "$resp" | jq -r '.message // "unknown"' 2>/dev/null || echo "unknown")
+        show_error "#[fg=red]inject failed: $err"
+    fi
     exit 0
 fi
 
