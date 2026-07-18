@@ -766,13 +766,19 @@ def _on_error(msg: str, status: int):
                 _rotate_next()
                 rotated = True
         elif status == 404:
-            _sin(mid, _404_PENALTY)
-            _banned_until[mid] = time.time() + _BAN_DURATION_404
-            _strikes[mid] = []
-            _save_bans()
-            _nv_log(f"\n[nvidia] 404 {mid} — banned {_BAN_DURATION_404 // 60}m (model unavailable)")
-            _rotate_next()
-            rotated = True
+            ml = (msg or "").lower()
+            if "empty response" in ml:
+                # Transient empty response surfaced as 404 — treat like empty message
+                _on_empty_response()
+                rotated = True
+            else:
+                _sin(mid, _404_PENALTY)
+                _banned_until[mid] = time.time() + _BAN_DURATION_404
+                _strikes[mid] = []
+                _save_bans()
+                _nv_log(f"\n[nvidia] 404 {mid} — banned {_BAN_DURATION_404 // 60}m (model unavailable)")
+                _rotate_next()
+                rotated = True
         elif status == 503:
             _sin(mid, _429_PENALTY)
             _nv_log(f"\n[nvidia] 503 {mid} — rep -{_429_PENALTY:.0f}")
