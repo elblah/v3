@@ -18,6 +18,35 @@ MEMORY_DIR = os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory")
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
 MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
+LIMIT_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_limit")
+
+
+def _parse_size(value: str) -> int:
+    """Parse size string like '10k', '1.5m', '50000'"""
+    value = value.strip().lower()
+    if value.endswith("k"):
+        return int(float(value[:-1]) * 1000)
+    if value.endswith("m"):
+        return int(float(value[:-1]) * 1000000)
+    return int(value)
+
+
+def _load_project_limit() -> int | None:
+    """Load per-project memory limit override from LIMIT_FILE."""
+    try:
+        if os.path.isfile(LIMIT_FILE):
+            with open(LIMIT_FILE) as f:
+                val = f.read().strip()
+            if val:
+                return int(val)
+    except (ValueError, OSError, IOError):
+        pass
+    return None
+
+
+_project_limit = _load_project_limit()
+if _project_limit is not None:
+    MAX_AUTOLOAD_BYTES = _project_limit
 
 # Nudge config
 NUDGE_ENABLED = os.environ.get("AICODER_MEMORY_NUDGE", "1").lower() not in ("0", "false", "no")
@@ -222,6 +251,7 @@ def create_plugin(ctx):
 
     def handle_command(args_str: str):
         """Handle /memory command"""
+        global MAX_AUTOLOAD_BYTES
         from aicoder.utils.log import LogUtils
 
         parts = args_str.split()
@@ -384,15 +414,39 @@ def create_plugin(ctx):
             except Exception as e:
                 LogUtils.error(f"[memory] Import failed: {e}")
 
+        elif subcmd == "limit":
+            if len(parts) < 2:
+                LogUtils.info(f"[memory] Current limit: {MAX_AUTOLOAD_BYTES} bytes")
+                return
+            try:
+                new_limit = _parse_size(parts[1])
+                if new_limit < 256:
+                    LogUtils.error("[memory] Limit too small (min 256 bytes)")
+                    return
+                os.makedirs(os.path.dirname(LIMIT_FILE), exist_ok=True)
+                with open(LIMIT_FILE, "w") as f:
+                    f.write(str(new_limit))
+                MAX_AUTOLOAD_BYTES = new_limit
+                LogUtils.success(f"[memory] Project memory limit set to {new_limit} bytes ({LIMIT_FILE})")
+            except ValueError:
+                LogUtils.error(f"[memory] Invalid size: {parts[1]}")
+
         else:
             LogUtils.print("Memory plugin commands:", bold=True)
-            LogUtils.dim("  /memory move <path>  - Move memory to <path>, symlink from .aicoder/memory")
-            LogUtils.dim("  /memory move         - Undo: move memory back to .aicoder/memory")
-            LogUtils.dim("  /memory export <path> - Export memory to archive (.tar.gz)")
-            LogUtils.dim("  /memory import <file> - Import memory from archive (replaces files)")
-            LogUtils.dim("  /memory rm-all       - Delete all memory (requires confirmation)")
-            LogUtils.dim("  /memory status       - Show memory status and file sizes")
+            LogUtils.dim("  /memory move <path>    - Move memory to <path>, symlink from .aicoder/memory")
+            LogUtils.dim("  /memory move           - Undo: move memory back to .aicoder/memory")
+            LogUtils.dim("  /memory export <path>  - Export memory to archive (.tar.gz)")
+            LogUtils.dim("  /memory import <file>  - Import memory from archive (replaces files)")
+            LogUtils.dim("  /memory limit <size>   - Set per-project autoload size (e.g. 10k, 2m)")
+            LogUtils.dim("  /memory rm-all         - Delete all memory (requires confirmation)")
+            LogUtils.dim("  /memory status         - Show memory status and file sizes")
             LogUtils.dim("  Disable via PLUGINS_DENY=...,memory env var")
+
+    # Print startup message if project uses custom memory limit
+    _project_limit_now = _load_project_limit()
+    if _project_limit_now is not None:
+        from aicoder.utils.log import LogUtils
+        LogUtils.info(f"[memory] Project memory limit: {_project_limit_now} bytes ({LIMIT_FILE})")
 
     # Register hooks
     ctx.register_hook("after_file_write", _on_after_file_write)
