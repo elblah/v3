@@ -154,6 +154,7 @@ show_menu() {
         "Unlimited Retries" u  "run-shell -b 'echo unlimitedretries > ${response_file}'" \
         "Inject Message"    i  "run-shell -b 'echo inject > ${response_file}'" \
         "Save Session"      s  "run-shell -b 'echo save > ${response_file}'" \
+        "Clear Scrollback"   l  "run-shell -b 'echo clear > ${response_file}'" \
         "Kill"              K  "run-shell -b 'echo kill > ${response_file}'" \
         "Toggle Debug (${debug_enabled})" g  "run-shell -b 'echo debug > ${response_file}'" \
         "Quit"              Q  "run-shell -b 'echo quit > ${response_file}'"
@@ -222,6 +223,11 @@ execute_action() {
         "inject"*)
             cmd="inject"
             display_msg="Injecting Message"
+            display_duration=2000
+            ;;
+        "clear"*)
+            tmux clear-history -t "$pane_id"
+            display_msg="Scrollback cleared"
             display_duration=2000
             ;;
         "quit"*)
@@ -364,9 +370,10 @@ fi
 # Execute action if choice was made
 if [ -n "$CHOICE" ]; then
     # Confirm destructive actions
-    if [[ "$CHOICE" == "stop"* || "$CHOICE" == "kill"* ]]; then
+    if [[ "$CHOICE" == "stop"* || "$CHOICE" == "kill"* || "$CHOICE" == "clear"* ]]; then
         label="stop"
         [[ "$CHOICE" == "kill"* ]] && label="kill"
+        [[ "$CHOICE" == "clear"* ]] && label="clear"
         confirm_file="/tmp/aicoder_confirm_${pane_numeric}"
         rm -f "$confirm_file"
         tmux command-prompt -p "${label} AI Coder? (y/N): " \
