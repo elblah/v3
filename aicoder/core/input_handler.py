@@ -62,8 +62,12 @@ class InputHandler:
     def get_user_input(self) -> str:
         """Get user input with context display"""
         if not self.is_interactive:
-            # Handle piped input
-            return sys.stdin.readline() or ""
+            # Handle piped input — single line at a time
+            line = sys.stdin.readline()
+            if not line:
+                # EOF on piped stdin → signal caller to stop
+                raise EOFError
+            return line.rstrip("\n")
 
         try:
             # Kill any orphaned subprocess from Ctrl+C before showing prompt

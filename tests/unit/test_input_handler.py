@@ -49,7 +49,16 @@ class TestGetUserInput:
 
         with patch('aicoder.core.input_handler.sys.stdin.readline', return_value="piped input\n"):
             result = handler.get_user_input()
-            assert result == "piped input\n"
+            assert result == "piped input"
+
+    def test_non_interactive_eof(self):
+        """Test EOF raises EOFError in non-interactive mode"""
+        handler = InputHandler()
+        handler.is_interactive = False
+
+        with patch('aicoder.core.input_handler.sys.stdin.readline', return_value=""):
+            with pytest.raises(EOFError):
+                handler.get_user_input()
 
     def test_interactive_input(self):
         """Test getting input in interactive mode"""
