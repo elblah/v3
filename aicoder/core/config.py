@@ -223,6 +223,7 @@ class Config:
         "glm": {"effort_field": "reasoning_effort", "uses_extra_body": True},
         "openai": {"effort_field": "reasoning_effort", "uses_extra_body": False},
         "anthropic": {"uses_extra_body": True},
+        "minimax": {"uses_extra_body": False},  # M3 needs thinking at top level
     }
 
     # Model name patterns for auto-detection
@@ -231,6 +232,7 @@ class Config:
         "glm": ["glm", "zhipuai", "z.ai"],
         "openai": ["gpt", "o1", "o3", "o4", "chatgpt", "openai"],
         "anthropic": ["claude", "anthropic"],
+        "minimax": ["minimax-m3", "minimax_m3"],
     }
 
     @classmethod
@@ -385,6 +387,12 @@ class Config:
         mode = cls.thinking()
         if mode != "on":
             return None
+
+        fmt = cls.get_reasoning_format()
+
+        # MiniMax M3 needs thinking at top level with adaptive type
+        if fmt == "minimax":
+            return {"thinking": {"type": "adaptive"}}
 
         params = {}
         effort = cls.reasoning_effort()
