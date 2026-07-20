@@ -445,6 +445,7 @@ class SocketServer:
             "processing": is_proc,
             "yolo_enabled": Config.yolo_mode(),
             "detail_enabled": Config.detail_mode(),
+            "detail_tty_enabled": Config.detail_tty(),
             "sandbox_enabled": not Config.sandbox_disabled(),
             "debug_enabled": Config.debug(),
             "messages": len(messages),
