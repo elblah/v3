@@ -43,6 +43,7 @@ from typing import List, Dict, Any
 CACHE_FILE = Path.home() / ".cache" / "ai_usage_dirs_cache.txt"
 FILTER_TAG = os.environ.get("FILTER_TAG")
 FILTER_URL = os.environ.get("FILTER_URL")
+FILTER_MODEL = os.environ.get("FILTER_MODEL")
 
 
 def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
@@ -285,6 +286,9 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
                 return None
         # Filter by URL substring if FILTER_URL env var is set
         if FILTER_URL is not None and FILTER_URL not in entry.get("url", ""):
+            return None
+        # Filter by model name substring if FILTER_MODEL env var is set
+        if FILTER_MODEL is not None and FILTER_MODEL not in entry.get("model", ""):
             return None
         ts = entry["ts"].replace("_", "T")
         dt = datetime.fromisoformat(ts)
