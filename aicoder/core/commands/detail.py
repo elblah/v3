@@ -55,11 +55,13 @@ class DetailCommand(BaseCommand):
         # Handle tty subcommand
         if action == "tty":
             if len(args) < 2:
-                tty_status = "ON" if Config.detail_tty() else "OFF"
-                LogUtils.print(f"TTY Passthrough: {tty_status}", color="green" if Config.detail_tty() else "yellow", bold=True)
+                # Toggle TTY passthrough
+                Config.set_detail_tty(not Config.detail_tty())
                 if Config.detail_tty():
-                    LogUtils.success("Command output is shown live in terminal")
-                LogUtils.dim("Usage: /detail tty on|off")
+                    LogUtils.success("[*] TTY passthrough ENABLED")
+                    LogUtils.info("Command output will also be shown live in terminal")
+                else:
+                    LogUtils.warn("[*] TTY passthrough DISABLED")
                 return CommandResult(should_quit=False, run_api_call=False)
 
             tty_action = args[1].lower()

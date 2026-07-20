@@ -120,6 +120,7 @@ show_menu() {
     # Parse status
     local yolo_enabled="OFF"
     local detail_enabled="OFF"
+    local detail_tty_enabled="OFF"
     local sandbox_enabled="OFF"
     local debug_enabled="OFF"
     local processing="Idle"
@@ -129,6 +130,9 @@ show_menu() {
     fi
     if parse_bool "$status_json" "detail_enabled"; then
         detail_enabled="ON"
+    fi
+    if parse_bool "$status_json" "detail_tty_enabled"; then
+        detail_tty_enabled="ON"
     fi
     if parse_bool "$status_json" "sandbox_enabled"; then
         sandbox_enabled="ON"
@@ -146,6 +150,7 @@ show_menu() {
         "Stop Processing (${processing})"        x "run-shell -b 'echo stop > ${response_file}'" \
         "Toggle YOLO (${yolo_enabled})"          y "run-shell -b 'echo yolo > ${response_file}'" \
         "Toggle Detail (${detail_enabled})"      d "run-shell -b 'echo detail > ${response_file}'" \
+        "Toggle Detail-TTY (${detail_tty_enabled})" t "run-shell -b 'echo dt > ${response_file}'" \
         "Toggle Sandbox-FS (${sandbox_enabled})" f "run-shell -b 'echo sandbox > ${response_file}'" \
         "Toggle Sandbox-NET (snet)"              n "run-shell -b 'echo snet > ${response_file}'" \
         "Toggle Sandbox-Disk (sdisk)"            d "run-shell -b 'echo sdisk > ${response_file}'" \
@@ -264,6 +269,10 @@ execute_action() {
         "sdisk"*)
             cmd="command /sdisk toggle"
             display_msg="Sandbox Disk (sdisk) Toggle"
+            ;;
+        "dt"*)
+            cmd="command /detail tty"
+            display_msg="Detail TTY Toggle"
             ;;
         "debug"*)
             if parse_bool "$status_json" "debug_enabled"; then
