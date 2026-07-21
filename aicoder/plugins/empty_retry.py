@@ -182,53 +182,45 @@ How it works:
         return f"Unknown command: {args[0]}. Use 'on', 'off', 'delay N', 'message', or 'status'."
 
     def handle_hook(self, has_tool_calls: bool) -> Optional[str]:
-        """Hook called after AI processing - detect empty response and retry"""
+        """Called after_ai_processing for valid responses."""
+        if not EmptyRetryService.is_enabled():
+            return None
+        EmptyRetryService.reset_retry()
+        self.ctx.app.session_manager._retry_empty_content = False
+        return None
+
+    def handle_empty(self, **kwargs) -> Optional[str]:
+        """Called on_empty_ai_response — handle retry for truly empty responses."""
         if not EmptyRetryService.is_enabled():
             return None
 
         # Don't override if another plugin already set next_prompt
         if self.app.has_next_prompt():
-            EmptyRetryService.reset_retry()
             return None
 
-        # If AI made tool calls, it's not empty - reset counter
-        if has_tool_calls:
-            EmptyRetryService.reset_retry()
-            return None
-
-        # Check last assistant message
-        if not self.app.message_history:
-            return None
-
-        messages = self.app.message_history.get_messages()
-        last_assistant_msg = None
-
-        for msg in reversed(messages):
-            if msg.get("role") == "assistant":
-                content = msg.get("content", "")
-                last_assistant_msg = content
-                break
-
-        # No assistant message at all = history was compacted or just started
-        if last_assistant_msg is None:
-            EmptyRetryService.reset_retry()
-            return None
-
-        # If there's actual content, not empty - reset counter
-        if last_assistant_msg and last_assistant_msg.strip():
-            EmptyRetryService.reset_retry()
-            return None
-
-        # Empty response detected - notify other plugins, then retry
         EmptyRetryService.increment_retry()
         self.ctx.app.plugin_system.call_hooks("on_empty_assistant_message")
+
+        retry_msg = EmptyRetryService.get_message()
         delay = EmptyRetryService.get_delay()
         count = EmptyRetryService.get_retry_count()
 
+        # Dedup: if last user msg already has nudge, retry without adding another
+        messages = self.ctx.app.message_history.messages
+        if messages:
+            last_msg = messages[-1]
+            if last_msg.get("role") == "user" and retry_msg in last_msg.get("content", ""):
+                LogUtils.warn(
+                    f"[EMPTY-RETRY] Empty again (retry #{count}), "
+                    f"last msg already nudged — retrying directly"
+                )
+                self.ctx.app.session_manager._retry_empty_content = True
+                time.sleep(delay)
+                return None  # Signal: no history add, flag triggers direct retry
+
         LogUtils.warn(f"[EMPTY-RETRY] Empty message detected (retry #{count})... retrying in {delay}s")
         time.sleep(delay)
-
-        return EmptyRetryService.get_message()
+        return retry_msg
 
 
 def create_plugin(ctx):
@@ -256,8 +248,9 @@ def create_plugin(ctx):
     ctx.register_command("/r", lambda args: cmd.handle_r(args))
     ctx.register_command("/empty-retry", lambda args: cmd.handle_empty_retry(args))
 
-    # Register hook for auto-detection
+    # Register hooks
     ctx.register_hook("after_ai_processing", cmd.handle_hook)
+    ctx.register_hook("on_empty_ai_response", cmd.handle_empty)
 
     if Config.debug():
         LogUtils.print("[+] Empty retry plugin loaded")
