@@ -1,15 +1,8 @@
 """
-Claude Skills Plugin - Simple and Spec-Compliant
+Skills Plugin
 
-- Auto-discovery of skills from .aicoder/skills/ and ~/.config/aicoder-v3/skills/
-- Local skills override global on name collision
-- SKILL.md parsing with YAML frontmatter (per spec)
-- Skills list baked into system prompt at session start via on_system_prompt_append
-- AI loads skills via read_file() when needed
-- AI runs scripts via run_shell_command() when needed
-
-Commands:
-- /skills - Show available skills
+Auto-loads skills from skills/ dirs, discovers extras in skills-extra/ dirs.
+See /skills help for details.
 """
 
 import os
@@ -61,69 +54,90 @@ def _parse_yaml_frontmatter(text: str) -> dict:
     return frontmatter
 
 
+def _get_skills(path: str, source: str) -> dict:
+    """Scan a single skills dir, return {name: info} dict"""
+    found = {}
+    if not os.path.exists(path):
+        return found
+    for skill_name in os.listdir(path):
+        skill_path = os.path.join(path, skill_name)
+        if not os.path.isdir(skill_path):
+            continue
+        skill_md = os.path.join(skill_path, "SKILL.md")
+        if not os.path.exists(skill_md):
+            continue
+        try:
+            with open(skill_md, 'r', encoding='utf-8') as f:
+                content = f.read()
+            frontmatter = _parse_yaml_frontmatter(content)
+            name = frontmatter.get("name")
+            description = frontmatter.get("description")
+            if name and description:
+                found[name] = {
+                    "name": name,
+                    "path": os.path.join(skill_path, "SKILL.md"),
+                    "description": description,
+                    "source": source,
+                }
+        except Exception:
+            continue
+    return found
+
+
+def _list_skill_dirs(base: str) -> list:
+    """Return [(source_label, dir_path), ...] for skills/ and skills-extra/."""
+    skill_path = os.path.join(base, "skills")
+    extra_path = os.path.join(base, "skills-extra")
+    result = []
+    if os.path.exists(skill_path):
+        result.append(("auto", skill_path))
+    if os.path.exists(extra_path):
+        result.append(("extra", extra_path))
+    return result
+
+
 class SkillsManager:
     """Skills management"""
 
     def __init__(self):
-        self.skills_dirs: list = []
         self.skills: dict = {}
-
-    @staticmethod
-    def _get_dirs() -> list:
-        """Get skills directories in scan order (global first, local second for override)"""
-        global_dir = os.path.expanduser("~/.config/aicoder-v3/skills")
-        local_dir = os.path.join(os.getcwd(), ".aicoder/skills")
-        dirs = []
-        if os.path.exists(global_dir):
-            dirs.append(("global", global_dir))
-        if os.path.exists(local_dir):
-            dirs.append(("local", local_dir))
-        return dirs
+        self.extra_count: int = 0
+        self._loaded_dirs: list = []
 
     def discover_skills(self) -> int:
-        """Discover all skills from global then local dirs (local overrides on collision)"""
-        self.skills_dirs = self._get_dirs()
+        """Discover all skills. Local overrides global on name collision."""
         self.skills.clear()
+        self.extra_count = 0
+        self._loaded_dirs = []
 
-        if not self.skills_dirs:
-            return 0
+        # Scan order: global auto, local auto (override), then count extras separately
+        global_auto = _list_skill_dirs(os.path.expanduser("~/.config/aicoder-v3"))
+        local_auto = _list_skill_dirs(os.path.join(os.getcwd(), ".aicoder"))
 
-        count = 0
-        for source, skills_dir in self.skills_dirs:
-            for skill_name in os.listdir(skills_dir):
-                skill_path = os.path.join(skills_dir, skill_name)
+        loaded = 0
+        for source, path in global_auto:
+            if source == "auto":
+                for name, info in _get_skills(path, "global").items():
+                    self.skills[name] = info
+                    loaded += 1
+                self._loaded_dirs.append(path)
+            else:
+                self.extra_count += len(_get_skills(path, "global"))
 
-                if not os.path.isdir(skill_path):
-                    continue
+        for source, path in local_auto:
+            if source == "auto":
+                for name, info in _get_skills(path, "local").items():
+                    self.skills[name] = info
+                    loaded += 1
+                self._loaded_dirs.append(path)
+            else:
+                self.extra_count += len(_get_skills(path, "local"))
 
-                skill_md = os.path.join(skill_path, "SKILL.md")
-                if not os.path.exists(skill_md):
-                    continue
-
-                try:
-                    with open(skill_md, 'r', encoding='utf-8') as f:
-                        content = f.read()
-
-                    frontmatter = _parse_yaml_frontmatter(content)
-                    name = frontmatter.get("name")
-                    description = frontmatter.get("description")
-
-                    if name and description:
-                        self.skills[name] = {
-                            "name": name,
-                            "path": os.path.join(skill_path, "SKILL.md"),
-                            "description": description,
-                            "source": source,
-                        }
-                        count += 1
-                except Exception:
-                    continue
-
-        return count
+        return loaded
 
     def generate_skills_text(self) -> str:
         """Generate skills section for system prompt"""
-        if not self.skills:
+        if not self.skills and self.extra_count == 0:
             return ""
 
         lines = []
@@ -132,20 +146,46 @@ class SkillsManager:
                 f"- {skill_name} ({skill_info['path']}): {skill_info['description']}"
             )
 
-        dirs_display = ", ".join(d for _, d in self.skills_dirs)
-
-        return (
+        result = (
             "<skills>\n"
             "Available skills (informational only - load when needed via read_file):\n"
             "\n"
             + "\n".join(lines)
-            + f"\n\nLoading from: {dirs_display} ({len(self.skills)} skills found)\n"
-            "</skills>"
         )
+
+        if self.extra_count > 0:
+            result += "\n\nAdditional skills (not auto-loaded, use read_file to load):"
+            global_extra = os.path.join(os.path.expanduser("~/.config/aicoder-v3"), "skills-extra")
+            local_extra = os.path.join(os.getcwd(), ".aicoder", "skills-extra")
+            for label, path in [("global", global_extra), ("local", local_extra)]:
+                skills = _get_skills(path, label)
+                for name, info in sorted(skills.items()):
+                    result += f"\n  - {name} ({info['path']})"
+
+        result += "\n</skills>"
+        return result
+
+    def list_extra_skills(self) -> str:
+        """Return human-readable listing of all extra skills."""
+        parts = []
+        global_extra = os.path.join(os.path.expanduser("~/.config/aicoder-v3"), "skills-extra")
+        local_extra = os.path.join(os.getcwd(), ".aicoder", "skills-extra")
+
+        for label, path in [("global", global_extra), ("local", local_extra)]:
+            skills = _get_skills(path, label)
+            if skills:
+                parts.append(f"\n\n  [{label}]:")
+                for name, info in sorted(skills.items()):
+                    parts.append(f"\n\n    \u2022 {name}: {info['description']}")
+
+        if not parts:
+            return "No extra skills found."
+
+        return "Extra Skills (not auto-loaded):" + "".join(parts)
 
 
 def create_plugin(ctx):
-    """Skills plugin - Simple YAGNI implementation"""
+    """Skills plugin"""
 
     manager = SkillsManager()
     count = manager.discover_skills()
@@ -155,33 +195,34 @@ def create_plugin(ctx):
         args = args_str.strip().split(maxsplit=1) if args_str.strip() else []
 
         if not args:
-            if not manager.skills:
-                if manager.skills_dirs:
-                    dirs_str = ", ".join(d for _, d in manager.skills_dirs)
-                    return f"No skills available in {dirs_str}"
-                return "No skills directory found (.aicoder/skills or ~/.config/aicoder-v3/skills)"
-
-            dirs_display = ", ".join(d for _, d in manager.skills_dirs)
-
+            if not manager.skills and manager.extra_count == 0:
+                return "No skills directories found (.aicoder/skills* or ~/.config/aicoder-v3/skills*)"
+            dirs_display = ", ".join(manager._loaded_dirs)
             output = f"Available Skills (loading from {dirs_display}):\n\n"
             for skill_name, skill_info in sorted(manager.skills.items()):
                 source = skill_info.get("source", "unknown")
                 output += f"  \u2022 {skill_name} [{source}]\n"
                 output += f"    {skill_info['description']}\n\n"
-
-            output += f"Total: {len(manager.skills)} skill(s)"
+            if manager.extra_count > 0:
+                output += f"[+] {manager.extra_count} extra skill(s) — use /skills extra to list\n"
+            output += f"Total: {len(manager.skills)} skill(s) loaded"
             return output
+
+        if args[0] == "extra":
+            return manager.list_extra_skills()
 
         if args[0] == "help":
             return """Skills Commands:
 
-/skills       - Show available skills
-/skills help  - Show this help
+/skills          - Show loaded skills
+/skills extra    - List extra (non-auto-loaded) skills
+/skills help     - Show this help
 
-Skills are discovered at session start from:
-  ~/.config/aicoder-v3/skills/ (global)
-  .aicoder/skills/ (local)
-Local skills override global on name collision."""
+Directories (global: ~/.config/aicoder-v3, local: .aicoder):
+  skills/         - Auto-loaded into system prompt
+  skills-extra/   - Not auto-loaded, use read_file to load
+
+Local overrides global on name collision."""
 
         return f"Unknown command: {args[0]}. Use /skills help for usage."
 
@@ -193,7 +234,7 @@ Local skills override global on name collision."""
 
     if Config.debug():
         if count > 0:
-            dirs_display = ", ".join(d for _, d in manager.skills_dirs)
+            dirs_display = ", ".join(manager._loaded_dirs)
             LogUtils.print(f"[+] Skills plugin loaded ({count} skills found)")
             LogUtils.print(f"  - Loading from: {dirs_display}")
         else:
