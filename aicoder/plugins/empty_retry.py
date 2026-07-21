@@ -235,12 +235,22 @@ def create_plugin(ctx):
     """Empty retry plugin"""
     cmd = EmptyRetryCommand(ctx)
 
-    # Check env var once at load time
+    # Check env vars once at load time
     env_msg = os.environ.get("AICODER_EMPTY_RETRY_MESSAGE")
     if env_msg:
         EmptyRetryService.set_env_message(env_msg)
         if Config.debug():
             LogUtils.print(f"    - Env var message loaded: \"{env_msg}\"")
+
+    env_delay = os.environ.get("AICODER_EMPTY_RETRY_DELAY")
+    if env_delay:
+        try:
+            EmptyRetryService.set_delay(int(env_delay))
+            if Config.debug():
+                LogUtils.print(f"    - Env var delay loaded: {env_delay}s")
+        except ValueError:
+            if Config.debug():
+                LogUtils.print(f"    - Invalid AICODER_EMPTY_RETRY_DELAY: '{env_delay}'")
 
     # Register commands
     ctx.register_command("/r", lambda args: cmd.handle_r(args))
