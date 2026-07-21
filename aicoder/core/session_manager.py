@@ -24,6 +24,7 @@ class SessionManager:
         self.compaction_service = app.compaction_service
         self.plugin_system = app.plugin_system
         self.is_processing = False
+        self._retry_empty_content = False
 
     def process_with_ai(self) -> None:
         """Process conversation with AI"""
@@ -119,12 +120,13 @@ class SessionManager:
         Returns:
             tuple: (has_tool_calls, status) where status is one of:
                 - "success": Tool calls executed successfully
-                - "empty_response": No tool calls (normal conversation)
+                - "text_content": AI responded with text (no tool calls)
+                - "empty_content": AI responded with empty content
                 - "validation_error": Tool calls had invalid JSON (error condition)
         """
         if not accumulated_tool_calls:
-            self._handle_empty_response(full_response, reasoning_content, reasoning_field, thinking_signature)
-            return False, "empty_response"
+            content_status = self._handle_empty_response(full_response, reasoning_content, reasoning_field, thinking_signature)
+            return False, content_status
 
         valid_tool_calls = self._validate_tool_calls(accumulated_tool_calls)
         if not valid_tool_calls:
@@ -175,8 +177,8 @@ class SessionManager:
             self.tool_executor.clear_guidance_mode()
             return
 
-        # Call plugin hooks after AI processing
-        if self.plugin_system:
+        # Call plugin hooks after AI processing (skip for truly empty responses)
+        if self.plugin_system and status != "empty_content":
             hook_results = self.plugin_system.call_hooks("after_ai_processing", has_tool_calls)
             if hook_results:
                 for result in hook_results:
@@ -194,40 +196,43 @@ class SessionManager:
             elif status == "validation_error":
                 # Continue processing to allow AI to respond to validation error
                 self.process_with_ai()
-            # status == "empty_response": Normal conversation, don't continue
+            elif status == "empty_content" and self._retry_empty_content:
+                # Direct retry on empty — plugin signaled via flag, no history add
+                self._retry_empty_content = False
+                self.process_with_ai()
 
     def _handle_processing_error(self, error: Exception) -> None:
         """Handle processing errors"""
         LogUtils.error(f"Processing error: {error}")
 
-    def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str, thinking_signature: str = "") -> None:
-        """Handle empty response from AI"""
+    def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str, thinking_signature: str = "") -> str:
+        """Handle empty/no-tool response from AI. Returns status: 'text_content' or 'empty_content'."""
         field = Config.get_reasoning_field() or reasoning_field
 
         if full_response and full_response.strip() != "":
             # AI provided text response but no tools
             assistant_message = {"content": full_response}
-
-            # Add reasoning with the provider's field name for continuity
             if reasoning_content and reasoning_field:
                 assistant_message[field] = reasoning_content
                 if thinking_signature:
                     assistant_message["thinking_signature"] = thinking_signature
-
             self.message_history.add_assistant_message(assistant_message)
             LogUtils.print("")
+            return "text_content"
         else:
-            # AI provided no text response (this is normal when AI has nothing to say)
-            assistant_message = {"content": ""}
-
-            # Add reasoning with the provider's field name for continuity
-            if reasoning_content and reasoning_field:
-                assistant_message[field] = reasoning_content
-                if thinking_signature:
-                    assistant_message["thinking_signature"] = thinking_signature
-
-            self.message_history.add_assistant_message(assistant_message)
+            # AI provided no text response - fire hook so plugins can handle retry
+            # Don't add {"content": ""} to history - some models reject this
+            if self.plugin_system:
+                hook_results = self.plugin_system.call_hooks("on_empty_ai_response",
+                    reasoning_content=reasoning_content,
+                    reasoning_field=reasoning_field,
+                    thinking_signature=thinking_signature)
+                if hook_results:
+                    for result in hook_results:
+                        if result and isinstance(result, str):
+                            self.app.set_next_prompt(result)
             LogUtils.print("")
+            return "empty_content"
 
     def _validate_tool_calls(self, tool_calls: dict) -> list:
         """Validate tool calls - rejects malformed JSON completely"""
