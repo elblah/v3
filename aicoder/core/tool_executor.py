@@ -234,6 +234,17 @@ class ToolExecutor:
                     Config.set_detail_mode(True)
                     LogUtils.success('[*] Detail mode ENABLED')
                     return True
+
+                # Handle tty command
+                if approval == 'tty':
+                    _restore_history(saved_history)
+                    Config.set_detail_tty(not Config.detail_tty())
+                    if Config.detail_tty():
+                        LogUtils.success('[*] TTY passthrough ENABLED')
+                    else:
+                        LogUtils.warn('[*] TTY passthrough DISABLED')
+                    # Re-prompt for same tool
+                    continue
                 
                 # Parse + modifier for guidance
                 has_guidance = approval.endswith('+')
