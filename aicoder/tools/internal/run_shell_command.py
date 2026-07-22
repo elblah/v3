@@ -89,15 +89,15 @@ def _wrap_with_tee(command: str) -> Optional[str]:
     return f"({command}) 2>&1 | tee {tty} 2>/dev/null; exit ${{PIPESTATUS[0]}}"
 
 
-def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
+def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None, live_output: bool = False) -> subprocess.CompletedProcess:
     """Execute command with proper process group termination"""
     global _active_proc
 
     # Get env with cleared vars (or None to inherit parent env)
     clean_env = _get_cleared_env()
 
-    # Wrap command with tee when detail TTY passthrough is enabled
-    if Config.detail_tty():
+    # Wrap command with tee when detail TTY passthrough is enabled OR per-call live_output flag
+    if Config.detail_tty() or live_output:
         wrapped = _wrap_with_tee(command)
         if wrapped:
             command = wrapped
@@ -166,6 +166,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     except ValueError:
         raise Exception("timeout must be an integer, got: " + str(args.get("timeout")))
     cwd = args.get("cwd")
+    live_output = args.get("live_output", False)
 
     if not command:
         raise Exception("Command is required")
@@ -179,7 +180,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         # Execute command with proper process group termination
-        result = execute_with_process_group(command, timeout, cwd)
+        result = execute_with_process_group(command, timeout, cwd, live_output=live_output)
 
         # Create friendly message
         if result.returncode == 0:
@@ -251,6 +252,11 @@ TOOL_DEFINITION = {
                 "description": "Working directory (optional)",
                 "default": None,
             },
+            "live_output": {
+                "type": "boolean",
+                "description": "Show output live in user's terminal (default: false). Set true for long-running commands where user wants to see progress.",
+                "default": False,
+            },
         },
         "required": ["command"],
     },
@@ -271,6 +277,9 @@ def format_arguments(args):
 
     if timeout != DEFAULT_TIMEOUT:
         lines.append(f"Timeout: {timeout}s")
+
+    if args.get("live_output"):
+        lines.append("Live output: ON (shown in terminal)")
 
     return "\n".join(lines)
 
