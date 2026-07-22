@@ -170,6 +170,13 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if not command:
         raise Exception("Command is required")
 
+    # Prepend wrapper script if configured (e.g. AICODER_SHELL_PREPEND_CMD="rtk")
+    prepend = Config.shell_prepend_cmd()
+    if prepend:
+        command = f"{prepend} {command}"
+        if Config.debug():
+            LogUtils.debug(f"[prepend-cmd] wrapped: {command!r}")
+
     try:
         # Execute command with proper process group termination
         result = execute_with_process_group(command, timeout, cwd)

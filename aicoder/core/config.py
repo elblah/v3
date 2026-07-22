@@ -876,6 +876,15 @@ class Config:
         """
         return int(os.environ.get("DEFAULT_SHELL_TIMEOUT", "30"))
 
+    @staticmethod
+    def shell_prepend_cmd() -> str:
+        """
+        Get command to prepend to every shell execution from AICODER_SHELL_PREPEND_CMD.
+        Example: AICODER_SHELL_PREPEND_CMD="rtk" → every `ls` runs as `rtk ls`
+        Returns empty string if unset.
+        """
+        return os.environ.get("AICODER_SHELL_PREPEND_CMD", "").strip()
+
     # Default directories to ignore when listing files
     DEFAULT_IGNORE_DIRS = [
         '.git',
