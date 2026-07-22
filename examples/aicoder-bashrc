@@ -1,0 +1,56 @@
+export AICODER_EMPTY_RETRY_DELAY=2
+
+# rtk-ai/rtk: CLI proxy that reduces LLM token consumption by 60-90% on common dev commands
+export AICODER_SHELL_PREPEND_CMD="rtk"
+
+# force using commands through rtk
+export TOOLS_DENY="list_directory,grep"
+
+# Force session saving as jsonl
+export SESSION_FILE_CONFIRM_AUTOLOAD=1
+export SESSION_FILE=${SESSION_FILE:-".aicoder/current-session.jsonl"}
+
+export AICODER_FULL_VISION=1
+
+# Save context tokens
+export CONTEXT_SIZE=100000
+
+# We kinda have 3 automatic compaction strategies
+# 1 - cache compact plugin: happens at 65% and injects a message asking the ai to compact on the next answer. This is good for tokens cache hit since we dont create a full different compaction message that is not cache so cache-compact objective is to be as token efficient as possible. Also helps to keep ai on track by keeping some percentage of the last messages as context
+# 2 - compact strategy plugin: happens at 80% (can be changed by configuration) and it is not token efficient because it creates a different message thread so there is no cache hit benefit but it helps keeping ai on track by keeping a percentage of the last messages as context
+# 3 - internal compact (not a plugin): this is the "last frontier" to protect context size. It does the full compaction and is considered the emergency compaction. The last resource before token explosion.
+
+# Set cache compact threshold at 65% (efficient token compaction)
+export CACHE_COMPACT_THRESHOLD=65
+export CACHE_COMPACT_DEFER=80
+export CACHE_COMPACT_KEEP_PERCENT=10
+export CACHE_COMPACT_FORCE=1
+#export CACHE_COMPACT_DEBUG=1
+
+# Set compaction strategy threshold (less agressive than full compaction compaction at 80%)
+export COMPACT_STRATEGY_THRESHOLD=${COMPACT_STRATEGY_THRESHOLD:-80}
+export COMPACT_STRATEGY_KEEP_PERCENT=${COMPACT_STRATEGY_KEEP_PERCENT:-10}
+
+# Amount of tokens the AI is allowed to use for autoloaded memory into session prompt
+export AICODER_MEMORY_AUTOLOAD_LIMIT=4096
+
+# Keep "auto next forever" loop
+export AUTO_NEXT_MAX_ATTEMPTS=9999
+
+# Monitor cache drops and log on screen
+export CACHE_MONITOR=1
+
+# Signal ai about the presence of asian chars in its responses
+export ASIAN_NUDGE=1
+
+# Set preferred theme
+export AICODER_THEME=luna
+
+# Don't allow the ai shell commands to see tokens and special vars
+export AICODER_SHELL_CLEAR_VARS=OPENAI_API_KEY,API_KEY,ANTHROPIC_API_KEY,GITHUB_TOKEN,SESSION_FILE
+
+#;Wikipedia,https://en.wikipedia.org/w/api.php?action=query&format=json&list=search&srsearch=
+export WEB_SEARCH_PROVIDERS="Brave,https://search.brave.com/search?q=;Mojeek,https://www.mojeek.com/search?q=;Startpage,https://www.startpage.com/search?q=;DuckDuckGo,https://lite.duckduckgo.com/lite/?q=;Searxng-Mdosch,https://search.mdosch.de/search?q=;Bing,https://www.bing.com/search?q=;Yahoo,https://search.yahoo.com/search?p="
+
+# Turn details tty on (show output of commands)
+#export DETAIL_TTY=1
