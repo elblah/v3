@@ -150,6 +150,11 @@ class SkillsManager:
             "<skills>\n"
             "Available skills (informational only - load when needed via read_file):\n"
             "\n"
+            "Note: To create/modify a skill, work in `.aicoder/skills/<name>/SKILL.md` "
+            "(local project dir, writable). If modifying a global skill, copy its dir "
+            "to `.aicoder/skills/` first, then edit the local copy. Global dir "
+            "`~/.config/aicoder-v3/skills/` is READ-ONLY to the AI.\n"
+            "\n"
             + "\n".join(lines)
         )
 
@@ -218,11 +223,16 @@ def create_plugin(ctx):
 /skills extra    - List extra (non-auto-loaded) skills
 /skills help     - Show this help
 
-Directories (global: ~/.config/aicoder-v3, local: .aicoder):
-  skills/         - Auto-loaded into system prompt
-  skills-extra/   - Not auto-loaded, use read_file to load
+Directories:
+  ~/.config/aicoder-v3/skills/      READ-ONLY (system-level)
+  .aicoder/skills/                  Writable — create/modify skills here
+  ~/.config/aicoder-v3/skills-extra/  READ-ONLY
+  .aicoder/skills-extra/            Writable
 
-Local overrides global on name collision."""
+To modify a global skill: copy it from ~/.config/... to .aicoder/skills/ first,
+then edit the local copy. The global dir is READ-ONLY to the AI.
+Local (.aicoder/) overrides global on name collision.
+Any dir: skill_name/SKILL.md with YAML frontmatter."""
 
         return f"Unknown command: {args[0]}. Use /skills help for usage."
 

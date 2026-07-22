@@ -80,6 +80,20 @@ def _write_to_central(line):
         return False
 
 
+def _write_central_fallback(line):
+    """Append to ~/.aicoder/central_stats.log if writable. Silently skip if not.
+    Disable with STATS_FALLBACK_FILE=0."""
+    if os.environ.get("STATS_FALLBACK_FILE", "1") == "0":
+        return
+    try:
+        path = os.path.join(os.path.expanduser("~"), ".aicoder", "central_stats.log")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a") as f:
+            f.write(line)
+    except (PermissionError, OSError):
+        pass
+
+
 def create_plugin(ctx):
     """Plugin entry point"""
     session_id = None
@@ -138,8 +152,9 @@ def create_plugin(ctx):
         with open(log_path, "a") as f:
             f.write(json_line + "\n")
 
-        # Send to central server
-        _write_to_central(json_line + "\n")
+        # Send to central server (or fallback if unavailable)
+        if not _write_to_central(json_line + "\n"):
+            _write_central_fallback(json_line + "\n")
 
     def _on_context_bar():
         """Hook: Add cost to context bar"""
