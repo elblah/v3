@@ -3,34 +3,20 @@
 # Local: examples/skills/
 # Remote: GitHub repos (listed below)
 
-SKILLS_DIR="$HOME/.config/aicoder-v3/skills"
-PLUGINS_DIR="$HOME/.config/aicoder-v3/plugins"
+BASE_DIR="$HOME/.config/aicoder-v3"
+SKILLS_DIR="$BASE_DIR/skills"
+SKILLS_EXTRA_DIR="$BASE_DIR/skills-extra"
 AICODER_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-mkdir -p "$SKILLS_DIR"
-
-# Check if skills plugin is installed
-if [ ! -f "$PLUGINS_DIR/skills.py" ]; then
-    echo ""
-    echo "Note: The skills plugin (examples/plugins/skills.py) is not installed."
-    echo "      The plugin loads skills automatically on startup."
-    echo "      Without it you can still use skills:"
-    echo "        - Set AICODER_SYSTEM_PROMPT_APPEND='skills in $HOME/.config/aicoder-v3/skills, ask user before running'"
-    echo "        - Or just say 'read skills dir at $SKILLS_DIR' in conversation"
-    echo ""
-    read -p "Install the skills plugin now? [y/N]: " ans
-    if [[ "$ans" =~ [yY] ]]; then
-        mkdir -p "$PLUGINS_DIR"
-        cp -v "$AICODER_DIR/examples/plugins/skills.py" "$PLUGINS_DIR/"
-        echo "[✓] skills plugin installed"
-    else
-        echo "Skipped. You can install later with: install-plugins.sh"
-    fi
-    echo ""
-fi
+mkdir -p "$SKILLS_DIR" "$SKILLS_EXTRA_DIR"
 
 # Remote skills: "display_name|user/repo|skill_dir_in_tarball"
 REMOTE_SKILLS=(
+    "ponytail|DietrichGebert/ponytail|skills/ponytail"
+    "ponytail-audit|DietrichGebert/ponytail|skills/ponytail-audit"
+    "ponytail-debt|DietrichGebert/ponytail|skills/ponytail-debt"
+    "ponytail-gain|DietrichGebert/ponytail|skills/ponytail-gain"
+    "ponytail-review|DietrichGebert/ponytail|skills/ponytail-review"
     "hallmark|nutlope/hallmark|skills/hallmark"
     "caveman|JuliusBrussee/caveman|skills/caveman"
     "caveman-commit|JuliusBrussee/caveman|skills/caveman-commit"
@@ -52,10 +38,23 @@ choices=$(printf "%s\n%s" "$local_skills" "$remote_list" | fzf -m -e)
 
 [ -z "$choices" ] && exit 1
 
+echo ""
+echo "Install mode:"
+echo "  [A]utoloaded  → ~/.config/aicoder-v3/skills/         (loaded every session)"
+echo "  [E]xtra       → ~/.config/aicoder-v3/skills-extra/   (not auto-loaded)"
+read -p "Choice [A/e]: " mode
+if [[ "$mode" =~ [eE] ]]; then
+    SKILLS_DIR="$SKILLS_EXTRA_DIR"
+    echo "Installing to skills-extra/ (not auto-loaded)"
+else
+    echo "Installing to skills/ (auto-loaded)"
+fi
+echo ""
+
 install_local() {
     local name="$1"
     local src="$AICODER_DIR/examples/skills/$name"
-    rm -rf "$SKILLS_DIR/$name"
+    rm -rf "$BASE_DIR/skills/$name" "$SKILLS_EXTRA_DIR/$name"
     [ -d "$src" ] && cp -vR "$src" "$SKILLS_DIR/$name"
 }
 
@@ -68,7 +67,7 @@ install_remote() {
 
     echo -e "\e[32mInstalling remote: $name from $repo\e[0m"
 
-    rm -rf "$SKILLS_DIR/$name"
+    rm -rf "$BASE_DIR/skills/$name" "$SKILLS_EXTRA_DIR/$name"
 
     local tmpdir
     tmpdir=$(mktemp -d)

@@ -87,6 +87,11 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             search_path,
         ]
 
+        # Prepend wrapper if configured (e.g. AICODER_SHELL_PREPEND_CMD="rtk")
+        prepend = Config.shell_prepend_cmd()
+        if prepend:
+            cmd = prepend.split() + cmd
+
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
         # Parse results
