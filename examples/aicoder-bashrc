@@ -1,10 +1,12 @@
 export AICODER_EMPTY_RETRY_DELAY=2
 
-# rtk-ai/rtk: CLI proxy that reduces LLM token consumption by 60-90% on common dev commands
-export AICODER_SHELL_PREPEND_CMD="rtk"
+if command -v rtk; then
+    # rtk-ai/rtk: CLI proxy that reduces LLM token consumption by 60-90% on common dev commands
+    export AICODER_SHELL_PREPEND_CMD="rtk"
 
-# force using commands through rtk
-export TOOLS_DENY="list_directory,grep"
+    # force using commands through rtk
+    export TOOLS_DENY="list_directory,grep"
+fi
 
 # Force session saving as jsonl
 export SESSION_FILE_CONFIRM_AUTOLOAD=1
