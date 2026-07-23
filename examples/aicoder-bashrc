@@ -1,6 +1,6 @@
 export AICODER_EMPTY_RETRY_DELAY=2
 
-if command -v rtk; then
+if false && command -v rtk; then
     # rtk-ai/rtk: CLI proxy that reduces LLM token consumption by 60-90% on common dev commands
     export AICODER_SHELL_PREPEND_CMD="rtk"
 
@@ -24,7 +24,7 @@ export CONTEXT_SIZE=100000
 
 # Set cache compact threshold at 65% (efficient token compaction)
 export CACHE_COMPACT_THRESHOLD=65
-export CACHE_COMPACT_DEFER=80
+#export CACHE_COMPACT_DEFER=80
 export CACHE_COMPACT_KEEP_PERCENT=10
 export CACHE_COMPACT_FORCE=1
 #export CACHE_COMPACT_DEBUG=1
