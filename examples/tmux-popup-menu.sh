@@ -345,6 +345,12 @@ if [ ! -S "$SOCKET" ]; then
     exit
 fi
 
+# Return socket path only (for other scripts to reuse socket-finding logic)
+if [[ "$1" == "get-socket-path" ]]; then
+    echo "$SOCKET"
+    exit 0
+fi
+
 # Handle inject-raw: read from tmux buffer (set by command-prompt via set-buffer).
 # Using set-buffer avoids shell injection — tmux command, not sh -c.
 # NOTE: double-quotes in input may truncate (minor data loss, not injection).
