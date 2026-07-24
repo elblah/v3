@@ -22,6 +22,7 @@ REMOTE_SKILLS=(
     "caveman-commit|JuliusBrussee/caveman|skills/caveman-commit"
     "caveman-review|JuliusBrussee/caveman|skills/caveman-review"
     "karpathy-guidelines|forrestchang/andrej-karpathy-skills|skills/karpathy-guidelines"
+    "android-skill|elblah/android-cli-toolchain-skills|android-skill"
 )
 
 # Build fzf list
@@ -73,8 +74,13 @@ install_remote() {
     tmpdir=$(mktemp -d)
     tarball="$tmpdir/repo.tar.gz"
 
-    curl -sfL "https://github.com/$repo/archive/refs/heads/main.tar.gz" -o "$tarball" || {
-        echo "  \e[31mDownload failed\e[0m"
+    # Try master first, fall back to main
+    branch="master"
+    curl -sfL "https://github.com/$repo/archive/refs/heads/master.tar.gz" -o "$tarball" || {
+        branch="main"
+        curl -sfL "https://github.com/$repo/archive/refs/heads/main.tar.gz" -o "$tarball"
+    } || {
+        echo -e "  \e[31mDownload failed\e[0m"
         rm -rf "$tmpdir"
         return 1
     }
@@ -87,7 +93,7 @@ install_remote() {
     if [ -d "$extracted" ]; then
         cp -vR "$extracted/." "$SKILLS_DIR/$name"
     else
-        echo "  \e[31mPath not found: $path\e[0m"
+        echo -e "  \e[31mPath not found: $path\e[0m"
         rm -rf "$tmpdir"
         return 1
     fi
