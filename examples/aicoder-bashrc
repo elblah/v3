@@ -30,8 +30,11 @@ export CACHE_COMPACT_FORCE=1
 #export CACHE_COMPACT_DEBUG=1
 
 # Set compaction strategy threshold (less agressive than full compaction compaction at 80%)
-export COMPACT_STRATEGY_THRESHOLD=${COMPACT_STRATEGY_THRESHOLD:-80}
+export COMPACT_STRATEGY_THRESHOLD=${COMPACT_STRATEGY_THRESHOLD:-85}
 export COMPACT_STRATEGY_KEEP_PERCENT=${COMPACT_STRATEGY_KEEP_PERCENT:-10}
+
+# Full compaction (the brutal one, only leave previous summaries and destroy all history)
+export CONTEXT_COMPACT_PERCENTAGE=${CONTEXT_COMPACT_PERCENTAGE:-95}
 
 # Amount of tokens the AI is allowed to use for autoloaded memory into session prompt
 export AICODER_MEMORY_AUTOLOAD_LIMIT=4096
