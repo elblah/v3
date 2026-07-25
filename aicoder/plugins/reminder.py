@@ -22,8 +22,6 @@ Env vars (override JSON on load, persist to JSON):
 
 import json
 import os
-import secrets
-import subprocess
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
@@ -87,24 +85,19 @@ def _save_state():
 
 def _edit_in_tmux(initial: str) -> str | None:
     """Open $EDITOR in new tmux window, return edited content or None."""
-    token = secrets.token_hex(4)
-    sync = f"reminder_edit_done_{token}"
-    win = f"reminder_{token}"
-    editor = os.environ.get("EDITOR", "nano")
+    from aicoder.utils.tmux_edit_utils import tmux_open_editor
+
     tmp = create_temp_file("aicoder-reminder-", ".md")
 
     try:
         with open(tmp, "w") as f:
             f.write(initial)
 
-        LogUtils.info(f"Opening {editor} for reminder message...")
+        LogUtils.info("Opening editor for reminder message...")
         LogUtils.dim("Save and close when done.")
 
-        subprocess.run(
-            f'tmux new-window -n "{win}" \'bash -c "{editor} {tmp}; tmux wait-for -S {sync}"\'',
-            shell=True, capture_output=True, text=True, check=False,
-        )
-        subprocess.run(f"tmux wait-for {sync}", shell=True, capture_output=True, text=True, check=False)
+        if not tmux_open_editor(tmp, window_name_prefix="reminder"):
+            return None
 
         with open(tmp) as f:
             content = f.read().strip()

@@ -120,11 +120,7 @@ def create_plugin(ctx):
             print_color("yellow", "[!] Clipboard is empty")
             return
 
-        # Get editor from environment or default to nano
-        editor = os.environ.get("EDITOR", "nano")
-
         # Create temporary file
-        import subprocess
         random_suffix = _gen_token()
         temp_file = create_temp_file(f"aicoder-clipboard-{random_suffix}", ".md")
 
@@ -133,30 +129,13 @@ def create_plugin(ctx):
             with open(temp_file, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            print_color("brightGreen", f"[*] Opening {editor} in tmux window...")
+            print_color("brightGreen", "[*] Opening editor in tmux window...")
             LogUtils.print(f"{colors['dim']}Save and exit when done. The editor is running in a separate tmux window.{colors['reset']}")
 
-            # Use tmux wait-for
-            sync_point = f"clipboard_done_{random_suffix}"
-            window_name = f"clipboard_{random_suffix}"
+            from aicoder.utils.tmux_edit_utils import tmux_open_editor
 
-            # Create tmux command that waits for sync point
-            tmux_cmd = f'tmux new-window -n "{window_name}" \'bash -c "{editor} {temp_file}; tmux wait-for -S {sync_point}"\''
-
-            # Execute tmux command
-            result = subprocess.run(
-                tmux_cmd, shell=True, capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                raise Exception(f"tmux command failed: {result.stderr}")
-
-            # Wait for sync point
-            wait_cmd = f"tmux wait-for {sync_point}"
-            result = subprocess.run(
-                wait_cmd, shell=True, capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                raise Exception(f"tmux wait failed: {result.stderr}")
+            if not tmux_open_editor(temp_file, window_name_prefix="clipboard"):
+                raise Exception("tmux editor session failed")
 
             # Read edited content
             try:
