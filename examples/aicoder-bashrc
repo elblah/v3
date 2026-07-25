@@ -45,6 +45,9 @@ export AUTO_NEXT_MAX_ATTEMPTS=9999
 # Monitor cache drops and log on screen
 export CACHE_MONITOR=1
 
+# Monitor AI confidence on shell commands (0-10 self-assessment)
+export MONITOR_CONFIDENCE_LEVEL=1
+
 # Signal ai about the presence of asian chars in its responses
 export ASIAN_NUDGE=1
 
