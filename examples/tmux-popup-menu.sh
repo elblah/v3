@@ -375,6 +375,32 @@ if [[ "$1" == "inject-raw" ]]; then
     exit 0
 fi
 
+# Handle command-raw: read command from tmux buffer, send to socket's command endpoint.
+# Prepends "/" automatically so user types "tmux wintitle on" not "/tmux wintitle on".
+if [[ "$1" == "command-raw" ]]; then
+    cmd=$(tmux show-buffer -b aicoder-cmd 2>/dev/null)
+    tmux delete-buffer -b aicoder-cmd 2>/dev/null
+    if [[ -z "$cmd" ]]; then
+        exit 0
+    fi
+    # Prepend / if missing so user doesn't need to type it
+    if [[ "$cmd" != /* ]]; then
+        cmd="/$cmd"
+    fi
+    resp=$(echo "command $cmd" | nc -N -w 3 -U "$SOCKET" 2>/dev/null)
+    rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        show_error "Socket error (exit $rc)"
+    fi
+    if echo "$resp" | jq -e '.status=="success"' >/dev/null 2>&1; then
+        tmux display-message -d 5000 "#[fg=black,bg=green]AI Coder: command sent: $cmd"
+    else
+        err=$(echo "$resp" | jq -r '.message // "unknown"' 2>/dev/null || echo "unknown")
+        show_error "#[fg=red]command failed: $err"
+    fi
+    exit 0
+fi
+
 if [[ ! -n "$1" ]]; then
     # Get user choice from menu
     CHOICE=$(show_menu "$SOCKET")
