@@ -266,6 +266,43 @@ class TestCompactionServiceUnit:
         result = service.compact(messages)
         assert result is not None
 
+    def test_compact_preserves_messages_when_groups_equal_protect(self):
+        """Regression: compact must NOT lose trailing user messages when
+        groups == protect_rounds (old ternary set recent_groups=[])."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "system", "content": "You are helpful"},
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+            {"role": "user", "content": "i think it can include user messages also"},
+        ]
+        # 2 groups from [user, ass, user] → protect=2 → should preserve all
+        result = service.compact(messages)
+        # Trailing user message must survive
+        contents = [m.get("content", "") for m in result]
+        assert any("i think it can include user messages also" in c for c in contents), (
+            f"Trailing user message lost in {contents}"
+        )
+
+    def test_group_messages_no_duplicate_at_boundary(self):
+        """Test group_messages does NOT duplicate user message across groups."""
+        service = CompactionService(api_client=None)
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+            {"role": "user", "content": "Next question"},
+            {"role": "assistant", "content": "Answer"},
+        ]
+        groups = service.group_messages(messages)
+        # Each message should appear in exactly one group
+        all_msgs = []
+        for g in groups:
+            all_msgs.extend(m["content"] for m in g.messages)
+        # "Next question" must appear exactly once
+        assert all_msgs.count("Next question") == 1, (
+            f"'Next question' appears {all_msgs.count('Next question')} times in {all_msgs}"
+        )
+
     def test_group_messages_empty(self):
         """Test grouping empty message list."""
         service = CompactionService(api_client=None)
