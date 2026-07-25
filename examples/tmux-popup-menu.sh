@@ -14,7 +14,10 @@
 # bind -n M-i run-shell -b "$AICODER_MENU_BIN inject"
 # Quick-inject with command-prompt: prompt, set-buffer (tmux cmd, no shell), then run script
 # bind -n M-I command-prompt -p "Inject:" "set-buffer -b aicoder-inject \"%1\" \; run-shell -b '$AICODER_MENU_BIN inject-raw'"
+# bind -n M-2 command-prompt -p "Inject:" "set-buffer -b aicoder-inject \"%1\" \; run-shell -b '$AICODER_MENU_BIN inject-raw'"
+# bind -n M-3 command-prompt -p "ACommand:" "set-buffer -b aicoder-cmd \"%1\" \; run-shell -b '$AICODER_MENU_BIN command-raw'"
 # bind -n M-x run-shell -b "$AICODER_MENU_BIN stop"
+# bind -n M-4 run-shell -b "$AICODER_MENU_BIN stop"
 # bind -n M-k run-shell -b "$AICODER_MENU_BIN kill"
 # bind -n M-g run-shell -b "$AICODER_MENU_BIN debug"
 # bind -n M-q run-shell -b "$AICODER_MENU_BIN quit"
