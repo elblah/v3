@@ -65,9 +65,6 @@ def create_plugin(ctx):
                            "0=lost/don't understand the goal, 5=reasonably sure, "
                            "10=certain this is the right direction",
         }
-        if "required" not in params:
-            params["required"] = []
-        params["required"].append("confidence")
         return tools
 
     def _print_confidence(confidence, prefix=""):
