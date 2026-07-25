@@ -1,7 +1,7 @@
 """Confidence monitoring plugin.
 
 When MONITOR_CONFIDENCE_LEVEL=1:
-- Injects optional `confidence` param (0-10) into run_shell_command schema
+- Injects `confidence` param (0-10) into mutation tools (write_file, edit_file, run_shell_command)
 - Adds system prompt instruction telling the AI to self-score
 - Prints [confidence_monitor] <level> with color: 0-3 red, 4-6 yellow, 7-10 green
 
@@ -16,13 +16,15 @@ from typing import Optional
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
+# Tools that modify state — confidence tracks session-direction certainty
+_MUTATION_TOOLS = {"run_shell_command", "write_file", "edit_file"}
 
 _SYSTEM_INSTRUCTION = """
-## Confidence self-assessment
-For every `run_shell_command`, include a `confidence` parameter (0-10):
-0=don't understand what the user wants, 5=reasonably sure my approach matches user intent,
-10=certain this command advances the user's stated goal.
-Be honest. Low confidence signals need for refocusing.
+## Confidence self-assessment (session direction)
+Include a `confidence` parameter (0-10) on mutation tools (write_file, edit_file, run_shell_command):
+0=I'm lost / session direction unclear, 5=reasonably sure what you want,
+10=certain I understand the goal and this action aligns.
+Be honest. Low confidence means I need you to clarify or redirect.
 """
 
 
@@ -49,24 +51,24 @@ def create_plugin(ctx):
         return _SYSTEM_INSTRUCTION
 
     def modify_tool_definitions(tools):
-        """Inject optional confidence param into run_shell_command schema."""
-        if "run_shell_command" not in tools:
-            return tools
-
+        """Inject confidence param into mutation tool schemas."""
         tools = copy.deepcopy(tools)
-        params = tools["run_shell_command"].get("parameters", {})
-        properties = params.get("properties", {})
-
-        properties["confidence"] = {
+        conf_prop = {
             "type": "integer",
             "minimum": 0,
             "maximum": 10,
-            "description": "Self-assessed confidence (0-10). "
-                           "0=lost/don't understand the goal, 5=reasonably sure, "
-                           "10=certain this is the right direction",
+            "description": "Session direction confidence (0-10). "
+                           "0=lost / goal unclear, 5=reasonably sure, "
+                           "10=certain this aligns with what you want",
         }
-        if "confidence" not in params.get("required", []):
-            params.setdefault("required", []).append("confidence")
+        for name in _MUTATION_TOOLS:
+            if name not in tools:
+                continue
+            params = tools[name].get("parameters", {})
+            properties = params.get("properties", {})
+            properties["confidence"] = conf_prop
+            if "confidence" not in params.get("required", []):
+                params.setdefault("required", []).append("confidence")
         return tools
 
     def _print_confidence(confidence, prefix=""):
@@ -75,7 +77,7 @@ def create_plugin(ctx):
         LogUtils.print(f"{tag} {prefix}{val}")
 
     def before_approval(tool_name, arguments):
-        if tool_name != "run_shell_command":
+        if tool_name not in _MUTATION_TOOLS:
             return None
         if os.environ.get("MONITOR_CONFIDENCE_BEFORE_APPROVAL") != "1":
             return None
@@ -85,7 +87,7 @@ def create_plugin(ctx):
         return None  # Don't affect approval decision
 
     def after_tool(tool_name, arguments, result):
-        if tool_name != "run_shell_command":
+        if tool_name not in _MUTATION_TOOLS:
             return
         confidence = arguments.get("confidence")
         if confidence is not None:
