@@ -12,6 +12,7 @@ Usage:
 """
 
 import os
+import sys
 
 from aicoder.core.config import Config
 
@@ -55,3 +56,14 @@ def create_plugin(ctx):
         ctx.app.set_next_prompt(initial)
 
     ctx.register_hook("before_user_prompt", inject_initial_prompt)
+
+    # Also fire on after_session_initialized for pipe mode (non-interactive)
+    # where before_user_prompt never fires
+    def inject_initial_prompt_on_init(messages):
+        if _initial_prompt_sent:
+            return
+        if sys.stdin.isatty():
+            return  # interactive mode handled by before_user_prompt
+        inject_initial_prompt()
+
+    ctx.register_hook("after_session_initialized", inject_initial_prompt_on_init)
