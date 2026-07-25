@@ -70,6 +70,10 @@ class ToolManager:
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         """Get all tool definitions for API request"""
+        # Allow plugins to modify tool definitions before sending
+        if self.plugin_system:
+            self.tools = self.plugin_system.call_hooks_with_return("modify_tool_definitions", self.tools) or self.tools
+
         definitions = []
 
         for name, tool_def in self.tools.items():

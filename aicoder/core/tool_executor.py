@@ -301,6 +301,10 @@ class ToolExecutor:
             tool_def = self.tool_manager.tools.get(tool_name)
             self.display_tool_result(result, tool_def)
 
+            # Notify plugins after each tool execution
+            if self.plugin_system:
+                self.plugin_system.call_hooks("after_single_tool_execution", tool_name, arguments, result)
+
             # Return result for message history (AI always gets detailed version)
             return {
                 "tool_call_id": tool_call_id,
