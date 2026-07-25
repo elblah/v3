@@ -43,10 +43,13 @@ You may use tools (read_file, run_shell_command, grep, etc.) to explore the code
 <prompt>concrete next action here</prompt>
 
 RULES:
-- Output exactly ONE <prompt> tag as the LAST thing in your response.
+- Your final message must contain ONLY the <prompt> tag. No summaries, no explanation, no "I did X".
+- Output exactly one <prompt> tag. That's it.
 - The prompt must be a CONCRETE ACTION you can take NOW — not a question, not a plan, not "let me know if you want me to".
 - If the task is truly complete, use <prompt>TASK_COMPLETE</prompt>.
-- NEVER end your response without a <prompt> tag. This is non-negotiable.
+- NEVER finish without a <prompt> tag. Non-negotiable.
+- NEVER defer — do not ask the user what to do next. You are autonomous, act.
+- The final message is text ONLY — no tool calls in it. Use tools to explore in earlier messages.
 """
 )
 
@@ -54,7 +57,7 @@ _DRIFT_GUARD = """
 CRITICAL: The user's current task is:
 {g}
 
-Your <prompt> MUST directly advance THIS task. Do NOT suggest unrelated infrastructure, test harnesses, refactors, or tangents from memory files. If the task is complete, use <prompt>TASK_COMPLETE</prompt>.
+Your <prompt> MUST directly advance THIS task. No deferring — never output "ask the user", "check with the user", "wait for input", or anything that passes responsibility back. You are autonomous, act on the goal yourself. Do NOT suggest unrelated infrastructure, test harnesses, refactors, or tangents from memory files. If the task is complete, use <prompt>TASK_COMPLETE</prompt>.
 """
 
 
