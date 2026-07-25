@@ -323,6 +323,11 @@ class MessageHistory:
     def replace_messages(self, new_messages: List[Dict[str, Any]]) -> None:
         """Replace all messages with new list"""
         self.messages = new_messages
+        # Clear cache and re-cache all messages when replaced
+        from .token_estimator import clear_cache, cache_message
+        clear_cache()
+        for msg in self.messages:
+            cache_message(msg)
         self.estimate_context()
 
     def estimate_context(self) -> None:
