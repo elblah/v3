@@ -1,7 +1,7 @@
 """Confidence monitoring plugin.
 
 When MONITOR_CONFIDENCE_LEVEL=1:
-- Injects `confidence` param (0-10) into mutation tools (write_file, edit_file, run_shell_command)
+- Injects `confidence` param (0-10) into ALL tools
 - Adds system prompt instruction telling the AI to self-score
 - Prints [confidence_monitor] <level> with color: 0-3 red, 4-6 yellow, 7-10 green
 
@@ -16,12 +16,12 @@ from typing import Optional
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
-# Tools that modify state — confidence tracks session-direction certainty
+# Tools that modify state — approval/prompt gating still scoped to these
 _MUTATION_TOOLS = {"run_shell_command", "write_file", "edit_file"}
 
 _SYSTEM_INSTRUCTION = """
 ## Confidence self-assessment (session direction)
-Include a `confidence` parameter (0-10) on mutation tools (write_file, edit_file, run_shell_command):
+Include a `confidence` parameter (0-10) on all tools:
 0=I'm lost / session direction unclear, 5=reasonably sure what you want,
 10=certain I understand the goal and this action aligns.
 Be honest. Low confidence means I need you to clarify or redirect.
@@ -51,7 +51,7 @@ def create_plugin(ctx):
         return _SYSTEM_INSTRUCTION
 
     def modify_tool_definitions(tools):
-        """Inject confidence param into mutation tool schemas."""
+        """Inject confidence param into all tool schemas."""
         tools = copy.deepcopy(tools)
         conf_prop = {
             "type": "integer",
@@ -61,10 +61,8 @@ def create_plugin(ctx):
                            "0=lost / goal unclear, 5=reasonably sure, "
                            "10=certain this aligns with what you want",
         }
-        for name in _MUTATION_TOOLS:
-            if name not in tools:
-                continue
-            params = tools[name].get("parameters", {})
+        for name, tool_def in tools.items():
+            params = tool_def.get("parameters", {})
             properties = params.get("properties", {})
             properties["confidence"] = conf_prop
             if "confidence" not in params.get("required", []):
@@ -87,8 +85,6 @@ def create_plugin(ctx):
         return None  # Don't affect approval decision
 
     def after_tool(tool_name, arguments, result):
-        if tool_name not in _MUTATION_TOOLS:
-            return
         confidence = arguments.get("confidence")
         if confidence is not None:
             _print_confidence(confidence)

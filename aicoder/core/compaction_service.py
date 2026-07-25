@@ -86,8 +86,11 @@ class CompactionService:
 
         # Group only non-summary messages for compaction
         groups = self.group_messages(messages_to_compact)
-        recent_groups = groups[-Config.compact_protect_rounds():] if len(groups) > Config.compact_protect_rounds() else []
-        old_groups = groups[:len(groups) - len(recent_groups)] if len(recent_groups) < len(groups) else []
+        protect = Config.compact_protect_rounds()
+        if len(groups) <= protect:
+            return messages  # Too few groups to compact — all are "recent"
+        recent_groups = groups[-protect:]
+        old_groups = groups[:len(groups) - protect]
 
         if len(old_groups) == 0:
             return messages  # Nothing old enough to compact
@@ -235,7 +238,7 @@ class CompactionService:
                 content = self._get_content_as_string(current[0].get("content", "")) if current[0] else ""
                 groups.append(
                     MessageGroup(
-                        messages=list(current),
+                        messages=list(current[:-1]),
                         is_summary=bool(content and content.startswith("[SUMMARY]")),
                         is_user_turn=current[0].get("role") == "user",
                     )
