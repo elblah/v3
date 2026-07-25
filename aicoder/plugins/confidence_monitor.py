@@ -20,8 +20,9 @@ from aicoder.utils.log import LogUtils
 _SYSTEM_INSTRUCTION = """
 ## Confidence self-assessment
 For every `run_shell_command`, include a `confidence` parameter (0-10):
-0=completely guessing, 5=moderately sure, 10=absolutely certain.
-Be honest. This is used for quality monitoring.
+0=don't understand what the user wants, 5=reasonably sure my approach matches user intent,
+10=certain this command advances the user's stated goal.
+Be honest. Low confidence signals need for refocusing.
 """
 
 
@@ -61,7 +62,8 @@ def create_plugin(ctx):
             "minimum": 0,
             "maximum": 10,
             "description": "Self-assessed confidence (0-10). "
-                           "0=unsure, 10=certain.",
+                           "0=lost/don't understand the goal, 5=reasonably sure, "
+                           "10=certain this is the right direction",
         }
         return tools
 
