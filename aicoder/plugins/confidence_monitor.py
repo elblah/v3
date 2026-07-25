@@ -65,14 +65,27 @@ def create_plugin(ctx):
         }
         return tools
 
+    def _print_confidence(confidence, prefix=""):
+        tag = f"{colors['bold']}{colors['yellow']}[confidence_monitor]{colors['reset']}"
+        val = f"{_value_color(confidence)}{confidence}{colors['reset']}"
+        LogUtils.print(f"{tag} {prefix}{val}")
+
+    def before_approval(tool_name, arguments):
+        if tool_name != "run_shell_command":
+            return None
+        if os.environ.get("MONITOR_CONFIDENCE_BEFORE_APPROVAL") != "1":
+            return None
+        confidence = arguments.get("confidence")
+        if confidence is not None:
+            _print_confidence(confidence, prefix="before-approval: ")
+        return None  # Don't affect approval decision
+
     def after_tool(tool_name, arguments, result):
         if tool_name != "run_shell_command":
             return
         confidence = arguments.get("confidence")
         if confidence is not None:
-            tag = f"{colors['bold']}{colors['yellow']}[confidence_monitor]{colors['reset']}"
-            val = f"{_value_color(confidence)}{confidence}{colors['reset']}"
-            LogUtils.print(f"{tag} {val}")
+            _print_confidence(confidence)
             confidences.append(confidence)
             if len(confidences) > _ROLLING_WINDOW:
                 confidences.pop(0)
@@ -86,5 +99,6 @@ def create_plugin(ctx):
 
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
     ctx.register_hook("modify_tool_definitions", modify_tool_definitions)
+    ctx.register_hook("before_approval_prompt", before_approval)
     ctx.register_hook("after_single_tool_execution", after_tool)
     ctx.register_hook("on_context_bar", on_context_bar)
