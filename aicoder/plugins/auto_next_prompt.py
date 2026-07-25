@@ -7,7 +7,7 @@ Commands:
 - /auto-next-prompt on              - Enable auto-continuation
 - /auto-next-prompt off             - Disable
 - /auto-next-prompt                 - Show status
-- /auto-next-prompt goal ...        - Set/clear goal for drift guard
+- /auto-next-prompt goal ...        - Set goal for drift guard
 - /auto-next-prompt clean-slate on  - Wipe history before each prompt
 - /auto-next-prompt clean-slate off - Keep history (default)
 - /auto-next-prompt task-complete on   - Allow AI to stop loop (default)
@@ -27,11 +27,10 @@ import json
 import os
 import re
 import time
-from typing import Optional
 
-from aicoder.utils.log import LogUtils
 from aicoder.core.config import Config
-
+from aicoder.utils.log import LogUtils
+from aicoder.utils.temp_file_utils import create_temp_file
 
 # Base injection template (customizable via NEXT_PROMPT_CUSTOM env var)
 _INJECT_BASE = os.environ.get(
@@ -61,7 +60,7 @@ Your <prompt> MUST directly advance THIS task. No deferring — never output "as
 """
 
 
-def _extract_prompt_tag(text: str) -> Optional[str]:
+def _extract_prompt_tag(text: str) -> str | None:
     """Extract content from <prompt>...</prompt> tags"""
     if not text:
         return None
@@ -184,7 +183,8 @@ def create_plugin(ctx):
                 "Auto-next-prompt subcommands:\n"
                 "  on               - enable auto-continuation\n"
                 "  off              - disable\n"
-                "  goal <text>      - set task goal (drift guard)\n"
+                "  goal             - set goal via editor\n"
+                "  goal <text>      - set goal directly\n"
                 "  goal off         - clear goal\n"
                 "  clean-slate on   - wipe history before each prompt\n"
                 "  clean-slate off  - keep history (default)\n"
@@ -196,10 +196,35 @@ def create_plugin(ctx):
 
         if args.lower().startswith("goal"):
             rest = args[4:].strip()
-            if rest.lower() in ("off", "clear", ""):
+            if rest.lower() in ("off", "clear"):
                 _goal = ""
                 _save_state()
                 return "Goal cleared."
+            if not rest:
+                if not os.environ.get("TMUX"):
+                    return "[!] Goal editor requires tmux"
+                from aicoder.utils.tmux_edit_utils import tmux_open_editor
+                temp_path = create_temp_file("aicoder-goal-", ".md")
+                try:
+                    with open(temp_path, "w", encoding="utf-8") as f:
+                        if _goal:
+                            f.write(_goal + "\n")
+                    c = Config.colors
+                    LogUtils.print(f"{c['brightGreen']}[*] Opening editor for goal...{c['reset']}")
+                    if not tmux_open_editor(temp_path, window_name_prefix="goal"):
+                        return "[!] Editor session failed."
+                    with open(temp_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    if content:
+                        _goal = content
+                        _save_state()
+                        return f"Goal set:\n{_goal}"
+                    return "Goal unchanged."
+                finally:
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
             _goal = rest
             _save_state()
             return f"Goal set: {_goal}"
@@ -250,7 +275,7 @@ def create_plugin(ctx):
         # Show status (multi-line)
         return _status()
 
-    def _on_after_ai_processing(has_tool_calls) -> Optional[str]:
+    def _on_after_ai_processing(has_tool_calls) -> str | None:
         global _enabled, _awaiting_tag, _attempts, _goal, _clean_slate, _prompt_history, _task_complete
         c = Config.colors
 
@@ -321,7 +346,7 @@ def create_plugin(ctx):
         LogUtils.print(f"{c['brightMagenta']}[auto-next-prompt]{c['reset']} asking for next action...")
         return _build_inject_message(_goal, _task_complete)
 
-    def _on_context_bar() -> Optional[str]:
+    def _on_context_bar() -> str | None:
         """Append prompt count + elapsed time to context bar"""
         if not _enabled or not _prompt_history:
             return None
