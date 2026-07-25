@@ -23,6 +23,7 @@ REMOTE_SKILLS=(
     "caveman-review|JuliusBrussee/caveman|skills/caveman-review"
     "karpathy-guidelines|forrestchang/andrej-karpathy-skills|skills/karpathy-guidelines"
     "android-skill|elblah/android-cli-toolchain-skills|android-skill"
+    "android-tcp-log|elblah/android-cli-toolchain-skills|android-tcp-log"
 )
 
 # Build fzf list
