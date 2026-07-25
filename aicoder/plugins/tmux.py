@@ -226,22 +226,17 @@ def _restore_session(ctx):
     with open(temp_file, "w", encoding="utf-8") as f:
         f.write(header + content)
 
-    # Open editor in tmux window (same pattern as /e)
+    # Open editor in tmux window
     editor = os.environ.get("EDITOR", "nano")
-    random_suffix = os.urandom(4).hex()
-    sync_point = f"tmux_restore_{random_suffix}"
-    window_name = f"tmux-rs_{random_suffix}"
 
     LogUtils.info(f"Opening {editor} with captured content...")
     LogUtils.dim("Save and close when done. Empty file or all-comment = cancel.")
 
-    tmux_cmd = f'tmux new-window -n "{window_name}" \'bash -c "{editor} {temp_file}; tmux wait-for -S {sync_point}"\''
-    proc = subprocess.run(tmux_cmd, shell=True, capture_output=True, text=True)
-    if proc.returncode != 0:
-        LogUtils.error(f"tmux command failed: {proc.stderr}")
-        return
+    from aicoder.utils.tmux_edit_utils import tmux_open_editor
 
-    subprocess.run(f"tmux wait-for {sync_point}", shell=True, capture_output=True, text=True)
+    if not tmux_open_editor(temp_file, window_name_prefix="tmux-rs", editor=editor):
+        LogUtils.error("Editor session failed.")
+        return
 
     # Read edited content
     try:

@@ -53,15 +53,11 @@ class EditSessionCommand(BaseCommand):
             LogUtils.info(f"Opening {editor} in tmux window...")
             LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
 
-            sync_point = f"session_done_{random_suffix}"
-            window_name = f"session_{random_suffix}"
+            from aicoder.utils.tmux_edit_utils import tmux_open_editor
 
-            # Create tmux window with editor and wait-for sync
-            tmux_cmd = f'tmux new-window -n "{window_name}" \'bash -c "{editor} {temp_file}; tmux wait-for -S {sync_point}"\''
-            os.system(tmux_cmd)
-
-            # Wait for editor to finish
-            os.system(f"tmux wait-for {sync_point}")
+            if not tmux_open_editor(temp_file, window_name_prefix="session", editor=editor):
+                LogUtils.error("tmux editor session failed")
+                return CommandResult(should_quit=False, run_api_call=False)
 
             # Check if file still exists
             if not os.path.exists(temp_file):

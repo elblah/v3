@@ -5,7 +5,6 @@ Edit command - Create new message in $EDITOR
 
 import os
 import shutil
-import subprocess
 from aicoder.core.commands.base import BaseCommand, CommandResult, CommandContext
 from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
@@ -87,27 +86,10 @@ class EditCommand(BaseCommand):
             LogUtils.info(f"Opening {editor} in tmux window...")
             LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
 
-            # Use tmux wait-for
-            sync_point = f"edit_done_{random_suffix}"
-            window_name = f"edit_{random_suffix}"
+            from aicoder.utils.tmux_edit_utils import tmux_open_editor
 
-            # Create tmux command that waits for sync point
-            tmux_cmd = f'tmux new-window -n "{window_name}" \'bash -c "{editor} {temp_file}; tmux wait-for -S {sync_point}"\''
-
-            # Execute tmux command
-            result = subprocess.run(
-                tmux_cmd, shell=True, capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                raise Exception(f"tmux command failed: {result.stderr}")
-
-            # Wait for sync point
-            wait_cmd = f"tmux wait-for {sync_point}"
-            result = subprocess.run(
-                wait_cmd, shell=True, capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                raise Exception(f"tmux wait failed: {result.stderr}")
+            if not tmux_open_editor(temp_file, window_name_prefix="edit", editor=editor):
+                raise Exception("tmux editor session failed")
 
             # Read edited content
             try:

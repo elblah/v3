@@ -13,10 +13,7 @@ Commands:
   /autoexec show       - Show current autoexec contents
   /autoexec edit       - Open $EDITOR to edit .aicoder/autoexec
 """
-
 import os
-import secrets
-import subprocess
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
@@ -68,31 +65,15 @@ def _edit_autoexec():
         LogUtils.error("This command only works inside a tmux environment.")
         return
     if not os.path.exists(_AUTOEXEC_FILE):
-        LogUtils.error(f"{_AUTOEXEC_FILE} not found.")
-        return
+        open(_AUTOEXEC_FILE, "a").close()
+        LogUtils.dim(f"Created {_AUTOEXEC_FILE}")
 
-    editor = os.environ.get("EDITOR", "nano")
-    token = secrets.token_hex(4)
-    sync_point = f"autoexec_done_{token}"
+    from aicoder.utils.tmux_edit_utils import tmux_open_editor
 
-    tmux_cmd = (
-        f'tmux new-window -n "autoexec_{token}" '
-        f'\'bash -c "{editor} {_AUTOEXEC_FILE}; tmux wait-for -S {sync_point}"\''
-    )
-
-    result = subprocess.run(tmux_cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        LogUtils.error(f"tmux command failed: {result.stderr}")
-        return
-
-    result = subprocess.run(
-        f"tmux wait-for {sync_point}", shell=True, capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        LogUtils.error(f"tmux wait failed: {result.stderr}")
-        return
-
-    LogUtils.success("autoexec file saved.")
+    if tmux_open_editor(_AUTOEXEC_FILE, window_name_prefix="autoexec"):
+        LogUtils.success("autoexec file saved.")
+    else:
+        LogUtils.error("Failed to open editor.")
 
 
 def create_plugin(ctx):
