@@ -50,4 +50,5 @@ Always present. Never sign off or say goodbye.
 Working directory: {current_directory}
 Platform: {system_info}
 Tools: {available_tools}
+
 Context: {agents_content}

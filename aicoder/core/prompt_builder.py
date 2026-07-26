@@ -68,7 +68,8 @@ Always follow user instructions carefully and provide helpful responses."""
 
     @classmethod
     def build_prompt(
-        cls, context: PromptContext, options: Optional[PromptOptions] = None
+        cls, context: PromptContext, options: Optional[PromptOptions] = None,
+        tools_dict: Optional[Dict[str, Any]] = None
     ) -> str:
         """Build the complete system prompt from template and context"""
         options = options or PromptOptions()
@@ -87,7 +88,7 @@ Always follow user instructions carefully and provide helpful responses."""
         prompt = prompt.replace("{current_datetime}", context.current_datetime)
         prompt = prompt.replace("{system_info}", context.system_info)
 
-        available_tools_info = cls._get_available_tools_info()
+        available_tools_info = cls._get_available_tools_info(tools_dict)
         prompt = prompt.replace("{available_tools}", available_tools_info)
 
         # Replace agents content if variable exists
@@ -139,32 +140,15 @@ Always follow user instructions carefully and provide helpful responses."""
         return None
 
     @classmethod
-    def _get_available_tools_info(cls) -> str:
-        """Detect notable CLI tools available on the system"""
-        import shutil
-        entries = [
-            "rg",
-            ["fd", "fdfind"],
-            ["gojq", "jq"],
-            "tmux", "curl", "lynx", "nc", "sqlite3", "adb", "ffmpeg",
-            "rsync", "expect",
-            ["uv", "pip"], "python3", "git", "make", "gcc", "g++", "go",
-            "rustc", "cargo", "node", "npm",
-        ]
-        found = []
-        for e in entries:
-            if isinstance(e, str):
-                if shutil.which(e):
-                    found.append(e)
-            else:
-                for cmd in e:
-                    if shutil.which(cmd):
-                        found.append(cmd)
-                        break
-        return ", ".join(found)
+    def _get_available_tools_info(cls, tools_dict: Optional[Dict[str, Any]] = None) -> str:
+        """Build tools listing for system prompt from ToolManager's registered tools."""
+        if tools_dict:
+            names = sorted(tools_dict.keys())
+            return ", ".join(names)
+        return ""
 
     @classmethod
-    def build_system_prompt(cls) -> str:
+    def build_system_prompt(cls, tools_dict: Optional[Dict[str, Any]] = None) -> str:
         """Build system prompt with context information"""
         # Create context
         context = PromptContext()
@@ -185,7 +169,7 @@ Always follow user instructions carefully and provide helpful responses."""
             options.override_prompt = cls.load_prompt_override()
 
         # Build base prompt
-        prompt = cls.build_prompt(context, options)
+        prompt = cls.build_prompt(context, options, tools_dict=tools_dict)
 
         # Append additional content from AICODER_SYSTEM_PROMPT_APPEND
         append_content = Config.system_prompt_append()
@@ -197,9 +181,9 @@ Always follow user instructions carefully and provide helpful responses."""
         return prompt
 
     @classmethod
-    def build_complete_system_prompt(cls, plugin_system=None) -> str:
+    def build_complete_system_prompt(cls, plugin_system=None, tools_dict: Optional[Dict[str, Any]] = None) -> str:
         """Build complete system prompt including plugin contributions"""
-        prompt = cls.build_system_prompt()
+        prompt = cls.build_system_prompt(tools_dict=tools_dict)
 
         # Collect additional content from plugins
         if plugin_system:
