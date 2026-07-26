@@ -185,7 +185,10 @@ def create_plugin(ctx):
     model = Config.model()
     if model != "auto":
         # Manual mode — user chose a specific model, plugin only provides commands
+        # and rotates keys on 429 if multiple keys configured
         ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
+        if len(_keys) > 1:
+            ctx.register_hook("on_api_error", _on_manual_error)
         if Config.debug():
             _nv_log(f"\n[nvidia] manual mode — {model}", "printc", color="dim")
         return
@@ -740,6 +743,19 @@ def _on_empty_response():
     _sin(mid, _EMPTY_RESPONSE_PENALTY)
     _rotate_next()
     _nv_log(f"\n[nvidia] empty response from {mid} — trust→1, rotated")
+
+
+def _on_manual_error(msg: str, status: int):
+    """Manual mode: rotate keys on 429 only. No model switching, no rep changes."""
+    global _key_tries
+    if status != 429:
+        return
+    if _rotate_key():
+        _nv_log(f"\n[nvidia] key rotated (manual) → {_key_index+1}/{len(_keys)}")
+    else:
+        # All keys tried — reset to key1, next retry starts fresh
+        _reset_key()
+        _nv_log(f"\n[nvidia] all {len(_keys)} keys for 429 — reset to key1")
 
 
 def _on_error(msg: str, status: int):
