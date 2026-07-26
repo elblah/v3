@@ -87,7 +87,6 @@ Always follow user instructions carefully and provide helpful responses."""
         prompt = prompt.replace("{current_datetime}", context.current_datetime)
         prompt = prompt.replace("{system_info}", context.system_info)
 
-        # Handle {available_tools} - for now include basic info since tools come via API
         available_tools_info = cls._get_available_tools_info()
         prompt = prompt.replace("{available_tools}", available_tools_info)
 
@@ -141,11 +140,28 @@ Always follow user instructions carefully and provide helpful responses."""
 
     @classmethod
     def _get_available_tools_info(cls) -> str:
-        """Get basic available tools information
-        Since tools are provided via API request, this is minimal info
-        """
-        return """Basic tools available: file operations (read, write, list),
-search (grep), shell command execution, and more via API request."""
+        """Detect notable CLI tools available on the system"""
+        import shutil
+        entries = [
+            "rg",
+            ["fd", "fdfind"],
+            ["gojq", "jq"],
+            "tmux", "curl", "lynx", "nc", "sqlite3", "adb", "ffmpeg",
+            "rsync", "expect",
+            ["uv", "pip"], "python3", "git", "make", "gcc", "g++", "go",
+            "rustc", "cargo", "node", "npm",
+        ]
+        found = []
+        for e in entries:
+            if isinstance(e, str):
+                if shutil.which(e):
+                    found.append(e)
+            else:
+                for cmd in e:
+                    if shutil.which(cmd):
+                        found.append(cmd)
+                        break
+        return ", ".join(found)
 
     @classmethod
     def build_system_prompt(cls) -> str:
