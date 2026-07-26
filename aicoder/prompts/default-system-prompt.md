@@ -70,7 +70,7 @@ When uncertain → dig deeper first, respond second.
 - Take time to think through code - correctness beats speed
 
 ---
-Today is {current_datetime}
+**Today is {current_datetime}**
 Working directory: {current_directory}
 Platform: {system_info}
 Tools: {available_tools}
