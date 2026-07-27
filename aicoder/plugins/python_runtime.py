@@ -49,13 +49,9 @@ def create_plugin(ctx):
     - etc.
     """
 
-    # State storage in closure
-    _state = {
-        "enabled": False,
-        "ctx": ctx
-    }
-
-    # ==================== Tool: run_inline_python ====================
+    # Tool definition — registered/unregistered via tool_manager.tools on enable/off
+    def _tool_enabled() -> bool:
+        return ctx.app and ctx.app.tool_manager and "run_inline_python" in ctx.app.tool_manager.tools
 
     def run_inline_python(args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute Python code in AI Coder's runtime context"""
@@ -68,7 +64,7 @@ def create_plugin(ctx):
                 "detailed": "Code cannot be empty"
             }
 
-        if not _state["enabled"]:
+        if not _tool_enabled():
             return {
                 "tool": "run_inline_python",
                 "friendly": "Runtime Python is disabled",
@@ -77,20 +73,18 @@ def create_plugin(ctx):
 
         # Prepare execution context with full access
         execution_globals = {
-            "app": _state["ctx"].app,
-            "ctx": _state["ctx"],
-            "print": print,  # Make print available
-            "__name__": "__runtime__",  # Identify as runtime context
+            "app": ctx.app,
+            "ctx": ctx,
+            "print": print,
+            "__name__": "__runtime__",
         }
 
         try:
-            # Execute the code
             exec(code, execution_globals)
 
-            # Collect any variables defined (exclude built-ins)
             output_parts = []
             for key in execution_globals:
-                if key not in ["app", "ctx", "print", "__builtins__", "__name__"]:
+                if key not in ("app", "ctx", "print", "__builtins__", "__name__"):
                     value = execution_globals[key]
                     output_parts.append(f"{key} = {repr(value)}")
 
@@ -111,16 +105,15 @@ def create_plugin(ctx):
                 "detailed": f"Code:\n{code}\n\nError: {type(e).__name__}: {e}\n\nTraceback:\n{tb}"
             }
 
-    # Format function for approval display
     def format_arguments(args: Dict[str, Any]) -> Dict[str, Any]:
         """Format for approval display"""
         code = args.get("code", "")
         lines = code.split("\n")
 
-        status = "ENABLED" if _state["enabled"] else "DISABLED"
-        status_color = Config.colors['green'] if _state["enabled"] else Config.colors['red']
+        enabled = _tool_enabled()
+        status = "ENABLED" if enabled else "DISABLED"
 
-        if not _state["enabled"]:
+        if not enabled:
             return {
                 "tool": "run_inline_python",
                 "content": (
@@ -132,7 +125,6 @@ def create_plugin(ctx):
                 "can_approve": False
             }
 
-        # Show full code when enabled (no truncation)
         return {
             "tool": "run_inline_python",
             "content": (
@@ -151,10 +143,11 @@ def create_plugin(ctx):
         code = args.get("code", "")
         lines = code.split("\n")
 
-        status = "ENABLED" if _state["enabled"] else "DISABLED"
-        status_color = Config.colors['green'] if _state["enabled"] else Config.colors['red']
+        enabled = _tool_enabled()
+        status = "ENABLED" if enabled else "DISABLED"
+        status_color = Config.colors['green'] if enabled else Config.colors['red']
 
-        if not _state["enabled"]:
+        if not enabled:
             return {
                 "tool": "run_inline_python",
                 "content": (
@@ -180,12 +173,12 @@ def create_plugin(ctx):
             "can_approve": True
         }
 
-    # Register the tool (NEVER auto-approved - always requires approval)
-    ctx.register_tool(
-        name="run_inline_python",
-        fn=run_inline_python,
-        description="WARNING: INTERNAL DEBUGGING ONLY - Execute Python code with full AI Coder internal access (requires /python-runtime on). NOT for general programming!",
-        parameters={
+    # Build tool definition once, register/unregister via tool_manager.tools on command
+    _tool_name = "run_inline_python"
+    _tool_def = {
+        "execute": run_inline_python,
+        "description": "WARNING: INTERNAL DEBUGGING ONLY - Execute Python code with full AI Coder internal access (requires /python-runtime on). NOT for general programming!",
+        "parameters": {
             "type": "object",
             "properties": {
                 "code": {
@@ -195,10 +188,18 @@ def create_plugin(ctx):
             },
             "required": ["code"]
         },
-        auto_approved=False,  # ALWAYS requires approval for safety
-        format_arguments=format_arguments,
-        generate_preview=generate_preview,
-    )
+        "auto_approved": False,
+        "formatArguments": format_arguments,
+        "generatePreview": generate_preview,
+    }
+
+    def _register_tool():
+        if ctx.app and ctx.app.tool_manager and _tool_name not in ctx.app.tool_manager.tools:
+            ctx.app.tool_manager.tools[_tool_name] = _tool_def
+
+    def _unregister_tool():
+        if ctx.app and ctx.app.tool_manager and _tool_name in ctx.app.tool_manager.tools:
+            del ctx.app.tool_manager.tools[_tool_name]
 
     # ==================== Commands ====================
 
@@ -207,7 +208,6 @@ def create_plugin(ctx):
         args_str = args_str.strip()
 
         if not args_str:
-            # Show help
             help_text = """Python Runtime Plugin
 
 Execute Python code inline in AI Coder's process with full access to internal state.
@@ -235,17 +235,18 @@ Examples:
             return help_text
 
         if args_str == "on":
-            _state["enabled"] = True
+            _register_tool()
             warn("Runtime Python ENABLED")
             info("AI can now use run_inline_python tool (each execution requires approval)")
             return ""
         elif args_str == "off":
-            _state["enabled"] = False
+            _unregister_tool()
             error("Runtime Python DISABLED")
             return ""
         elif args_str == "status":
-            status = "ENABLED" if _state["enabled"] else "DISABLED"
-            if _state["enabled"]:
+            enabled = _tool_enabled()
+            status = "ENABLED" if enabled else "DISABLED"
+            if enabled:
                 success(f"Runtime Python: {status}")
             else:
                 info(f"Runtime Python: {status}")
@@ -253,7 +254,7 @@ Examples:
         else:
             return f"Unknown subcommand: {args_str}\nUsage: /python_runtime [on|off|status]"
 
-    # Register the command
+    # Register the command (tool is NOT registered at startup — only on /python-runtime on)
     ctx.register_command("python-runtime", handle_python_runtime_command, "Control Runtime Python feature")
 
     # Print what was registered
