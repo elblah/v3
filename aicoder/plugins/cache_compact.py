@@ -40,8 +40,10 @@ PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation 
 _RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
 
-# Signature substring in injected compaction instructions. Used to filter
-# autonomous-path messages from recent window during compaction.
+# Signature substring in injected compaction instructions.
+# Standalone instruction messages start with "<system-reminder>" and are
+# filtered from recent window during compaction — user messages with
+# appended instructions (from after_user_prompt) pass through.
 _COMPACT_SIGNATURE = "COMPACTION REQUIRED"
 
 COMPACT_INSTRUCTION = (
@@ -157,7 +159,7 @@ def _compact(messages, app, state, keep_percent=0):
             m for m in messages[1:-1]
             if not (m.get("role") == "user"
                     and isinstance(m.get("content"), str)
-                    and _COMPACT_SIGNATURE in m["content"])
+                    and m["content"].strip().startswith("<system-reminder>"))
         ]
         recent = _select_recent_by_percent(
             candidates, keep_percent, Config.context_size()
@@ -204,7 +206,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
                 m for m in messages[1:idx]
                 if not (m.get("role") == "user"
                         and isinstance(m.get("content"), str)
-                        and _COMPACT_SIGNATURE in m["content"])
+                        and m["content"].strip().startswith("<system-reminder>"))
             ]
             recent = _select_recent_by_percent(
                 candidates, keep_percent, Config.context_size()
