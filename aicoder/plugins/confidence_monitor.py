@@ -70,6 +70,8 @@ def create_plugin(ctx):
         return tools
 
     def _print_confidence(confidence, prefix=""):
+        # Models may send confidence as string despite numeric schema
+        confidence = float(confidence)
         tag = f"{colors['bold']}{colors['yellow']}[confidence_monitor]{colors['reset']}"
         val = f"{_value_color(confidence)}{confidence}{colors['reset']}"
         LogUtils.print(f"{tag} {prefix}{val}")
@@ -87,6 +89,7 @@ def create_plugin(ctx):
     def after_tool(tool_name, arguments, result):
         confidence = arguments.get("confidence")
         if confidence is not None:
+            confidence = float(confidence)  # coerce for rolling-window sum
             _print_confidence(confidence)
             confidences.append(confidence)
             if len(confidences) > _ROLLING_WINDOW:
