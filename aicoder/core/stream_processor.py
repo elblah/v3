@@ -86,14 +86,18 @@ class StreamProcessor:
                     else:
                         reasoning_fields = Config.get_possible_reasoning_fields()
 
-                    for field in reasoning_fields:
-                        reasoning = delta.get(field)
-                        if reasoning and reasoning.strip():
-                            reasoning_detected = True
-                            accumulated_reasoning += reasoning
-                            if reasoning_field_name is None:
-                                reasoning_field_name = field
-                            break
+                    # Anthropic re-sends full accumulated reasoning on the final
+                    # done chunk (for storage) — already accumulated via deltas.
+                    # Skip to avoid doubling.
+                    if not (chunk.get("done") and accumulated_reasoning):
+                        for field in reasoning_fields:
+                            reasoning = delta.get(field)
+                            if reasoning and reasoning.strip():
+                                reasoning_detected = True
+                                accumulated_reasoning += reasoning
+                                if reasoning_field_name is None:
+                                    reasoning_field_name = field
+                                break
 
                     # Capture thinking signature for Anthropic-style APIs
                     if delta.get("thinking_signature"):
@@ -134,6 +138,12 @@ class StreamProcessor:
                 # Finish reason
                 if choice.get("finish_reason") == "tool_calls":
                     pass
+
+            # Reasoning not yet printed (e.g. tool-call-only turn, reasoning after
+            # last content chunk) — print it now before the stream ends.
+            if not reasoning_printed and Config.show_reasoning() and accumulated_reasoning:
+                builtins.print(f"\n{Config.colors['dim']}Reasoning: {accumulated_reasoning}{Config.colors['reset']}\n")
+                reasoning_printed = True
 
             # Print reasoning detection status when DEBUG is on
             if Config.debug():
