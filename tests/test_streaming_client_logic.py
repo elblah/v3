@@ -944,6 +944,8 @@ class TestHandleAttemptErrorExtended:
         mock_stats = Mock()
         mock_stats.current_prompt_size = 150000
         mock_message_history = Mock()
+        # No orphans to remove — must not short-circuit before auto-compaction
+        mock_message_history.remove_orphan_tool_results.return_value = 0
 
         client = StreamingClient(stats=mock_stats, message_history=mock_message_history)
 

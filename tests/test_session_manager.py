@@ -262,36 +262,35 @@ class TestSessionManagerHandleEmptyResponse:
         assert call_args["content"] == "Hello, how can I help?"
 
     def test_handle_empty_response_empty_string(self):
-        """Test handling empty response."""
+        """Test handling empty response - no history add, fires hook, returns empty_content."""
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("", "", "")
+        status = manager._handle_empty_response("", "", "")
 
-        mock_app.message_history.add_assistant_message.assert_called_once()
-        call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
-        assert call_args["content"] == ""
+        assert status == "empty_content"
+        # Empty content is NOT added to history (some models reject {"content": ""})
+        mock_app.message_history.add_assistant_message.assert_not_called()
 
     def test_handle_empty_response_whitespace(self):
-        """Test handling whitespace-only response."""
+        """Test handling whitespace-only response - no history add, returns empty_content."""
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("   ", "", "")
+        status = manager._handle_empty_response("   ", "", "")
 
-        mock_app.message_history.add_assistant_message.assert_called_once()
+        assert status == "empty_content"
+        mock_app.message_history.add_assistant_message.assert_not_called()
 
     def test_handle_empty_response_with_reasoning(self):
         """Test handling response with reasoning content but no regular content."""
         mock_app = MagicMock()
         manager = SessionManager(mock_app)
 
-        manager._handle_empty_response("", "Let me think about this...", "reasoning_content")
+        status = manager._handle_empty_response("", "Let me think about this...", "reasoning_content")
 
-        mock_app.message_history.add_assistant_message.assert_called_once()
-        call_args = mock_app.message_history.add_assistant_message.call_args[0][0]
-        assert call_args["content"] == ""
-        assert call_args.get("reasoning_content") == "Let me think about this..."
+        assert status == "empty_content"
+        mock_app.message_history.add_assistant_message.assert_not_called()
 
     def test_handle_empty_response_with_both_content_and_reasoning(self):
         """Test handling response with both content and reasoning."""

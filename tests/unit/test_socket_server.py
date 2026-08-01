@@ -33,6 +33,7 @@ class MockMessageHistory:
 
     def __init__(self):
         self._messages = []
+        self.is_compacting = False
 
     def get_messages(self):
         return self._messages
