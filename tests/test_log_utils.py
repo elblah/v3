@@ -16,18 +16,18 @@ class TestLogUtilsColorNames:
         assert "Success message" in captured.out
 
     def test_warn_with_color_name(self, capsys):
-        """Test warn() uses yellow color"""
+        """Test warn() uses yellow color (stderr)"""
         LogUtils.warn("Warning message")
         captured = capsys.readouterr()
-        assert Config.colors["yellow"] in captured.out
-        assert "Warning message" in captured.out
+        assert Config.colors["yellow"] in captured.err
+        assert "Warning message" in captured.err
 
     def test_error_with_color_name(self, capsys):
-        """Test error() uses red color"""
+        """Test error() uses red color (stderr)"""
         LogUtils.error("Error message")
         captured = capsys.readouterr()
-        assert Config.colors["red"] in captured.out
-        assert "Error message" in captured.out
+        assert Config.colors["red"] in captured.err
+        assert "Error message" in captured.err
 
     def test_info_with_color_name(self, capsys):
         """Test info() uses blue color"""
@@ -117,18 +117,18 @@ class TestStandaloneFunctions:
         assert "Standalone success" in captured.out
 
     def test_standalone_warn(self, capsys):
-        """Test warn() standalone function"""
+        """Test warn() standalone function (stderr)"""
         warn("Standalone warn")
         captured = capsys.readouterr()
-        assert Config.colors["yellow"] in captured.out
-        assert "Standalone warn" in captured.out
+        assert Config.colors["yellow"] in captured.err
+        assert "Standalone warn" in captured.err
 
     def test_standalone_error(self, capsys):
-        """Test error() standalone function"""
+        """Test error() standalone function (stderr)"""
         error("Standalone error")
         captured = capsys.readouterr()
-        assert Config.colors["red"] in captured.out
-        assert "Standalone error" in captured.out
+        assert Config.colors["red"] in captured.err
+        assert "Standalone error" in captured.err
 
     def test_standalone_info(self, capsys):
         """Test info() standalone function"""

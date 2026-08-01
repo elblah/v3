@@ -108,7 +108,8 @@ class TestExecute:
         with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
             result = execute({"path": temp_file, "old_string": "Hello", "new_string": "Hi"})
             assert result["tool"] == "edit_file"
-            assert "WARNING" in result["friendly"]
+            assert "ERROR" in result["friendly"]
+            assert "Must read file" in result["friendly"]
 
     def test_old_string_not_found(self, temp_file, clean_file_access_tracker):
         """Test when old_string is not in file"""
