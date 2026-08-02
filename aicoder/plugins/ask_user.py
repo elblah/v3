@@ -38,6 +38,12 @@ from aicoder.utils.log import LogUtils
 def create_plugin(ctx):
     """Ask User plugin - interactive question/answer for AI"""
 
+    # No controlling terminal = no screen for fzf; it would fail instantly
+    try:
+        os.close(os.open("/dev/tty", os.O_RDWR))
+    except OSError:
+        return
+
     # Check if fzf is available
     if not shutil.which("fzf"):
         LogUtils.warn("[ask_user] fzf not found - plugin disabled")
