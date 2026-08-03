@@ -139,13 +139,28 @@ def create_plugin(ctx):
         cmd = parts[0] if parts else ""
 
         if cmd in ("rs", "restore", "restore-session"):
-            return _restore_session(ctx)
+            mode = None
+            arg = parts[1] if len(parts) > 1 else ""
+            if arg == "full":
+                mode = "full"
+            elif arg.isdigit() and int(arg) > 0:
+                mode = int(arg)
+            elif arg:
+                return (
+                    "Usage: /tmux rs [n|full]\n"
+                    "  rs          - Recover from previous session start\n"
+                    "  rs <n>      - Recover from last n sessions (e.g. rs 3)\n"
+                    "  rs full     - Entire pane scrollback, no editor"
+                )
+            return _restore_session(ctx, mode)
         elif cmd == "wintitle":
             return _handle_wintitle(parts[1:])
         elif cmd in ("help", ""):
             return (
                 "Usage: /tmux <subcommand>\n"
                 "  rs / restore-session     - Recover context from previous session\n"
+                "  rs <n>                   - Recover from last n sessions (e.g. rs 3)\n"
+                "  rs full                  - Entire pane scrollback as context, no editor\n"
                 "  wintitle                 - Show current window name & state\n"
                 "  wintitle on              - Enable wintitle (restore saved name)\n"
                 "  wintitle off             - Disable wintitle (saves name)\n"
@@ -167,8 +182,13 @@ def create_plugin(ctx):
     return {"name": "tmux"}
 
 
-def _restore_session(ctx):
-    """Capture tmux scrollback, find prev marker, open editor, inject as next prompt"""
+def _restore_session(ctx, mode=None):
+    """Capture tmux scrollback, find prev marker, open editor, inject as next prompt.
+
+    mode: None → from previous session start (editor).
+          int n → from n sessions back (editor). Falls back to earliest marker.
+          "full" → entire pane scrollback, no marker trim, no editor, raw inject.
+    """
     from aicoder.core.config import Config
     from aicoder.utils.log import LogUtils
     from aicoder.utils.temp_file_utils import create_temp_file
@@ -186,6 +206,9 @@ def _restore_session(ctx):
             LogUtils.error(f"capture-pane failed: {result.stderr}")
             return
         pane_content = result.stdout
+        if not pane_content.strip():
+            LogUtils.warn("Pane is empty - nothing to recover.")
+            return
     except FileNotFoundError:
         LogUtils.error("tmux not found")
         return
@@ -193,12 +216,32 @@ def _restore_session(ctx):
         LogUtils.error("tmux capture timed out")
         return
 
+    # full mode: raw pane content straight into next prompt, no editor
+    if mode == "full":
+        LogUtils.success("Full pane scrollback injected as context.")
+        ctx.app.set_next_prompt(pane_content.strip())
+        return
+
     # Find marker lines (oldest → newest)
     lines = pane_content.splitlines()
     marker_pattern = f"{MARKER_PREFIX} {MARKER_TEXT}"
     marker_indices = [i for i, line in enumerate(lines) if marker_pattern in line]
 
-    if len(marker_indices) >= 2:
+    if isinstance(mode, int):
+        need = mode + 1  # markers needed to cover current + n previous sessions
+        if len(marker_indices) >= need:
+            start = marker_indices[-need]
+            captured = lines[start:]
+            info = f"Extracting from {mode} session(s) back (line {start})."
+        elif marker_indices:
+            start = marker_indices[0]
+            captured = lines[start:]
+            info = (f"Only {len(marker_indices)} marker(s) found — "
+                    f"extracting from earliest session start (line {start}).")
+        else:
+            captured = lines
+            info = "No session markers found. Extracting full scrollback."
+    elif len(marker_indices) >= 2:
         start = marker_indices[-2]
         captured = lines[start:]
         info = f"Found {len(marker_indices)} session markers. Extracting from previous session start (line {start})."
