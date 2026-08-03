@@ -34,7 +34,7 @@ import re
 SUMMARY_TAG = "[SUMMARY]"
 COMPACT_TAG = "[COMPACT_SUMMARY]"
 
-PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with `[COMPACT_SUMMARY]`. If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
+PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with `[COMPACT_SUMMARY]` as your VISIBLE reply text (never inside your reasoning/thinking). If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
 
 # Detect [COMPACT_SUMMARY] even if dumb AIs wrap it in markdown formatting
 _RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
@@ -50,6 +50,9 @@ COMPACT_INSTRUCTION = (
     "SYSTEM: Context too large. COMPACTION REQUIRED.\n"
     "Produce a self-contained summary of the entire conversation above.\n"
     "Begin with [COMPACT_SUMMARY]. Do NOT call any tools. Do NOT continue working.\n"
+    "CRITICAL: write the summary as your VISIBLE reply content — never inside your "
+    "reasoning/thinking block. If your reasoning starts to draft it, the visible "
+    "message must still contain the full [COMPACT_SUMMARY] text.\n"
     "Include: task, progress, key decisions with rationale, file paths and line numbers, "
     "current state, failed approaches, next steps.\n"
     "This summary becomes your ENTIRE memory — omit nothing critical."
@@ -59,12 +62,14 @@ FORCE_COMPACT_INSTRUCTION = (
     "⚠ SYSTEM REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
     "Context limit approaching. You MUST comply:\n"
     "1. Do NOT call any tools\n"
-    "2. Begin response with [COMPACT_SUMMARY]\n"
+    "2. Begin your VISIBLE reply with [COMPACT_SUMMARY] — never put the tag or "
+    "summary inside your reasoning/thinking block; the visible message must "
+    "contain the full summary text\n"
     "3. Write a self-contained summary of the ENTIRE conversation above\n"
     "4. Include: task, progress, key decisions with rationale, file paths and line numbers, "
     "current state, failed approaches, next steps\n"
     "5. This summary becomes your ENTIRE memory — omit nothing critical\n\n"
-    "OUTPUT ONLY THE SUMMARY. DO NOT CONTINUE WORKING. COMPLY NOW."
+    "OUTPUT ONLY THE SUMMARY AS YOUR REPLY. DO NOT CONTINUE WORKING. COMPLY NOW."
 )
 
 
