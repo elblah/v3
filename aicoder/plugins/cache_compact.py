@@ -89,6 +89,21 @@ def _content_str(content):
     return ""
 
 
+def _is_compaction_request(msg) -> bool:
+    """True for plugin-injected compaction requests: standalone <system-reminder>
+    messages or user messages with an appended reminder. Kept out of the recent
+    window so a fulfilled request isn't re-executed every turn (compaction loop)."""
+    if msg.get("role") != "user":
+        return False
+    content = msg.get("content")
+    if not isinstance(content, str):
+        return False
+    return (
+        content.strip().startswith("<system-reminder>")
+        or _COMPACT_SIGNATURE in content
+    )
+
+
 def _find_compact_tag(text: str) -> int:
     """Find [COMPACT_SUMMARY] at line start. Returns position of the tag, or -1."""
     if COMPACT_TAG not in text:
@@ -163,10 +178,7 @@ def _compact(messages, app, state, keep_percent=0):
     recent = []
     if keep_percent > 0 and len(messages) > 2:
         candidates = [
-            m for m in messages[1:-1]
-            if not (m.get("role") == "user"
-                    and isinstance(m.get("content"), str)
-                    and m["content"].strip().startswith("<system-reminder>"))
+            m for m in messages[1:-1] if not _is_compaction_request(m)
         ]
         recent = _select_recent_by_percent(
             candidates, keep_percent, Config.context_size()
@@ -182,6 +194,7 @@ def _compact(messages, app, state, keep_percent=0):
         "<system-reminder>\n"
         "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
         "from a previous context window — you wrote it, not the user. "
+        "The compaction request has been fulfilled — do NOT compact again. "
         "This is an automatic continuation prompt, not a user message. "
         "Resume your task from where you left off.\n"
         "</system-reminder>"
@@ -210,10 +223,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
                 break
         if idx > 1:
             candidates = [
-                m for m in messages[1:idx]
-                if not (m.get("role") == "user"
-                        and isinstance(m.get("content"), str)
-                        and m["content"].strip().startswith("<system-reminder>"))
+                m for m in messages[1:idx] if not _is_compaction_request(m)
             ]
             recent = _select_recent_by_percent(
                 candidates, keep_percent, Config.context_size()
@@ -237,6 +247,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
         "<system-reminder>\n"
         "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
         "from a previous context window — you wrote it, not the user. "
+        "The compaction request has been fulfilled — do NOT compact again. "
         "This is an automatic continuation prompt, not a user message. "
         "Resume your task from where you left off.\n"
         "</system-reminder>"
