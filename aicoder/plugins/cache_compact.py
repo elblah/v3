@@ -1,35 +1,23 @@
 """
 cache_compact.py - Cache-aware compaction
 
-Three injection paths:
-- Passive: system-prompt nudge for voluntary [COMPACT_SUMMARY] at natural breakpoints.
-- User turn: after_user_prompt appends <system-reminder> to user's input.
-- Autonomous: after_ai_processing injects instruction into history when AI is
-  in a tool-calling loop (no user input between turns).
-
-Compaction fires on after_assistant_message_added:
-- [COMPACT_SUMMARY] tag detected -> compact (existing path)
-- No tag -> fail, let after_ai_processing re-inject next turn
-
-Tier boundaries (coexists with existing tiers):
-- [CACHE_COMPACT_THRESHOLD, CACHE_COMPACT_DEFER) -> this plugin
-- [80%, 95%)  -> compact_strategy plugin (forced, untouched)
-- [95%, 100%] -> core auto-compact (brutal, untouched)
+One injection path: after_assistant_message_added.
+- [COMPACT_SUMMARY] tag detected -> compact.
+- No tag + context past threshold -> inject standalone <system-reminder> into
+  history; re-injected on every non-complying reply. AI must comply.
+- Continuation turn after a fulfilled compaction -> guard cleared, no re-inject.
 
 Env:
-- CACHE_COMPACT_THRESHOLD  trigger % of context size (default 65, 0 = disabled)
-- CACHE_COMPACT_DEFER      upper bound % to defer to existing tiers (default 80)
-- CACHE_COMPACT_MAXFAILS   consecutive failures before standing down (default 3)
-- CACHE_COMPACT_FORCE=1    use ultra-forceful instruction (default: soft)
+- CACHE_COMPACT_THRESHOLD   trigger % of context size (default 65, 0 = disabled)
 - CACHE_COMPACT_KEEP_PERCENT  keep N% of recent context after [SUMMARY] (default 15)
-- CACHE_COMPACT_DEBUG=1    verbose log: per-msg fail count & suggestion events
+- CACHE_COMPACT_DEBUG=1     verbose log: injection events
 """
 
 import os
+import re
+
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
-
-import re
 
 SUMMARY_TAG = "[SUMMARY]"
 COMPACT_TAG = "[COMPACT_SUMMARY]"
@@ -39,24 +27,6 @@ PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation 
 # Detect [COMPACT_SUMMARY] even if dumb AIs wrap it in markdown formatting
 _RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
-
-# Signature substring in injected compaction instructions.
-# Standalone instruction messages start with "<system-reminder>" and are
-# filtered from recent window during compaction — user messages with
-# appended instructions (from after_user_prompt) pass through.
-_COMPACT_SIGNATURE = "COMPACTION REQUIRED"
-
-COMPACT_INSTRUCTION = (
-    "SYSTEM: Context too large. COMPACTION REQUIRED.\n"
-    "Produce a self-contained summary of the entire conversation above.\n"
-    "Begin with [COMPACT_SUMMARY]. Do NOT call any tools. Do NOT continue working.\n"
-    "CRITICAL: write the summary as your VISIBLE reply content — never inside your "
-    "reasoning/thinking block. If your reasoning starts to draft it, the visible "
-    "message must still contain the full [COMPACT_SUMMARY] text.\n"
-    "Include: task, progress, key decisions with rationale, file paths and line numbers, "
-    "current state, failed approaches, next steps.\n"
-    "This summary becomes your ENTIRE memory — omit nothing critical."
-)
 
 FORCE_COMPACT_INSTRUCTION = (
     "⚠ SYSTEM REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
@@ -90,18 +60,16 @@ def _content_str(content):
 
 
 def _is_compaction_request(msg) -> bool:
-    """True for plugin-injected compaction requests: standalone <system-reminder>
-    messages or user messages with an appended reminder. Kept out of the recent
-    window so a fulfilled request isn't re-executed every turn (compaction loop)."""
+    """True for plugin-injected compaction requests: user messages that are a
+    bare <system-reminder>. Kept out of the recent window so a fulfilled request
+    isn't re-executed every turn.
+    """
     if msg.get("role") != "user":
         return False
     content = msg.get("content")
     if not isinstance(content, str):
         return False
-    return (
-        content.strip().startswith("<system-reminder>")
-        or _COMPACT_SIGNATURE in content
-    )
+    return content.strip().startswith("<system-reminder>")
 
 
 def _find_compact_tag(text: str) -> int:
@@ -188,8 +156,6 @@ def _compact(messages, app, state, keep_percent=0):
     app.message_history.set_messages(new_msgs)
     app.message_history.prune_old_summaries()
     app.message_history.increment_compaction_count()
-    state["awaiting"] = False
-    state["fails"] = 0
     app.set_next_prompt(
         "<system-reminder>\n"
         "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
@@ -199,6 +165,7 @@ def _compact(messages, app, state, keep_percent=0):
         "Resume your task from where you left off.\n"
         "</system-reminder>"
     )
+    state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
@@ -241,8 +208,6 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     app.message_history.set_messages(new_msgs)
     app.message_history.prune_old_summaries()
     app.message_history.increment_compaction_count()
-    state["awaiting"] = False
-    state["fails"] = 0
     app.set_next_prompt(
         "<system-reminder>\n"
         "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
@@ -252,6 +217,7 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
         "Resume your task from where you left off.\n"
         "</system-reminder>"
     )
+    state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     LogUtils.print(
@@ -265,14 +231,10 @@ def create_plugin(ctx):
 
     cfg = {
         "threshold": int(os.environ.get("CACHE_COMPACT_THRESHOLD", "65")),
-        "defer": int(os.environ.get("CACHE_COMPACT_DEFER", "80")),
-        "max_fails": int(os.environ.get("CACHE_COMPACT_MAXFAILS", "3")),
-        "force": os.environ.get("CACHE_COMPACT_FORCE", "").lower()
-        in ("1", "true", "yes"),
         "keep_percent": int(os.environ.get("CACHE_COMPACT_KEEP_PERCENT", "15")),
     }
 
-    state = {"awaiting": False, "fails": 0}
+    state = {"cont_prompt": False}
 
     def _on_system_prompt_append():
         if cfg["threshold"] > 0:
@@ -286,216 +248,75 @@ def create_plugin(ctx):
         content = _content_str(message.get("content", ""))
         is_summary = content and _is_summary_first_printable(content)
         if is_summary:
+            if state["cont_prompt"]:
+                # Summary right after a fulfilled compaction = AI re-compacting
+                # in response to the continuation prompt (14->13->... loop).
+                # Refuse and drop the junk message.
+                state["cont_prompt"] = False
+                if not message.get("tool_calls"):
+                    msgs = app.message_history.get_messages()
+                    if msgs and msgs[-1] is message:
+                        app.message_history.set_messages(msgs[:-1])
+                return
             if message.get("tool_calls"):
                 _compact_keep_assistant(app, state, message, cfg["keep_percent"])
             else:
                 _compact(app.message_history.get_messages(), app, state, cfg["keep_percent"])
-        elif state["awaiting"]:
-            if message.get("tool_calls"):
-                # AI ignored instruction, kept making tool calls
-                state["awaiting"] = False
-                state["fails"] += 1
-                if os.environ.get("CACHE_COMPACT_DEBUG"):
-                    c = Config.colors
-                    LogUtils.print(
-                        f"{c['yellow']}[cache_compact] AI ignored compaction request "
-                        f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
-                    )
-            else:
-                # AI produced text without [COMPACT_SUMMARY] tag — count as fail
-                state["awaiting"] = False
-                state["fails"] += 1
-                if os.environ.get("CACHE_COMPACT_DEBUG"):
-                    c = Config.colors
-                    LogUtils.print(
-                        f"{c['yellow']}[cache_compact] no [COMPACT_SUMMARY] tag "
-                        f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
-                    )
+        else:
+            if state["cont_prompt"]:
+                # Continuation turn after a fulfilled compaction — done. Clear
+                # the guard so future compactions still work. Do NOT inject:
+                # context was just compacted, and re-injecting would re-request
+                # a compaction the AI already fulfilled.
+                state["cont_prompt"] = False
+                return
 
-    def _on_after_ai_processing(has_tool_calls=None):
-        """after_ai_processing hook - inject compaction request for autonomous loops."""
-        if cfg["threshold"] <= 0:
-            return
+            # Inject a standalone request when context is past threshold.
+            # Fires per assistant reply — covers user turns and tool loops alike.
+            # No stand-down: the AI must comply.
+            current = app.stats.current_prompt_size or 0
+            max_size = Config.context_size()
+            pct = (current / max_size * 100) if max_size else 0
 
-        # Handle stale awaiting (e.g. empty response skipped after_assistant_message_added)
-        if state["awaiting"]:
-            state["awaiting"] = False
-            state["fails"] += 1
+            if pct < cfg["threshold"]:
+                return
+
+            app.message_history.add_user_message(
+                f"<system-reminder>\n{FORCE_COMPACT_INSTRUCTION}\n</system-reminder>"
+            )
+            state["cont_prompt"] = False  # new compaction cycle — reset loop guard
             if os.environ.get("CACHE_COMPACT_DEBUG"):
                 c = Config.colors
                 LogUtils.print(
-                    f"{c['yellow']}[cache_compact] no [COMPACT_SUMMARY] received "
-                    f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
+                    f"{c['bold']}{c['cyan']}[cache_compact] {pct:.0f}% context "
+                    f"-> injected compaction request{c['reset']}"
                 )
 
-        current = app.stats.current_prompt_size or 0
-        max_size = Config.context_size()
-        pct = (current / max_size * 100) if max_size else 0
 
-        if pct < cfg["threshold"]:
-            state["fails"] = 0
-            return
-        if pct >= cfg["defer"]:
-            return
-        if state["fails"] >= cfg["max_fails"]:
-            return
-
-        if not has_tool_calls:
-            return  # User turn — after_user_prompt handles injection
-
-        # Autonomous loop: inject instruction directly into history.
-        # Tool results are already in history; next process_with_ai() is automatic.
-        instruction = FORCE_COMPACT_INSTRUCTION if cfg["force"] else COMPACT_INSTRUCTION
-        app.message_history.add_user_message(
-            f"<system-reminder>\n{instruction}\n</system-reminder>"
-        )
-        state["awaiting"] = True
-        if os.environ.get("CACHE_COMPACT_DEBUG"):
-            c = Config.colors
-            LogUtils.print(
-                f"{c['bold']}{c['cyan']}[cache_compact] {pct:.0f}% context "
-                f"-> injected compaction request (autonomous){c['reset']}"
-            )
-
-    def _suggest_compaction(user_input: str) -> str:
-        """after_user_prompt hook - inject <system-reminder> if context growing."""
-        if cfg["threshold"] <= 0:
-            return user_input
-
-        messages = app.message_history.get_messages()
-        if not messages:
-            return user_input
-
-        if state["awaiting"]:
-            state["awaiting"] = False
-            state["fails"] += 1
-            if os.environ.get("CACHE_COMPACT_DEBUG"):
-                c = Config.colors
-                LogUtils.print(
-                    f"{c['yellow']}[cache_compact] no [COMPACT_SUMMARY] received "
-                    f"({state['fails']}/{cfg['max_fails']}){c['reset']}"
-                )
-
-        current = app.stats.current_prompt_size or 0
-        max_size = Config.context_size()
-        pct = (current / max_size * 100) if max_size else 0
-
-        if pct < cfg["threshold"]:
-            state["fails"] = 0
-            return user_input
-        if pct >= cfg["defer"]:
-            return user_input
-        if state["fails"] >= cfg["max_fails"]:
-            return user_input
-
-        if user_input.startswith("/"):
-            return user_input
-
-        instruction = FORCE_COMPACT_INSTRUCTION if cfg["force"] else COMPACT_INSTRUCTION
-        state["awaiting"] = True
-        if os.environ.get("CACHE_COMPACT_DEBUG"):
-            c = Config.colors
-            LogUtils.print(
-                f"{c['bold']}{c['cyan']}[cache_compact] {pct:.0f}% context "
-                f"-> appended compaction request{c['reset']}"
-            )
-        return f"{user_input}\n\n<system-reminder>\n{instruction}\n</system-reminder>"
-
-    ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
-    ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
-    ctx.register_hook("after_ai_processing", _on_after_ai_processing)
-    ctx.register_hook("after_user_prompt", _suggest_compaction)
 
     def _on_info(sub: str) -> None:
         if sub == "config":
             c = Config.colors
-            status = "awaiting" if state["awaiting"] else "idle"
             enabled = cfg["threshold"] > 0
             print(
                 f"{c['bold']}cache_compact:{c['reset']} {'enabled' if enabled else 'disabled'}"
             )
             if enabled:
-                mode = "force" if cfg["force"] else "soft"
                 print(
-                    f"  threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}  keep: {cfg['keep_percent']}%"
+                    f"  threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  mode: force"
                 )
-                print(f"  mode: {mode}  state: {status}  fails: {state['fails']}")
 
     ctx.register_hook("on_info", _on_info)
 
-    def _handle_cc(args_str):
-        """Handle /cache-compact command"""
-        parts = args_str.strip().split()
-        sub = parts[0] if parts else "status"
-
-        if sub == "status" or sub == "":
-            enabled = cfg["threshold"] > 0
-            c = Config.colors
-            status = "awaiting" if state["awaiting"] else "idle"
-            mode = "force" if cfg["force"] else "soft"
-            print(
-                f"{c['bold']}cache_compact:{c['reset']} {'enabled' if enabled else 'disabled'}"
-            )
-            if enabled:
-                print(
-                    f"  threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}  keep: {cfg['keep_percent']}%"
-                )
-                print(f"  mode: {mode}  state: {status}  fails: {state['fails']}")
-            else:
-                print(
-                    f"  threshold: 0 (disabled)  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}  keep: {cfg['keep_percent']}%"
-                )
-
-        elif sub == "enable":
-            val = int(parts[1]) if len(parts) > 1 else 50
-            if val <= 0:
-                print("threshold must be > 0")
-                return
-            cfg["threshold"] = val
-            LogUtils.print(f"[cache_compact] enabled (threshold={val}%)")
-
-        elif sub == "disable":
-            cfg["threshold"] = 0
-            LogUtils.print("[cache_compact] disabled")
-
-        elif sub == "set":
-            if len(parts) < 3:
-                print("usage: /cache-compact set <key> <value>")
-                print("  keys: threshold, defer, maxfails, force, keep, debug")
-                return
-            key = parts[1]
-            val = parts[2]
-            if key == "threshold":
-                cfg["threshold"] = int(val)
-            elif key == "defer":
-                cfg["defer"] = int(val)
-            elif key == "maxfails":
-                cfg["max_fails"] = int(val)
-            elif key == "force":
-                cfg["force"] = val.lower() in ("1", "true", "yes")
-            elif key == "keep":
-                cfg["keep_percent"] = int(val)
-            elif key == "debug":
-                os.environ["CACHE_COMPACT_DEBUG"] = val if val.lower() in ("1", "true", "yes") else ""
-            else:
-                print(f"unknown key: {key} (use threshold, defer, maxfails, force, keep, debug)")
-                return
-            LogUtils.print(f"[cache_compact] {key}={val}")
-
-        else:
-            print("usage: /cache-compact [status|enable [N]|disable|set <key> <val>]")
-
-    ctx.register_command(
-        "cache-compact", _handle_cc, "Manage cache compaction (enable/disable/set)"
-    )
+    ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
+    ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
 
     if Config.debug():
         enabled = cfg["threshold"] > 0
-        mode = "force" if cfg["force"] else "soft"
         LogUtils.print(
             f"[+] cache_compact plugin loaded ({'enabled' if enabled else 'disabled'})"
         )
         if enabled:
             LogUtils.print(
-                f"  - threshold: {cfg['threshold']}%  defer: {cfg['defer']}%  maxfails: {cfg['max_fails']}  keep: {cfg['keep_percent']}%  mode: {mode}"
+                f"  - threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  mode: force"
             )
