@@ -73,8 +73,10 @@ FORCE_COMPACT_INSTRUCTION = (
 )
 
 
-# Regex to find [COMPACT_SUMMARY] on its own line (allows leading whitespace)
-_RE_COMPACT_TAG_LINE = re.compile(r"(?m)^\s*\[COMPACT_SUMMARY\]\s*$")
+# Regex to find [COMPACT_SUMMARY] at line start (allows leading whitespace/markdown,
+# and trailing text on the same line — instructions say "begin with the tag",
+# so same-line summaries like "[COMPACT_SUMMARY] <summary>" must be accepted)
+_RE_COMPACT_TAG_LINE = re.compile(r"(?m)^[\s*_`#]*\[COMPACT_SUMMARY\](?=[\s*_`#]|$)")
 
 
 def _content_str(content):
@@ -88,7 +90,7 @@ def _content_str(content):
 
 
 def _find_compact_tag(text: str) -> int:
-    """Find [COMPACT_SUMMARY] on its own line. Returns position of the tag, or -1."""
+    """Find [COMPACT_SUMMARY] at line start. Returns position of the tag, or -1."""
     if COMPACT_TAG not in text:
         return -1
     m = _RE_COMPACT_TAG_LINE.search(text)
@@ -104,7 +106,7 @@ def _strip_before_tag(content: str) -> str:
 
 
 def _is_summary_first_printable(text: str) -> bool:
-    """True if [COMPACT_SUMMARY] is the sole content of a line."""
+    """True if [COMPACT_SUMMARY] starts a line (own line or same-line summary)."""
     return _find_compact_tag(text) != -1
 
 
