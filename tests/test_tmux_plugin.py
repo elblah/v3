@@ -115,11 +115,12 @@ def test_rs_default_no_markers_full():
 
 
 def test_rs_full_raw_no_editor():
-    """rs full → raw pane content injected, editor never opened."""
+    """rs full → raw pane content with context line injected, editor never opened."""
     pane = _mkpane(2)
     ctx, editor_mock = _run_full(pane)
     assert ctx.app.prompts, "expected injected prompt"
-    assert ctx.app.prompts[0] == pane.strip()
+    assert ctx.app.prompts[0].startswith("[tmux pane full scrollback")
+    assert ctx.app.prompts[0].endswith(pane.strip())
     editor_mock.assert_not_called()
 
 

@@ -219,7 +219,8 @@ def _restore_session(ctx, mode=None):
     # full mode: raw pane content straight into next prompt, no editor
     if mode == "full":
         LogUtils.success("Full pane scrollback injected as context.")
-        ctx.app.set_next_prompt(pane_content.strip())
+        prefix = "[tmux pane full scrollback — user's terminal history, use as context]\n"
+        ctx.app.set_next_prompt(prefix + pane_content.strip())
         return
 
     # Find marker lines (oldest → newest)
