@@ -17,6 +17,8 @@ Returns: {
         {"question": "TypeScript?", "answer": "Yes"}
     ]
 }
+Free-text answers (user typed text that matched no option) come as
+{"question": ..., "answer": <typed text>, "free_text": true}.
 
 Requires fzf. Window height auto-fits content (capped at 60% of terminal);
 --reverse --border=rounded --exact for clean UX.
@@ -82,6 +84,7 @@ def create_plugin(ctx):
 
         Returns:
             (answer, "ok") on selection
+            (answer, "free_text") if user typed text that matched nothing (instead of choosing)
             (None, "cancelled") if user dismissed (ESC)
             (None, "timeout") if no selection within `timeout` seconds
         """
@@ -117,6 +120,8 @@ def create_plugin(ctx):
                     "--no-info",
                     "--prompt", "> ",  # Minimal prompt, question printed above
                     "--read0",  # Use null separator to handle multiline options
+                    "--print-query",  # Emit the typed query as first output line; lets us
+                                      # recover free text when nothing was selected
                 ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -138,14 +143,23 @@ def create_plugin(ctx):
                 return None, "timeout"
             
             if proc.returncode != 0:
-                # User cancelled (ESC)
+                # User cancelled (ESC/Ctrl-C) - fzf prints nothing on cancel
                 return None, "cancelled"
             
-            selected = out.strip()
+            # With --print-query, output is: query line, then selection line(s).
+            # fzf exits 0 even when the query matched nothing (Enter), so an empty
+            # selection with a non-empty query means the user typed free text.
+            out = out.strip()
+            if not out:
+                return None, "cancelled"
             
-            # Extract first line if multiline (it's the identifier)
-            if selected:
-                first_line = selected.split('\n')[0].strip()
+            lines = out.split('\n')
+            query = lines[0].strip()
+            selection_lines = lines[1:]
+            
+            if selection_lines:
+                # Extract first line if multiline (it's the identifier)
+                first_line = selection_lines[0].strip()
                 answer = original_map.get(first_line, first_line)
                 
                 # Print answer in green with spacing (question already printed above)
@@ -153,6 +167,12 @@ def create_plugin(ctx):
                 print(f"\n  → {colors['green']}{answer}{colors['reset']}\n")
                 
                 return answer, "ok"
+            
+            if query:
+                # Nothing matched/selected but text was typed -> free text answer
+                colors = Config.colors
+                print(f"\n  → {colors['yellow']}(free text){colors['reset']} {query}\n")
+                return query, "free_text"
             
             return None, "cancelled"
         except Exception as e:
@@ -222,20 +242,28 @@ def create_plugin(ctx):
                     "answers": answers,  # Include partial results
                 }
             
-            answers.append({
-                "question": question,
-                "answer": answer
-            })
+            entry = {"question": question, "answer": answer}
+            if status == "free_text":
+                entry["free_text"] = True
+            answers.append(entry)
         
         # Format response - minimal since answer already printed in green
-        if len(answers) == 1:
+        if len(answers) == 1 and answers[0].get("free_text"):
+            friendly = "free text"
+        elif len(answers) == 1:
             friendly = "✓"
         else:
             friendly = f"✓ {len(answers)} answers"
         
         detailed_lines = ["User responses:"]
         for a in answers:
-            detailed_lines.append(f"  • {a['question']}: {a['answer']}")
+            if a.get("free_text"):
+                detailed_lines.append(f"  • {a['question']}: (free text) {a['answer']}")
+            else:
+                detailed_lines.append(f"  • {a['question']}: {a['answer']}")
+        if any(a.get("free_text") for a in answers):
+            detailed_lines.append("Note: free text is the user's own typed message, not a choice — "
+                                  "treat it as their words (e.g. they may not be ready to decide yet).")
         
         return {
             "tool": "ask_user",
@@ -248,7 +276,7 @@ def create_plugin(ctx):
     ctx.register_tool(
         name="ask_user",
         fn=ask_user,
-        description="Ask the user multiple-choice questions and return their selections. Use when a decision needs human input: multiple valid approaches exist, the request is ambiguous, or there are significant trade-offs. Do NOT use for trivial or clearly-decidable matters. Each question needs 2-8 short options. Prefer batching up to 3 related questions per call. Selection times out after ASK_USER_TIMEOUT seconds (default 60); timeout or cancel returns with partial answers so the AI can continue (timeout -> friendly='Timeout - no response', cancel -> friendly='User cancelled'). Example: [{'question': 'Which editor?', 'options': ['vim', 'nano', 'emacs']}]",
+        description="Ask the user multiple-choice questions and return their selections. Use ONLY at a clear, imminent decision point where the user is totally ready to decide NOW. NEVER use during discussion, brainstorming, or while the user is still exploring or shaping the problem — a premature menu creates an illusion of choice: the user is pushed to commit before they're ready, or to ignore the prompt, and both derail the conversation. If in doubt, keep discussing in prose and let the user raise the decision themselves. Do NOT use for trivial or clearly-decidable matters. Each question needs 2-8 short options. Prefer batching up to 3 related questions per call. Selection times out after ASK_USER_TIMEOUT seconds (default 60); timeout or cancel returns with partial answers so the AI can continue (timeout -> friendly='Timeout - no response', cancel -> friendly='User cancelled'). Users can also TYPE free text instead of picking an option (e.g. when they're not ready to decide) — it arrives as an entry with 'free_text': True; treat it as the user's own message, not a choice, and if it signals they're not ready, keep discussing in prose. Example: [{'question': 'Which editor?', 'options': ['vim', 'nano', 'emacs']}]",
         parameters={
             "type": "object",
             "properties": {
