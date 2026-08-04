@@ -433,6 +433,11 @@ def _fmt(model_id: str) -> str:
     return "openai"
 
 
+# User override: if REASONING_EFFORT_VALID was set before plugin load (launch env),
+# keep it authoritative — plugin won't overwrite or auto-pick outside that list.
+_USER_REASONING_VALID = os.environ.get("REASONING_EFFORT_VALID", "")
+
+
 def _set_active(mid: str):
     global _current_model, _activated_at
     if not mid or mid == _current_model:
@@ -444,7 +449,11 @@ def _set_active(mid: str):
     os.environ["REASONING_FORMAT"] = fmt
     Config.set_thinking("on")
     effort = _best_effort(mid)
-    if effort:
+    if _USER_REASONING_VALID:
+        # Keep the user's list; only auto-pick an effort value that fits it
+        if effort and effort in _USER_REASONING_VALID.split(","):
+            Config.set_reasoning_effort(effort)
+    elif effort:
         os.environ["REASONING_EFFORT_VALID"] = ",".join(_effort_values(mid) or [])
         Config.set_reasoning_effort(effort)
     else:
