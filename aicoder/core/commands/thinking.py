@@ -38,7 +38,7 @@ class ThinkingCommand(BaseCommand):
 
         if action == "effort":
             if len(args) >= 2:
-                self._set_effort(args[1])
+                self._set_effort(" ".join(args[1:]))
             else:
                 self._show_effort(current_effort)
             return CommandResult(should_quit=False, run_api_call=False)
@@ -48,11 +48,6 @@ class ThinkingCommand(BaseCommand):
                 self._set_clear_thinking(args[1])
             else:
                 self._show_clear_thinking(current_clear_thinking)
-            return CommandResult(should_quit=False, run_api_call=False)
-            if len(args) >= 2:
-                self._set_effort(args[1])
-            else:
-                self._show_effort(current_effort)
             return CommandResult(should_quit=False, run_api_call=False)
 
         if action == "default":
@@ -158,14 +153,23 @@ class ThinkingCommand(BaseCommand):
 
         if valid_values:
             LogUtils.info(f"Valid effort levels: {', '.join(valid_values)}")
-        LogUtils.dim("Use: /thinking effort <level>")
+        LogUtils.dim("Use: /thinking effort <level>  (append --force to bypass the valid list)")
 
     def _set_effort(self, value: str) -> None:
-        """Set reasoning effort level"""
+        """Set reasoning effort level. Trailing --force bypasses the valid-values check."""
+        force = value.endswith("--force")
+        if force:
+            value = value[: -len("--force")].rstrip()
+        if not value.strip():
+            LogUtils.error("[*] Missing effort level. Use: /thinking effort <level> [--force]")
+            return
         try:
-            Config.set_reasoning_effort(value)
+            Config.set_reasoning_effort(value, force=force)
             new_effort = Config.reasoning_effort()
-            LogUtils.success(f"[*] Reasoning effort set to: {new_effort}")
+            msg = f"[*] Reasoning effort set to: {new_effort}"
+            if force:
+                msg += " (forced)"
+            LogUtils.success(msg)
             valid_values = Config._get_valid_reasoning_efforts()
             if valid_values:
                 parts = []
@@ -175,8 +179,12 @@ class ThinkingCommand(BaseCommand):
                     else:
                         parts.append(v)
                 LogUtils.print(f"Valid: {' '.join(parts)}", color=None)
+            else:
+                LogUtils.dim("No REASONING_EFFORT_VALID set — no validation")
         except ValueError as e:
-            LogUtils.error(f"[*] {e}")
+            LogUtils.printc(f"[*] {e}", color="red", stderr=True)
+            if value.strip() not in ("+", "-", "++", "--"):
+                LogUtils.dim("Tip: append --force to set it anyway, e.g. /thinking effort <level> --force")
 
     def _show_clear_thinking(self, clear_thinking: Optional[bool]) -> None:
         """Show current reasoning strip setting"""
@@ -216,6 +224,7 @@ Examples:
   /thinking on                    Enable thinking with preserved reasoning (default for coding)
   /thinking off                   Disable thinking
   /thinking effort high           Set reasoning effort to high
+  /thinking effort <level> --force  Set any effort level, bypassing the valid list
   /thinking effort +              Set reasoning effort to max (last in REASONING_EFFORT_VALID)
   /thinking effort -              Set reasoning effort to min (first in REASONING_EFFORT_VALID)
   /thinking effort ++             Step up one level from current
@@ -225,6 +234,7 @@ Environment Variables:
   THINKING=<mode>                  Set default thinking mode (default|on|off)
   REASONING_EFFORT=<level>        Set default reasoning effort
   REASONING_EFFORT_VALID=<vals>   Comma-separated valid effort levels
+                                 (pre-set at launch = override; NIM plugin respects it)
   CLEAR_THINKING=<true|false>     Strip reasoning from non-tool-call messages (bandwidth optimization)
 """
 

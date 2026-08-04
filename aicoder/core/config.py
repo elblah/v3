@@ -174,7 +174,7 @@ class Config:
         return Config._reasoning_effort
 
     @classmethod
-    def set_reasoning_effort(cls, effort: Optional[str]) -> None:
+    def set_reasoning_effort(cls, effort: Optional[str], *, force: bool = False) -> None:
         """
         Set reasoning effort level.
         Supports positional symbols requiring REASONING_EFFORT_VALID (ordered list):
@@ -182,6 +182,7 @@ class Config:
           '-' → first position (lowest)
           '++' → one step up from current
           '--' → one step down from current
+        force=True bypasses the valid-values check (accepts any literal level).
         """
         if effort is None:
             cls._reasoning_effort = None
@@ -210,7 +211,7 @@ class Config:
             idx = valid_values.index(current)
             cls._reasoning_effort = valid_values[max(idx - 1, 0)]
         else:
-            if valid_values is not None and val not in valid_values:
+            if not force and valid_values is not None and val not in valid_values:
                 valid_list = ", ".join(valid_values)
                 raise ValueError(f"Invalid reasoning effort: {effort}. Valid values: {valid_list}")
             cls._reasoning_effort = val
