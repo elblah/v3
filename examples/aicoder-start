@@ -119,10 +119,21 @@ fi
 share_dir() {
     local SHARE_DIR=$1
     local SHARE_DIR_MOUNT=$2
+    local SHARE_MODE=${3:-ro}
     [[ ! -d "$SHARE_DIR" ]] && return
     [[ -z "$SHARE_DIR_MOUNT" ]] && SHARE_DIR_MOUNT=$SHARE_DIR
-    echo "Sharing dir: ${SHARE_DIR} -> ${SHARE_DIR_MOUNT}"
-    OPTS+=" --ro-bind ${SHARE_DIR} ${SHARE_DIR_MOUNT} "
+    echo "Sharing dir (${SHARE_MODE}): ${SHARE_DIR} -> ${SHARE_DIR_MOUNT}" >&2
+    if [[ "$SHARE_MODE" == "rw" ]]; then
+        OPTS+=" --bind ${SHARE_DIR} ${SHARE_DIR_MOUNT} "
+    else
+        OPTS+=" --ro-bind ${SHARE_DIR} ${SHARE_DIR_MOUNT} "
+    fi
+}
+
+function prepare_time() {
+    if [[ -v BENCH_TOTAL_TIME ]]; then
+        AICODER_CMD="AICODER_START_TIME=\$EPOCHREALTIME $AICODER_CMD"
+    fi
 }
 
 # AICODER COMMAND CAN BE OVERRIDEN TO OTHER ONES LINE
@@ -130,7 +141,12 @@ share_dir() {
 export AICODER_CMD=${AICODER_CMD_OVER:=$AICODER_CMD}
 
 if [[ "$SANDBOX" = 0 ]]; then
-    export AICODER_START_TIME=$EPOCHREALTIME
+    if [[ -t 1 ]]; then
+        echo "---------------------------------" >&2
+        echo "SANDBOX IS DISABLED" >&2
+        echo "---------------------------------" >&2
+    fi
+    prepare_time
     exec bash -c "$AICODER_CMD"
 else
     if [[ "$ALLOW_X11" == 1 ]]; then
@@ -169,10 +185,10 @@ else
 
     OPTS+=" --setenv UID $UID "
 
-    if [[ "$MINI" == 1 ]]; then
-        share_dir $HOME/.bun
-    fi
-    share_dir /mnt/cacho/storage/github /mnt/gh
+    [[ "$MINI" == 1 ]] && {
+        share_dir $HOME/.bun ro
+    }
+    share_dir /mnt/cacho/storage/github /mnt/gh ro
 
     if [[ -v TMUX && "$ALLOW_TMUX" == 0 ]]; then
         tmux_socketfile=$(tmux display-message -p '#{socket_path}')
@@ -181,12 +197,20 @@ else
         fi
     fi
 
-    export AICODER_START_TIME=$EPOCHREALTIME
-    exec systemd-run --user --scope -p MemoryLimit=${MEMMAX} -p CPUQuota=${CPUMAX}% bwrap \
+    [[ "$LIMIT_AICODER" != 0 ]] && {
+        echo "CPUMAX: ${CPUMAX}% - MEMMAX: ${MEMMAX}" >&2
+        LIMITER_CMD="systemd-run --user --scope -p MemoryLimit=${MEMMAX} -p CPUQuota=${CPUMAX}% --expand-environment=no"
+    }
+    prepare_time
+    exec $LIMITER_CMD bwrap \
         --tmpfs "$HOME" \
+        --tmpfs "$HOME/.aicoder" \
+        --ro-bind "$HOME/.aicoder/central_stats.log" "$HOME/.aicoder/central_stats.log" \
         --ro-bind "$HOME/.config/aicoder" "$HOME/.config/aicoder" \
         --ro-bind "$HOME/.config/aicoder-mini" "$HOME/.config/aicoder-mini" \
         --ro-bind "$HOME/.config/aicoder-v3" "$HOME/.config/aicoder-v3" \
+        --ro-bind "$HOME/.config/luna" "$HOME/.config/luna" \
+        --ro-bind "$HOME/poc/aicoder/luna" "$HOME/poc/aicoder/luna" \
         --ro-bind "$HOME/poc/aicoder/tsv" "$HOME/poc/aicoder/tsv" \
         --ro-bind "$HOME/poc/aicoder/v2" "$HOME/poc/aicoder/v2" \
         --ro-bind "$HOME/poc/aicoder/v2_refact" "$HOME/poc/aicoder/v2_refact" \
@@ -206,7 +230,10 @@ else
         --setenv DBUS_SESSION_BUS_ADDRESS "unix:path=/run/user/${UID}/bus" \
         --setenv AICODER_TMUX_PANE "$TMUX_PANE" \
         --setenv GOROOT "/usr/lib/go" \
+        --setenv DO_NOT_SET_SYSTEM_PROMPT "1" \
         --chdir "$WORK_DIR" \
+        --remount-ro "$HOME" \
+        --remount-ro "$HOME/.aicoder" \
         -- \
             bash -ic "$AICODER_CMD"
 
