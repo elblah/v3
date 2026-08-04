@@ -111,7 +111,7 @@ def create_plugin(ctx):
         return (
             f"{user_input}\n\n<system-reminder>\n"
             "If you learned anything worth persisting across sessions, "
-            "update your memory notes now (in .aicoder/memory/).\n"
+            "update your memory notes now (in .aicoder/memory/) — before your answer, not after.\n"
             "</system-reminder>"
         )
 
@@ -221,6 +221,8 @@ def create_plugin(ctx):
             "\n"
             "Write autonomously when you learn something worth persisting. "
             "Never ask permission. Check before summarizing.\n"
+            "Order: write memory BEFORE your final answer (tool calls first, answer last). "
+            "Never end with a 'memory updated' recap — your answer must be the last line.\n"
         )
 
         if files:
