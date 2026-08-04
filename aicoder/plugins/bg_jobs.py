@@ -491,6 +491,17 @@ Started: {format_time(job['started_at'])}
         "Manage background long-running processes"
     )
 
+    # ==================== Context bar ====================
+
+    def on_context_bar():
+        """Hook: show running job count in context bar"""
+        cleanup_dead_jobs()  # prune finished jobs (cheap poll, no subprocess)
+        if not jobs:
+            return None
+        return f"{Config.colors['yellow']}{Config.colors['bold']}bg:{len(jobs)}{Config.colors['reset']}"
+
+    ctx.register_hook("on_context_bar", on_context_bar)
+
     # ==================== Cleanup ====================
 
     def cleanup_all_jobs() -> None:
@@ -507,6 +518,7 @@ Started: {format_time(job['started_at'])}
         LogUtils.print("[+] Background jobs plugin loaded")
         LogUtils.print("    - bg_jobs tool")
         LogUtils.print("    - /bg-jobs command")
+        LogUtils.print("    - on_context_bar hook (running job count)")
 
     # Return cleanup handler (for plugin system integration)
     return {"cleanup": cleanup_all_jobs}
