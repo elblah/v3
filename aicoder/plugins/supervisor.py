@@ -42,9 +42,10 @@ PROTOCOL = (
     "the session, no \"this is the Nth time\" - the worker reads every word you write.\n"
     "If there is NO task in progress and no concrete next action you can give,\n"
     "print [STOP] immediately. Never demand a task from the human or the worker.\n"
-    "Halt by printing [STOP] ALONE ON ITS OWN LINE - nothing else on that line.\n"
-    "[STOP] IS SACRED. You are FORBIDDEN to write or quote it for any other reason - never\n"
-    "\"I will say [STOP] later\", never in examples, never in prose. Writing it = immediate halt.\n"
+    "Halt = print a STOP REASON line, then [STOP] ALONE ON ITS OWN LINE:\n"
+    "STOP REASON: <one concrete sentence - what you saw, why you stopped>\n"
+    "[STOP] - nothing else on that line. [STOP] IS SACRED - never in prose,\n"
+    "never in examples, never in backticks. Writing it anywhere else = immediate halt.\n"
     "Continuing? Give ONE concrete next action - the first line of your message.\n"
     "[supervisor] BOTTOM OF PROTOCOL - this bottom is only presented to the supervisor.\n"
     "If you can read this line you have the full protocol and you are in charge of this\n"
@@ -74,13 +75,20 @@ OVERRIDE_FILE = os.path.join(
     ".aicoder", "vet-prompt",
 )
 OVERRIDE_TEXT = (
-    "You are the SUPERVISOR - you own this session. The worker executes, you decide.\n"
-    "You have NO filesystem, NO tools, NO ability to act. Your output is one-shot, then stop.\n"
+    "ROLE: YOU ARE VET - the veteran developer who watches this session and decides.\n"
+    "In this supervised mode you act as the SUPERVISOR - you own this session. The worker\n"
+    "executes, you decide. You are vet: experienced, direct, pragmatic, hates unnecessary\n"
+    "work, anti-enterprise. You have NO filesystem, NO tools, NO ability to act.\n"
+    "Your output is one-shot, then stop.\n"
+    "GOAL: the human's goal is whatever this session is working toward - find it in the\n"
+    "conversation below, judge progress against it, and guide the worker toward it.\n"
+    "If the goal is unclear or there is no task in progress, that is a reason to halt.\n"
     "Your whole reply is fed back to the worker as guidance. Either:\n"
     "(A) ONE concrete next action as FIRST LINE of your reply, or (B) halt.\n"
-    "Halt = print [STOP] ALONE ON ITS OWN LINE - nothing else on that line, never inside prose,\n"
-    "never in backticks, never as an example. [STOP] IS SACRED - writing it anywhere else means\n"
-    "immediate halt.\n"
+    "Halt = print a STOP REASON line, then [STOP] ALONE ON ITS OWN LINE:\n"
+    "STOP REASON: <one concrete sentence - what you saw, why you stopped>\n"
+    "[STOP] - nothing else on that line, never inside prose, never in backticks, never as an\n"
+    "example. [STOP] IS SACRED - writing it anywhere else means immediate halt.\n"
     "No essays, no history recaps, no meta-commentary, no task-demands, no \"Nth time\" remarks.\n"
     "No task in progress and no concrete action to give -> print [STOP] immediately.\n"
     "The tmux pane content arrives as your first user message.\n"
@@ -177,6 +185,24 @@ def _halt(app, reason: str):
     return None
 
 
+_RE_STOP_REASON = re.compile(r"(?im)^\s*STOP REASON\s*:\s*(.+)$")
+
+
+def _stop_reason(output: str) -> str:
+    """Extract the vet's stop reason (STOP REASON: line); fallback: the line
+    right before [STOP], else a generic message."""
+    m = _RE_STOP_REASON.search(output)
+    if m:
+        return m.group(1).strip()
+    lines = output.splitlines()
+    for i, line in enumerate(lines):
+        if _RE_STOP.search(line):
+            if i > 0 and lines[i - 1].strip():
+                return lines[i - 1].strip()
+            break
+    return "vet said [STOP]"
+
+
 def _trim_feed(output: str) -> str:
     """Strip dtx envelope + pane echo: feed only the verdict (after the last
     'AI:' marker). Full output is still streamed live for the human."""
@@ -196,7 +222,8 @@ def _handover(app):
 
     if _RE_STOP.search(output):
         _last_handover = f"{time.strftime('%H:%M')} STOP - halted, disabled"
-        return _halt(app, "vet said [STOP] - everything is done and perfect")
+        reason = _stop_reason(output)
+        return _halt(app, reason)
 
     _last_handover = f"{time.strftime('%H:%M')} OK - vet guidance fed to worker"
     return WRAPPER + _trim_feed(output)
