@@ -62,7 +62,7 @@ WRAPPER = (
     "This session is supervised and this is the guidance for the supervisor "
     "model that is guiding this session:\n"
 )
-DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE full --prompt=$PROMPT" | nc -U /run/user/1000/tmp/dtx-server.sock'
+DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE 200 --prompt=$PROMPT" | nc -U /run/user/1000/tmp/dtx-server.sock'
 
 # [VET_SYSTEM_OVERRIDE]: full supervisor system prompt written to
 # .aicoder/vet-prompt in the project dir; passed to vet via --prompt=<path>
