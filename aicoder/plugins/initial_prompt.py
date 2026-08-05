@@ -50,9 +50,10 @@ def create_plugin(ctx):
             return
 
         _initial_prompt_sent = True
-        c = Config.colors
-        preview = initial[:2048] + "..." if len(initial) > 2048 else initial
-        print(f"\n{c['cyan']}[initial_prompt] Injecting first message: {preview}{c['reset']}")
+        if not os.environ.get("AICODER_INITIAL_PROMPT_QUIET"):
+            c = Config.colors
+            preview = initial[:2048] + "..." if len(initial) > 2048 else initial
+            print(f"\n{c['cyan']}[initial_prompt] Injecting first message: {preview}{c['reset']}")
         ctx.app.set_next_prompt(initial)
 
     ctx.register_hook("before_user_prompt", inject_initial_prompt)
