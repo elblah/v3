@@ -134,9 +134,9 @@ def _vet_cmd() -> str:
 
 def _vet_timeout() -> int:
     try:
-        return max(10, int(os.environ.get("SUPERVISOR_VET_TIMEOUT", "300")))
+        return max(10, int(os.environ.get("SUPERVISOR_VET_TIMEOUT", "600")))
     except ValueError:
-        return 300
+        return 600
 
 
 def _write_override():
