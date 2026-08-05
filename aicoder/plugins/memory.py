@@ -56,6 +56,8 @@ NUDGE_SECONDS = int(os.environ.get("AICODER_MEMORY_NUDGE_SECONDS", "300"))
 
 # Auto-approve write_file/edit_file targeting the memory dir (skip approval prompt)
 AUTO_APPROVE_MEMORY = os.environ.get("AICODER_MEMORY_AUTO_APPROVE", "1").lower() not in ("0", "false", "no")
+# Hide memory-dir write previews entirely (default: show one-line summary instead of diff)
+PREVIEW_HIDE = os.environ.get("AICODER_MEMORY_PREVIEW_HIDE", "0").lower() not in ("0", "false", "no")
 
 
 def create_plugin(ctx):
@@ -92,6 +94,24 @@ def create_plugin(ctx):
         if sys.stdout.isatty():
             LogUtils.print(f"[memory] auto-approved {tool_name} -> {path}")
         return True
+
+    def _on_tool_preview(tool_name: str, arguments: dict, preview_result: dict) -> bool | dict | None:
+        """Replace/suppress diffs for write_file/edit_file targeting the memory dir."""
+        if tool_name not in ("write_file", "edit_file"):
+            return None
+        if not isinstance(arguments, dict):
+            return None
+        path = arguments.get("path")
+        if not path or not _is_memory_path(str(path)):
+            return None
+        if PREVIEW_HIDE:
+            return False
+        rel = os.path.relpath(str(path), MEMORY_DIR)
+        return {
+            "tool": tool_name,
+            "content": f"Memory update: {rel} (diff hidden)",
+            "can_approve": True,
+        }
 
     def _on_after_file_write(path: str, _content: str):
         """Track writes to memory directory + autoload size check."""
@@ -245,6 +265,7 @@ def create_plugin(ctx):
             "Write autonomously when you learn something worth persisting. "
             "Never ask permission. Check before summarizing.\n"
             "Writes to this dir are auto-approved (no approval prompt); other files still prompt.\n"
+            "Write diffs are replaced with a one-line summary (AICODER_MEMORY_PREVIEW_HIDE=1 hides entirely).\n"
             "Order: write memory BEFORE your final answer (tool calls first, answer last). "
             "Never end with a 'memory updated' recap — your answer must be the last line.\n"
         )
@@ -322,6 +343,8 @@ def create_plugin(ctx):
             LogUtils.print(f"  Nudge: {nudge_state} (chars>{NUDGE_CHARS}, stale>{NUDGE_SECONDS}s)")
             aa_state = "on" if AUTO_APPROVE_MEMORY else "off"
             LogUtils.print(f"  Auto-approve memory writes: {aa_state} (AICODER_MEMORY_AUTO_APPROVE)")
+            pv_state = "hidden" if PREVIEW_HIDE else "summary"
+            LogUtils.print(f"  Memory write preview: {pv_state} (AICODER_MEMORY_PREVIEW_HIDE=1 hides)")
             if _last_memory_write > 0:
                 ago = int(time.time() - _last_memory_write)
                 LogUtils.print(f"  Last memory write: {ago}s ago")
@@ -468,6 +491,7 @@ def create_plugin(ctx):
     ctx.register_hook("after_assistant_message_added", _on_after_assistant_message)
     ctx.register_hook("after_user_prompt", _on_after_user_prompt)
     ctx.register_hook("before_approval_prompt", _before_approval_prompt)
+    ctx.register_hook("on_tool_preview", _on_tool_preview)
 
     # Register command
     ctx.register_command("memory", handle_command, description="Persistent memory management (.aicoder/memory/)")
@@ -484,5 +508,6 @@ def create_plugin(ctx):
             "after_assistant_message_added": _on_after_assistant_message,
             "after_user_prompt": _on_after_user_prompt,
             "before_approval_prompt": _before_approval_prompt,
+            "on_tool_preview": _on_tool_preview,
         },
     }

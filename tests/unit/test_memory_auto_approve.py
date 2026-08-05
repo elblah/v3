@@ -26,11 +26,24 @@ class FakeCtx:
 def hook(monkeypatch):
     """Load memory plugin with AICODER_MEMORY_AUTO_APPROVE=1, return approval hook."""
     monkeypatch.setenv("AICODER_MEMORY_AUTO_APPROVE", "1")
+    monkeypatch.setenv("AICODER_MEMORY_PREVIEW_HIDE", "0")
     module = importlib.import_module("aicoder.plugins.memory")
     importlib.reload(module)
     ctx = FakeCtx()
     module.create_plugin(ctx)
     return ctx.hooks["before_approval_prompt"]
+
+
+@pytest.fixture
+def preview_hook(monkeypatch):
+    """Load memory plugin, return the on_tool_preview hook."""
+    monkeypatch.setenv("AICODER_MEMORY_AUTO_APPROVE", "1")
+    monkeypatch.setenv("AICODER_MEMORY_PREVIEW_HIDE", "0")
+    module = importlib.import_module("aicoder.plugins.memory")
+    importlib.reload(module)
+    ctx = FakeCtx()
+    module.create_plugin(ctx)
+    return ctx.hooks["on_tool_preview"]
 
 
 def test_approves_write_file_in_memory_dir(hook):
@@ -66,9 +79,50 @@ def test_missing_path_or_args(hook):
 
 def test_disabled_via_env(monkeypatch):
     monkeypatch.setenv("AICODER_MEMORY_AUTO_APPROVE", "0")
+    monkeypatch.setenv("AICODER_MEMORY_PREVIEW_HIDE", "0")
     module = importlib.import_module("aicoder.plugins.memory")
     importlib.reload(module)
     ctx = FakeCtx()
     module.create_plugin(ctx)
     hook = ctx.hooks["before_approval_prompt"]
     assert hook("write_file", {"path": ".aicoder/memory/index.md"}) is None
+
+
+class TestMemoryPreviewHook:
+    def test_summary_dict_for_memory_path(self, preview_hook):
+        result = preview_hook(
+            "write_file",
+            {"path": ".aicoder/memory/index.md"},
+            {"content": "diff...", "can_approve": True},
+        )
+        assert isinstance(result, dict)
+        assert result["can_approve"] is True
+        assert "index.md" in result["content"]
+        assert "diff hidden" in result["content"]
+
+    def test_absolute_memory_path(self, preview_hook):
+        p = str(REPO / ".aicoder/memory/notes.md")
+        result = preview_hook("edit_file", {"path": p}, {"content": "diff", "can_approve": True})
+        assert isinstance(result, dict)
+        assert "notes.md" in result["content"]
+
+    def test_none_outside_memory_dir(self, preview_hook):
+        result = preview_hook("write_file", {"path": "main.py"}, {"content": "diff", "can_approve": True})
+        assert result is None
+
+    def test_none_for_non_write_tools(self, preview_hook):
+        assert preview_hook("run_shell_command", {"command": "ls"}, {}) is None
+        assert preview_hook("read_file", {"path": ".aicoder/memory/index.md"}, {}) is None
+
+    def test_none_missing_args(self, preview_hook):
+        assert preview_hook("write_file", {}, {"content": "x", "can_approve": True}) is None
+        assert preview_hook("write_file", None, {}) is None
+
+    def test_hidden_via_env(self, monkeypatch):
+        monkeypatch.setenv("AICODER_MEMORY_PREVIEW_HIDE", "1")
+        module = importlib.import_module("aicoder.plugins.memory")
+        importlib.reload(module)
+        ctx = FakeCtx()
+        module.create_plugin(ctx)
+        hook = ctx.hooks["on_tool_preview"]
+        assert hook("write_file", {"path": ".aicoder/memory/index.md"}, {"content": "diff", "can_approve": True}) is False

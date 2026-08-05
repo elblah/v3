@@ -97,7 +97,7 @@ class ToolExecutor:
 
         # Generate and display preview
         if self._should_show_preview(tool_def, arguments):
-            result = self._handle_preview_display(tool_def, arguments, tool_call.get("id", ""))
+            result = self._handle_preview_display(tool_def, arguments, tool_call.get("id", ""), tool_name)
             if result is False:
                 return None  # Preview was rejected without message
             elif isinstance(result, dict):
@@ -145,7 +145,7 @@ class ToolExecutor:
         """Check if preview should be shown"""
         return tool_def and tool_def.get("generatePreview")
 
-    def _handle_preview_display(self, tool_def: Dict[str, Any], arguments: Dict[str, Any], tool_call_id: str) -> Union[bool, Dict[str, Any]]:
+    def _handle_preview_display(self, tool_def: Dict[str, Any], arguments: Dict[str, Any], tool_call_id: str, tool_name: str) -> Union[bool, Dict[str, Any]]:
         """Handle preview display and return True if approved, False if rejected"""
         try:
             preview_result = tool_def["generatePreview"](arguments)
@@ -164,6 +164,18 @@ class ToolExecutor:
                 "tool_call_id": tool_call_id,
                 "content": preview_result.get("content", ""),
             }
+
+        # Plugins can replace (dict) or suppress (False) the preview display
+        if self.plugin_system:
+            results = self.plugin_system.call_hooks(
+                "on_tool_preview", tool_name, arguments, preview_result
+            )
+            if results:
+                for result in results:
+                    if result is False:
+                        return True  # Suppressed - proceed straight to approval
+                    if isinstance(result, dict):
+                        preview_result = result
 
         # Display preview content with header for normal previews
         # Only show file path in header if content doesn't already include it

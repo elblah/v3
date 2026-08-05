@@ -182,7 +182,7 @@ class TestToolExecutorPreviewDisplay:
         tool_def = {"generatePreview": MagicMock(side_effect=Exception("Preview failed"))}
 
         with patch('aicoder.core.tool_executor.LogUtils'):
-            result = executor._handle_preview_display(tool_def, {}, "call_123")
+            result = executor._handle_preview_display(tool_def, {}, "call_123", "edit_file")
             assert result is True  # Continue without preview
 
     def test_handle_preview_display_no_preview(self):
@@ -194,7 +194,7 @@ class TestToolExecutorPreviewDisplay:
 
         tool_def = {"generatePreview": MagicMock(return_value=None)}
 
-        result = executor._handle_preview_display(tool_def, {}, "call_123")
+        result = executor._handle_preview_display(tool_def, {}, "call_123", "edit_file")
         assert result is True
 
     def test_handle_preview_display_cannot_approve(self):
@@ -211,7 +211,7 @@ class TestToolExecutorPreviewDisplay:
         tool_def = {"generatePreview": MagicMock(return_value=preview_result)}
 
         with patch('aicoder.core.tool_executor.LogUtils'):
-            result = executor._handle_preview_display(tool_def, {}, "call_123")
+            result = executor._handle_preview_display(tool_def, {}, "call_123", "edit_file")
             assert isinstance(result, dict)
             assert result["tool_call_id"] == "call_123"
             assert result["content"] == "Sensitive content"
@@ -446,6 +446,84 @@ class TestToolExecutorPluginHooks:
             executor.execute_tool_calls([{"id": "1", "function": {"name": "read_file"}}])
 
         mock_plugin_system.call_hooks.assert_called_once_with("after_tool_results", tool_results)
+
+class TestToolExecutorPreviewHook:
+    """Test the on_tool_preview plugin hook."""
+
+    def _make_executor(self, hook_results):
+        mock_tool_manager = MagicMock()
+        mock_message_history = MagicMock()
+        mock_plugin_system = MagicMock()
+        mock_plugin_system.call_hooks.return_value = hook_results
+        executor = ToolExecutor(mock_tool_manager, mock_message_history, mock_plugin_system)
+        return executor, mock_plugin_system
+
+    def _make_tool_def(self, preview):
+        return {"generatePreview": MagicMock(return_value=preview)}
+
+    def test_preview_replaced_by_plugin(self):
+        """Plugin dict replaces the preview shown."""
+        executor, ps = self._make_executor([{"content": "new preview", "can_approve": True}])
+        tool_def = self._make_tool_def({"content": "old diff", "can_approve": True})
+        with patch("aicoder.core.tool_executor.ToolFormatter.format_preview") as fmt, \
+             patch("aicoder.core.tool_executor.LogUtils"):
+            result = executor._handle_preview_display(tool_def, {"path": "/x"}, "tid1", "write_file")
+
+        assert result is True
+        ps.call_hooks.assert_called_once_with(
+            "on_tool_preview", "write_file", {"path": "/x"},
+            {"content": "old diff", "can_approve": True},
+        )
+        fmt.assert_called_once()
+        assert fmt.call_args.args[0]["content"] == "new preview"
+
+    def test_preview_suppressed_by_plugin(self):
+        """Plugin returning False suppresses display and proceeds to approval."""
+        executor, ps = self._make_executor([False])
+        tool_def = self._make_tool_def({"content": "old diff", "can_approve": True})
+        with patch("aicoder.core.tool_executor.ToolFormatter.format_preview") as fmt, \
+             patch("aicoder.core.tool_executor.LogUtils") as mock_log:
+            result = executor._handle_preview_display(tool_def, {"path": "/x"}, "tid1", "write_file")
+
+        assert result is True
+        fmt.assert_not_called()
+        mock_log.print.assert_not_called()
+
+    def test_preview_kept_when_plugin_returns_none(self):
+        """Plugin returning None keeps the original preview."""
+        executor, ps = self._make_executor([None])
+        tool_def = self._make_tool_def({"content": "old diff", "can_approve": True})
+        with patch("aicoder.core.tool_executor.ToolFormatter.format_preview") as fmt, \
+             patch("aicoder.core.tool_executor.LogUtils"):
+            result = executor._handle_preview_display(tool_def, {"path": "/x"}, "tid1", "write_file")
+
+        assert result is True
+        fmt.assert_called_once()
+        assert fmt.call_args.args[0]["content"] == "old diff"
+
+    def test_preview_no_plugin_system(self):
+        """No plugin system: hook skipped, preview shown normally."""
+        mock_tool_manager = MagicMock()
+        mock_message_history = MagicMock()
+        executor = ToolExecutor(mock_tool_manager, mock_message_history)
+        tool_def = self._make_tool_def({"content": "old diff", "can_approve": True})
+        with patch("aicoder.core.tool_executor.ToolFormatter.format_preview") as fmt, \
+             patch("aicoder.core.tool_executor.LogUtils"):
+            result = executor._handle_preview_display(tool_def, {"path": "/x"}, "tid1", "write_file")
+
+        assert result is True
+        fmt.assert_called_once()
+
+    def test_preview_cannot_approve_bypasses_hook(self):
+        """Safety/error previews (can_approve=False) bypass the hook."""
+        executor, ps = self._make_executor([{"content": "replacement", "can_approve": True}])
+        tool_def = self._make_tool_def({"content": "error msg", "can_approve": False})
+        with patch("aicoder.core.tool_executor.LogUtils") as mock_log:
+            result = executor._handle_preview_display(tool_def, {"path": "/x"}, "tid1", "write_file")
+
+        ps.call_hooks.assert_not_called()
+        mock_log.print.assert_called_once_with("error msg")
+        assert result == {"tool_call_id": "tid1", "content": "error msg"}
 
 class TestToolExecutorSingleToolCall:
     """Test ToolExecutor _execute_single_tool_call."""
