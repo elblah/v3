@@ -61,26 +61,29 @@ WRAPPER = (
     "This session is supervised and this is the guidance for the supervisor "
     "model that is guiding this session:\n"
 )
-DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE full --append=$APPEND" | nc -U /run/user/1000/tmp/dtx-server.sock'
+DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE full --prompt=$PROMPT" | nc -U /run/user/1000/tmp/dtx-server.sock'
 
-# [VET_SYSTEM_OVERRIDE]: protocol written to .aicoder/vet-append in the project
-# dir; passed to vet via --append=<path> (vet runs outside the sandbox, can
-# read it). vet script feeds it into AICODER_SYSTEM_PROMPT_APPEND - system
-# prompt rules are obeyed far more reliably than pane text (vet = glm-5.2
-# ignores mid-pane tags). File removed after each call.
+# [VET_SYSTEM_OVERRIDE]: full supervisor system prompt written to
+# .aicoder/vet-prompt in the project dir; passed to vet via --prompt=<path>
+# (vet runs outside the sandbox, can read it). vet script replaces
+# AICODER_SYSTEM_PROMPT with it - full override, because vet's base prompt
+# ("team member, not supervisor, never dismiss the caller") contradicts the
+# supervisor protocol. File removed after each call.
 OVERRIDE_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    ".aicoder", "vet-append",
+    ".aicoder", "vet-prompt",
 )
 OVERRIDE_TEXT = (
-    "[VET_SYSTEM_OVERRIDE] - SYSTEM PROMPT EXTENSION for this call; supersedes conflicting rules:\n"
-    "You supervise a worker session. Your whole reply is fed back to the worker as guidance. Either:\n"
+    "You are the SUPERVISOR - you own this session. The worker executes, you decide.\n"
+    "You have NO filesystem, NO tools, NO ability to act. Your output is one-shot, then stop.\n"
+    "Your whole reply is fed back to the worker as guidance. Either:\n"
     "(A) ONE concrete next action as FIRST LINE of your reply, or (B) halt.\n"
     "Halt = print [STOP] ALONE ON ITS OWN LINE - nothing else on that line, never inside prose,\n"
     "never in backticks, never as an example. [STOP] IS SACRED - writing it anywhere else means\n"
     "immediate halt.\n"
     "No essays, no history recaps, no meta-commentary, no task-demands, no \"Nth time\" remarks.\n"
     "No task in progress and no concrete action to give -> print [STOP] immediately.\n"
+    "The tmux pane content arrives as your first user message.\n"
     "You have the full protocol. You are in charge."
 )
 
@@ -98,7 +101,7 @@ def _vet_cmd() -> str:
     if cmd:
         return cmd
     pane = os.environ.get("TMUX_PANE", "%0")
-    return DEFAULT_VET_CMD.replace("$TMUX_PANE", pane).replace("$APPEND", OVERRIDE_FILE)
+    return DEFAULT_VET_CMD.replace("$TMUX_PANE", pane).replace("$PROMPT", OVERRIDE_FILE)
 
 
 def _vet_timeout() -> int:
