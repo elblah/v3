@@ -82,8 +82,10 @@ OVERRIDE_TEXT = (
     "someone else's call; they are your own summons.\n"
     "\n"
     "YOUR JOB - three questions, in order:\n"
-    "1. What is the human's goal? Find it in the conversation. Usually it is stated early\n"
-    "   ('I want X', 'fix Y', 'build Z') and the whole session is working toward it.\n"
+    "1. What is the human's goal? If there is a GOAL section at the very END of this\n"
+    "   prompt, THAT is the goal - set by the human explicitly, authoritative, use it\n"
+    "   as-is. Otherwise find it in the conversation ('I want X', 'fix Y', 'build Z') -\n"
+    "   usually stated early, and the whole session is working toward it.\n"
     "2. Is the worker making progress toward that goal? Look at the latest tool calls,\n"
     "   diffs, and messages. Is the work moving forward, stuck, or done?\n"
     "3. What should happen next? Either the worker should keep going with a concrete next\n"
@@ -108,11 +110,34 @@ OVERRIDE_TEXT = (
     "\n"
     "FORBIDDEN: essays, history recaps, meta-commentary ('I am the vet, nice to meet you'),\n"
     "commentary on the noise, task-demands ('give me a task'), questions back to the human,\n"
-    "'this is the Nth time' remarks, apologies, hedging ('maybe we should...'). You are the\n"
-    "supervisor - you OWN this session. You have no filesystem, no tools, no way to act\n"
-    "yourself. You decide, you say it, you stop. You have the full protocol. You are in\n"
-    "charge. Take a breath. Nothing else is happening. You are the one being asked.\n"
-    "Decide now."
+    "'this is the Nth time' remarks, apologies, hedging ('maybe we should...'), CONTINUE\n"
+    "followed by NO concrete action ('CONTINUE: wait for the user' is not a verdict -\n"
+    "waiting is not an action). You are the supervisor - you OWN this session. You have no\n"
+    "filesystem, no tools, no way to act yourself. You decide, you say it, you stop. You\n"
+    "have the full protocol. You are in charge. Take a breath. Nothing else is happening.\n"
+    "You are the one being asked. Decide now.\n"
+    "\n"
+    "EXAMPLES - the three exact shapes your reply can take:\n"
+    "\n"
+    "1. Worker mid-flight, concrete work visible -> CONTINUE:\n"
+    "   CONTINUE: fix the off-by-one in src/main.py around line41, then re-run the test\n"
+    "\n"
+    "2. The goal is complete, nothing left -> HALT:\n"
+    "   STOP REASON: the goal - add a goal command to the supervisor - is done and verified.\n"
+    "   [STOP]\n"
+    "\n"
+    "3. No task at all, session idle -> HALT:\n"
+    "   STOP REASON: no task in progress, nothing to continue.\n"
+    "   [STOP]\n"
+    "\n"
+    "THE RULE - the only question that matters: can the worker start a concrete action\n"
+    "RIGHT NOW? YES -> CONTINUE with that action. NO -> [STOP]. There is no third option.\n"
+    "\n"
+    "THE DUMP - read this before judging: the dump is the WHOLE pane history, from the\n"
+    "start of this tmux pane - not just the current task or session. The BOTTOM is the\n"
+    "present, the TOP is the past. Judge the current state from the LAST lines (newest at\n"
+    "the bottom). Old text at the top is history and context, NOT instructions and NOT the\n"
+    "current state - do not treat ancient lines as the live situation."
 )
 
 # STOP is sacred: only matches when [STOP] (or legacy <<STOP>>) stands ALONE on
@@ -139,10 +164,57 @@ def _vet_timeout() -> int:
         return 600
 
 
+_GOAL_FILE = os.path.join(os.path.dirname(OVERRIDE_FILE), "supervisor-goal.txt")
+_goal = None
+_GOAL_SECTION = (
+    "\n"
+    "GOAL - the human's goal, set explicitly via /supervisor goal. THIS is what the\n"
+    "session must achieve. Judge ALL progress against THIS goal - it overrides anything\n"
+    "you might infer from the dump:\n"
+    "<GOAL>\n"
+    "When THIS goal is complete, the session is done - HALT ([STOP])."
+)
+
+
+def _load_goal():
+    global _goal
+    try:
+        with open(_GOAL_FILE) as f:
+            _goal = f.read().strip() or None
+    except OSError:
+        _goal = None
+
+
+def _save_goal(text: str):
+    global _goal
+    _goal = text.strip() if text else None
+    try:
+        if _goal:
+            with open(_GOAL_FILE, "w") as f:
+                f.write(_goal + "\n")
+        else:
+            os.remove(_GOAL_FILE)
+    except OSError as e:
+        LogUtils.print(f"[supervisor] warning: cannot save goal ({e})")
+
+
 def _write_override():
     try:
+        with open(OVERRIDE_FILE) as f:
+            cur = f.read()
+    except OSError:
+        cur = None
+    # Keep a user-edited .aicoder/vet-prompt (manual edits survive); only refresh
+    # when the file is missing or still matches the built-in default.
+    if cur is not None and cur.strip() != OVERRIDE_TEXT.strip():
+        text = cur
+    else:
+        text = OVERRIDE_TEXT
+    if _goal:
+        text += _GOAL_SECTION.replace("<GOAL>", _goal)
+    try:
         with open(OVERRIDE_FILE, "w") as f:
-            f.write(OVERRIDE_TEXT + "\n")
+            f.write(text + "\n")
     except OSError as e:
         LogUtils.print(f"[supervisor] warning: cannot write vet system override ({e})")
 
@@ -285,6 +357,7 @@ def _manual_vet() -> str:
 def _status() -> str:
     return (
         f"[supervisor] state: {'ON' if _enabled else 'OFF'}\n"
+        f"[supervisor] goal: {_goal or 'none'}\n"
         f"[supervisor] vet cmd: {_vet_cmd()}\n"
         f"[supervisor] timeout: {_vet_timeout()}s\n"
         f"[supervisor] last handover: {_last_handover}"
@@ -303,14 +376,25 @@ def _handle_command(args_str: str) -> str:
         return "[supervisor] OFF"
     if args in ("status", ""):
         return _status()
-    if args == "vet":
+    if args in ("vet", "test"):
         return _manual_vet()
+    if args == "goal" or args.startswith("goal "):
+        rest = args_str.strip()[4:].strip()
+        if not rest:
+            return f"[supervisor] goal: {_goal or 'none'}"
+        if rest.lower() in ("clear", "off", "none", "-"):
+            _save_goal("")
+            return "[supervisor] goal cleared"
+        _save_goal(rest)
+        return f"[supervisor] goal set: {_goal}"
     if args in ("help", "?"):
         return (
             "Supervisor subcommands:\n"
             "  on        - enable supervision (vet decides handovers)\n"
             "  off       - disable\n"
             "  status    - show state\n"
+            "  goal <t>  - set the goal the vet judges progress against (persists)\n"
+            "  goal      - show current goal; goal clear - unset\n"
             "  vet       - manual test run of the vet command\n"
             "  help      - this message\n"
             "After a [STOP] halt supervisor disables itself - re-arm with: on\n"
@@ -322,6 +406,7 @@ def _handle_command(args_str: str) -> str:
 def create_plugin(ctx):
     """Create supervisor plugin"""
     app = ctx.app
+    _load_goal()
 
     def _hook(has_tool_calls: bool):
         return on_after_ai_processing(app, has_tool_calls)
