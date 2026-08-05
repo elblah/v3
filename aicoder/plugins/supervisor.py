@@ -239,6 +239,13 @@ def _handover(app):
     LogUtils.print(f"[supervisor] calling vet (timeout {_vet_timeout()}s)...")
     output, ok = _run_vet()
 
+    if not ok:
+        # Timeout/error: no verdict. Feed nothing - a garbage "guidance" would
+        # make the worker reply, trigger another handover and another vet call.
+        _last_handover = f"{time.strftime('%H:%M')} timeout - no guidance"
+        LogUtils.error("[supervisor] vet timed out - no guidance, waiting for user input")
+        return None
+
     if _RE_STOP.search(output):
         _last_handover = f"{time.strftime('%H:%M')} STOP - halted, disabled"
         reason = _stop_reason(output)
