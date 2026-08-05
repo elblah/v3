@@ -63,6 +63,23 @@ WRAPPER = (
 )
 DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE full" | nc -U /run/user/1000/tmp/dtx-server.sock'
 
+# [VET_SYSTEM_OVERRIDE]: protocol written to a file the vet script appends to
+# the vet's SYSTEM PROMPT (AICODER_SYSTEM_PROMPT_APPEND). System-prompt rules
+# are obeyed far more reliably than pane text - vet = glm-5.2 ignores mid-pane
+# tags but follows system instructions. File removed after each call.
+OVERRIDE_FILE = "/mnt/shared/vet-append"
+OVERRIDE_TEXT = (
+    "[VET_SYSTEM_OVERRIDE] - SYSTEM PROMPT EXTENSION for this call; supersedes conflicting rules:\n"
+    "You supervise a worker session. Your whole reply is fed back to the worker as guidance. Either:\n"
+    "(A) ONE concrete next action as FIRST LINE of your reply, or (B) halt.\n"
+    "Halt = print [STOP] ALONE ON ITS OWN LINE - nothing else on that line, never inside prose,\n"
+    "never in backticks, never as an example. [STOP] IS SACRED - writing it anywhere else means\n"
+    "immediate halt.\n"
+    "No essays, no history recaps, no meta-commentary, no task-demands, no \"Nth time\" remarks.\n"
+    "No task in progress and no concrete action to give -> print [STOP] immediately.\n"
+    "You have the full protocol. You are in charge."
+)
+
 # STOP is sacred: only matches when [STOP] (or legacy <<STOP>>) stands ALONE on
 # its own line. Inline prose mentions ("I will say [STOP] later") never halt.
 _RE_STOP = re.compile(r"(?m)^\s*(?:\[STOP\]|<<\s*STOP\s*>>)\s*$")
@@ -87,10 +104,26 @@ def _vet_timeout() -> int:
         return 300
 
 
+def _write_override():
+    try:
+        with open(OVERRIDE_FILE, "w") as f:
+            f.write(OVERRIDE_TEXT + "\n")
+    except OSError as e:
+        LogUtils.print(f"[supervisor] warning: cannot write vet system override ({e})")
+
+
+def _remove_override():
+    try:
+        os.remove(OVERRIDE_FILE)
+    except OSError:
+        pass
+
+
 def _run_vet() -> tuple:
     """Run vet command, streaming output live to the pane. Returns (output, ok)."""
     global _vet_running
     _vet_running = True
+    _write_override()
     output = []
     try:
         proc = subprocess.Popen(
@@ -99,6 +132,7 @@ def _run_vet() -> tuple:
         )
     except Exception as e:
         _vet_running = False
+        _remove_override()
         return f"vet command failed: {e}", False
 
     def _reader():
@@ -115,8 +149,10 @@ def _run_vet() -> tuple:
         proc.kill()
         t.join(5)
         _vet_running = False
+        _remove_override()
         return "\n".join(output) + "\n[timed out]", False
     _vet_running = False
+    _remove_override()
     return "\n".join(output), True
 
 
