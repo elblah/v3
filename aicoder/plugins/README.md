@@ -181,9 +181,34 @@ def my_tool(args):
 
 - `before_user_prompt` - Before showing user input prompt
 - `before_approval_prompt` - Before showing tool approval (can return `True`=auto-approve, `False`=auto-deny, `None`=ask user)
+- `on_tool_preview(tool_name, arguments, preview_result)` - Before displaying a tool preview diff (can return a dict to replace the preview, `False` to suppress it entirely, `None` to keep it)
 - `before_file_write(path, content)` - Before writing file (can return modified content)
 - `after_file_write(path, content)` - After file is written (file exists at this point)
 - `after_tool_results(tool_results)` - After tool results are added to message history (safe time to add plugin messages)
+
+### Customizing Tool Previews with `on_tool_preview`
+
+Plugins can replace or suppress tool previews (diffs) shown before approval:
+
+```python
+def on_tool_preview(tool_name: str, arguments: dict, preview_result: dict) -> dict | bool | None:
+    """
+    Called before a tool preview is displayed. Only invoked for previews that
+    can be approved; safety/error messages bypass this hook.
+
+    Returns:
+    - dict  -> replace the preview with this dict (same shape: tool/content/can_approve)
+    - False -> suppress the preview entirely (goes straight to approval)
+    - None  -> keep the original preview (default behavior)
+    """
+    if tool_name == "write_file" and "/noisy/" in arguments.get("path", ""):
+        return {"tool": tool_name, "content": "Write (diff hidden)", "can_approve": True}
+    return None
+
+ctx.register_hook("on_tool_preview", on_tool_preview)
+```
+
+See the `memory.py` plugin for a real example (replaces memory-dir write diffs with a one-line summary).
 
 ### Auto-Approve/Deny with `before_approval_prompt`
 
