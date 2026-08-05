@@ -61,13 +61,17 @@ WRAPPER = (
     "This session is supervised and this is the guidance for the supervisor "
     "model that is guiding this session:\n"
 )
-DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE full" | nc -U /run/user/1000/tmp/dtx-server.sock'
+DEFAULT_VET_CMD = 'echo "vet $TMUX_PANE full --append=$APPEND" | nc -U /run/user/1000/tmp/dtx-server.sock'
 
-# [VET_SYSTEM_OVERRIDE]: protocol written to a file the vet script appends to
-# the vet's SYSTEM PROMPT (AICODER_SYSTEM_PROMPT_APPEND). System-prompt rules
-# are obeyed far more reliably than pane text - vet = glm-5.2 ignores mid-pane
-# tags but follows system instructions. File removed after each call.
-OVERRIDE_FILE = "/mnt/shared/vet-append"
+# [VET_SYSTEM_OVERRIDE]: protocol written to .aicoder/vet-append in the project
+# dir; passed to vet via --append=<path> (vet runs outside the sandbox, can
+# read it). vet script feeds it into AICODER_SYSTEM_PROMPT_APPEND - system
+# prompt rules are obeyed far more reliably than pane text (vet = glm-5.2
+# ignores mid-pane tags). File removed after each call.
+OVERRIDE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ".aicoder", "vet-append",
+)
 OVERRIDE_TEXT = (
     "[VET_SYSTEM_OVERRIDE] - SYSTEM PROMPT EXTENSION for this call; supersedes conflicting rules:\n"
     "You supervise a worker session. Your whole reply is fed back to the worker as guidance. Either:\n"
@@ -94,7 +98,7 @@ def _vet_cmd() -> str:
     if cmd:
         return cmd
     pane = os.environ.get("TMUX_PANE", "%0")
-    return DEFAULT_VET_CMD.replace("$TMUX_PANE", pane)
+    return DEFAULT_VET_CMD.replace("$TMUX_PANE", pane).replace("$APPEND", OVERRIDE_FILE)
 
 
 def _vet_timeout() -> int:
