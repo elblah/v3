@@ -16,7 +16,6 @@ Control flow:
 Env overrides:
   SUPERVISOR_VET_CMD       full shell command (default: dtx vet via nc)
   SUPERVISOR_VET_TIMEOUT   seconds (default 300)
-  SUPERVISOR_PROTOCOL      full protocol text (replaces the built-in one)
 
 Usage:
   /supervisor on      Enable supervision
@@ -33,30 +32,6 @@ import time
 
 from aicoder.utils.log import LogUtils
 from aicoder.core.config import Config
-
-PROTOCOL = (
-    "[supervisor] PROTOCOL FOR VET:\n"
-    "YOU ARE THE SUPERVISOR - you own this session. The worker executes, you decide.\n"
-    "Your job: either (A) point the worker at ONE concrete next action, or (B) halt.\n"
-    "(A) or (B), nothing else. No essays, no history recaps, no meta-commentary about\n"
-    "the session, no \"this is the Nth time\" - the worker reads every word you write.\n"
-    "If there is NO task in progress and no concrete next action you can give,\n"
-    "print [STOP] immediately. Never demand a task from the human or the worker.\n"
-    "Halt = print a STOP REASON line, then [STOP] ALONE ON ITS OWN LINE:\n"
-    "STOP REASON: <one concrete sentence - what you saw, why you stopped>\n"
-    "[STOP] - nothing else on that line. [STOP] IS SACRED - never in prose,\n"
-    "never in examples, never in backticks. Writing it anywhere else = immediate halt.\n"
-    "Continuing? Give ONE concrete next action - the first line of your message.\n"
-    "[supervisor] BOTTOM OF PROTOCOL - this bottom is only presented to the supervisor.\n"
-    "If you can read this line you have the full protocol and you are in charge of this\n"
-    "session. YOU ARE THE SUPERVISOR."
-)
-
-
-def _protocol() -> str:
-    """Protocol text, overridable via SUPERVISOR_PROTOCOL env var."""
-    return os.environ.get("SUPERVISOR_PROTOCOL") or PROTOCOL
-
 
 WRAPPER = (
     "This session is supervised and this is the guidance for the supervisor "
@@ -261,7 +236,6 @@ def _handover(app):
     """Vet decides what happens next. Returns wrapped vet output or None (halt)."""
     global _last_handover
     LogUtils.print("")
-    LogUtils.print(_protocol())
     LogUtils.print(f"[supervisor] calling vet (timeout {_vet_timeout()}s)...")
     output, ok = _run_vet()
 
@@ -290,7 +264,6 @@ def on_after_ai_processing(app, has_tool_calls: bool):
 
 def _manual_vet() -> str:
     """Test run: execute vet once, show parse outcome, do NOT feed the worker."""
-    LogUtils.print(_protocol())
     LogUtils.print(f"[supervisor] manual vet run (timeout {_vet_timeout()}s)...")
     output, ok = _run_vet()
     lines = []
@@ -334,8 +307,7 @@ def _handle_command(args_str: str) -> str:
             "  vet       - manual test run of the vet command\n"
             "  help      - this message\n"
             "After a [STOP] halt supervisor disables itself - re-arm with: on\n"
-            "Env: SUPERVISOR_VET_CMD (vet command), SUPERVISOR_VET_TIMEOUT (seconds),\n"
-            "     SUPERVISOR_PROTOCOL (custom protocol text)"
+            "Env: SUPERVISOR_VET_CMD (vet command), SUPERVISOR_VET_TIMEOUT (seconds)"
         )
     return "[supervisor] unknown subcommand. Try: on, off, status, vet, help"
 
