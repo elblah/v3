@@ -131,6 +131,15 @@ def _halt(app, reason: str):
     return None
 
 
+def _trim_feed(output: str) -> str:
+    """Strip dtx envelope + pane echo: feed only the verdict (after the last
+    'AI:' marker). Full output is still streamed live for the human."""
+    idx = output.rfind("AI:")
+    if idx == -1:
+        return output  # unknown shape - fail open, feed as-is
+    return output[idx + 3:].lstrip("\n ")
+
+
 def _handover(app):
     """Vet decides what happens next. Returns wrapped vet output or None (halt)."""
     global _last_handover
@@ -144,7 +153,7 @@ def _handover(app):
         return _halt(app, "vet said [STOP] - everything is done and perfect")
 
     _last_handover = f"{time.strftime('%H:%M')} OK - vet guidance fed to worker"
-    return WRAPPER + output
+    return WRAPPER + _trim_feed(output)
 
 
 def on_after_ai_processing(app, has_tool_calls: bool):
