@@ -266,6 +266,8 @@ WARNING: DO NOT output <promise>{promise}</promise> until the task is TRULY COMP
 
 ---
 
+This is the user guidance set at the start of the loop process:
+
 {base_prompt}
 """
         return instructions
