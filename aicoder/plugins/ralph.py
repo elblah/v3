@@ -249,7 +249,7 @@ Examples:
         instructions = f"""
 ---
 
-CRITICAL RALPH LOOP INSTRUCTIONS:
+CRITICAL INSTRUCTIONS:
 
 This task runs in a self-referential loop: after you finish, the same task is fed back to you. If you already worked on it in a previous iteration, review what you did before continuing.
 
