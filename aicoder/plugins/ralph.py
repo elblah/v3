@@ -5,11 +5,14 @@ Simple loop where the same prompt is fed repeatedly until completion.
 The AI sees its previous work in files and git history, allowing self-correction.
 """
 
+import os
 import re
 from typing import Optional
 
 from aicoder.utils.log import LogUtils
 from aicoder.core.config import Config
+from aicoder.utils.temp_file_utils import create_temp_file, delete_file
+from aicoder.utils.tmux_edit_utils import tmux_open_editor
 
 
 class RalphService:
@@ -128,6 +131,7 @@ Usage:
 
 Commands:
   /ralph <prompt>           Start Ralph loop with prompt
+  /ralph edit [flags]       Write prompt in $EDITOR (new tmux window), then start loop
   /ralph-cancel             Cancel active Ralph loop
   /ralph help               Show this help
 
@@ -166,6 +170,8 @@ Examples:
   /ralph "Analyze this codebase" --reset-context
   /ralph "Start fresh each iteration" --forget
   /ralph "Clean slate development" --fresh
+  /ralph edit                 Write a long prompt in $EDITOR first
+  /ralph edit --forever       Same, with flags still applying
 """
 
     def handle_ralph(self, args_str: str) -> str:
@@ -175,6 +181,14 @@ Examples:
 
         # Parse arguments
         args = self._parse_args(args_str)
+
+        # Edit mode: /ralph edit [flags] [prefill] — write prompt in $EDITOR
+        if self._is_edit_mode(args_str):
+            edit_args = self._parse_args(" ".join(args_str.split()[1:]))
+            prompt = self._edit_prompt(edit_args["prompt"])
+            if prompt is None:
+                return "Error: Empty prompt after editing. Loop not started."
+            args["prompt"] = prompt
 
         if not args["prompt"]:
             LogUtils.error("No prompt provided")
@@ -262,6 +276,58 @@ The loop will continue indefinitely until this phrase is detected.
 {base_prompt}
 """
         return instructions
+
+    def _is_edit_mode(self, args_str: str) -> bool:
+        """True if args are /ralph edit [flags] — bare 'edit' as first token.
+
+        Prompt strings starting with "edit" are NOT editor mode unless the
+        second token is a flag (e.g. "edit --forever"). So /ralph "edit foo"
+        stays a prompt.
+        """
+        parts = args_str.split()
+        if not parts:
+            return False
+        if parts[0].lower() != "edit":
+            return False
+        return len(parts) == 1 or parts[1].startswith("--")
+
+    def _edit_prompt(self, prefill: str) -> Optional[str]:
+        """Write the loop prompt in $EDITOR (new tmux window). Returns prompt text or None."""
+        if not os.environ.get("TMUX"):
+            LogUtils.error("Ralph edit requires a tmux environment")
+            return None
+
+        temp_file = create_temp_file("aicoder-ralph-prompt", ".md")
+        if prefill:
+            try:
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    f.write(prefill)
+            except OSError:
+                delete_file(temp_file)
+                LogUtils.error("Failed to write prefill to temp file")
+                return None
+
+        LogUtils.info("Opening editor in tmux window...")
+        LogUtils.dim("Save and exit when done. The editor is running in a separate tmux window.")
+
+        if not tmux_open_editor(temp_file, window_name_prefix="ralph"):
+            delete_file(temp_file)
+            LogUtils.error("Editor session failed")
+            return None
+
+        try:
+            with open(temp_file, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+        except OSError:
+            content = ""
+        finally:
+            delete_file(temp_file)
+
+        if not content:
+            LogUtils.error("Empty prompt — aborting (nothing to loop on)")
+            return None
+
+        return content
 
     def _parse_args(self, args_str: str) -> dict:
         """Parse Ralph command arguments"""
