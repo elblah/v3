@@ -245,31 +245,24 @@ Examples:
     def _build_prompt_with_instructions(self, base_prompt: str) -> str:
         """Build prompt with completion promise instructions for AI"""
         promise = RalphService._completion_promise
-        max_iter = RalphService._max_iterations
 
         instructions = f"""
 ---
 
 CRITICAL RALPH LOOP INSTRUCTIONS:
 
-This task will be repeated in a self-referential loop. Each iteration, you will see your previous work in files and git history.
+This task runs in a self-referential loop: after you finish, the same task is fed back to you. If you already worked on it in a previous iteration, review what you did before continuing.
 
 HOW TO SIGNAL COMPLETION:
-Your FINAL message must end with this exact line:
+When the task is truly complete, end your FINAL message with this exact line:
 <promise>{promise}</promise>
 
-This is REQUIRED to stop the loop. Do not output this unless the task is COMPLETE.
+This is the only way to stop the loop. Do not output it unless the task is COMPLETE.
 
-TASK COMPLETION CRITERIA:
-- The task is fully implemented and working
-- All tests pass (if applicable)
-- All requirements are met
-- Code is production-ready
+COMPLETION MEANS:
+The task's own requirements are fully met — nothing left undone.
 
 WARNING: DO NOT output <promise>{promise}</promise> until the task is TRULY COMPLETE.
-The loop will continue indefinitely until this phrase is detected.
-
-{f'MAX ITERATIONS: {max_iter}' if max_iter > 0 else 'MAX ITERATIONS: unlimited'}
 
 ---
 
