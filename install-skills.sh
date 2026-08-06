@@ -12,6 +12,7 @@ mkdir -p "$SKILLS_DIR" "$SKILLS_EXTRA_DIR"
 
 # Remote skills: "display_name|user/repo|skill_dir_in_tarball"
 REMOTE_SKILLS=(
+    "i-have-adhd|ayghri/i-have-adhd|skills/i-have-adhd"
     "ponytail|DietrichGebert/ponytail|skills/ponytail"
     "ponytail-audit|DietrichGebert/ponytail|skills/ponytail-audit"
     "ponytail-debt|DietrichGebert/ponytail|skills/ponytail-debt"
