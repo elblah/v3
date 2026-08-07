@@ -72,3 +72,9 @@ export WEB_SEARCH_PROVIDERS="Brave,https://search.brave.com/search?q=;Mojeek,htt
 
 # Turn details tty on (show output of commands)
 #export DETAIL_TTY=1
+
+# Per-environment customization: sourced LAST so it can override anything
+# above. Keep machine-specific tweaks here, out of git.
+if [ -f "$HOME/.aicoder/aicoder-bashrc.custom" ]; then
+    source "$HOME/.aicoder/aicoder-bashrc.custom"
+fi
