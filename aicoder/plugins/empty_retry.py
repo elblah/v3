@@ -199,7 +199,17 @@ How it works:
             return None
 
         EmptyRetryService.increment_retry()
-        self.ctx.app.plugin_system.call_hooks("on_empty_assistant_message")
+        # Inform other plugins about the empty reply (with reasoning fields so
+        # e.g. compaction plugins can recognize a summary tag that only made
+        # it into the hidden reasoning). A truthy return means a plugin took
+        # over the retry decision — retry directly without adding the nudge.
+        hook_results = self.ctx.app.plugin_system.call_hooks(
+            "on_empty_assistant_message",
+            reasoning_content=kwargs.get("reasoning_content"),
+            reasoning_field=kwargs.get("reasoning_field"),
+            thinking_signature=kwargs.get("thinking_signature"),
+        )
+        taken_over = bool(hook_results) and any(hook_results)
 
         retry_msg = EmptyRetryService.get_message()
         delay = EmptyRetryService.get_delay()
@@ -217,6 +227,15 @@ How it works:
                 self.ctx.app.session_manager._retry_empty_content = True
                 time.sleep(delay)
                 return None  # Signal: no history add, flag triggers direct retry
+
+        if taken_over:
+            LogUtils.warn(
+                f"[EMPTY-RETRY] Empty again (retry #{count}), "
+                f"another plugin took over — retrying directly, no nudge"
+            )
+            self.ctx.app.session_manager._retry_empty_content = True
+            time.sleep(delay)
+            return None  # Signal: no history add, flag triggers direct retry
 
         LogUtils.warn(f"[EMPTY-RETRY] Empty message detected (retry #{count})... retrying in {delay}s")
         time.sleep(delay)

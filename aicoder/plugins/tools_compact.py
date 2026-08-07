@@ -191,6 +191,7 @@ def create_plugin(ctx):
         "nudge_fired": False,       # hard nudge issued for the current loop cycle
         "pending_nudge": False,     # nudge owed but blocked mid-chain — deliver at safe spot
         "continuation_armed": False,  # tag reply compacted; continue pending
+        "awaiting_summary": False,  # hard nudge delivered, AI has not replied yet
         "counted_parents": set(),   # assistant ids already added to loop_cost
     }
 
@@ -219,6 +220,7 @@ def create_plugin(ctx):
         state["continuation_armed"] = False
         state["pending_nudge"] = False
         state["nudge_fired"] = False
+        state["awaiting_summary"] = False
 
     def _inject_nudge():
         """Append the hard compaction demand at the history tail. Callers
@@ -227,6 +229,7 @@ def create_plugin(ctx):
         if state["nudge_fired"] or state["loop_cost"] <= 0:
             return
         state["nudge_fired"] = True
+        state["awaiting_summary"] = True
         max_size = Config.context_size()
         add_nudge(
             app,
@@ -326,6 +329,9 @@ def create_plugin(ctx):
             return
         content = _content_str(message.get("content", ""))
         has_tag = bool(content) and _find_tag(content) >= 0
+        # The AI replied (empty replies never enter history — they go through
+        # the empty-retry path instead), so the summary expectation is over.
+        state["awaiting_summary"] = False
 
         if state["pending_nudge"]:
             if has_tag:
@@ -380,6 +386,7 @@ def create_plugin(ctx):
         state["loop_cost"] = 0
         state["counted_parents"].clear()
         state["nudge_fired"] = False  # a fresh loop in the same turn may warrant a new demand
+        state["awaiting_summary"] = False
         state["continuation_armed"] = cfg["continuation"]
         app.message_history.increment_compaction_count()
 
@@ -515,6 +522,25 @@ def create_plugin(ctx):
                     f"loop bar: {'on' if cfg['show_budget'] else 'off'}"
                 )
 
+    def _on_empty_assistant_message(reasoning_content=None, reasoning_field=None,
+                                    thinking_signature=None):
+        """Empty reply at a moment where a tools summary is expected — the
+        nudge was just delivered and the AI's next visible reply was supposed
+        to be the tag summary, but came back empty (or only carried our tag in
+        hidden reasoning). Signal empty_retry to retry directly: a nudge
+        message here would sit between the tool pairs and the retried tag
+        reply, where the backward scan (breaks at real user content) would
+        never see the tag again — consume would silently never run and the
+        tool loop would die."""
+        if state["awaiting_summary"]:
+            return True
+        reasoning = (reasoning_content or "") + "\n" + (reasoning_field or "")
+        if TAG in reasoning:
+            if Config.debug():
+                LogUtils.print("[tools_compact] empty reply with tag in reasoning — direct retry")
+            return True
+        return None
+
     def _on_history_replaced(*_args):
         """Any history replacement invalidates the live loop: reset loop cost
         so a stale nudge can't fire after compaction. Fires on core compact
@@ -526,6 +552,7 @@ def create_plugin(ctx):
 
     ctx.register_hook("on_info", _on_info)
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
+    ctx.register_hook("on_empty_assistant_message", _on_empty_assistant_message)
     ctx.register_hook("after_tool_results_added", _on_tool_results_added)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
     ctx.register_hook("after_ai_processing", _on_after_ai_processing)
