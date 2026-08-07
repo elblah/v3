@@ -678,5 +678,81 @@ class NudgeTests(unittest.TestCase):
             os.environ.pop("TOOLS_COMPACT_LOOP_PCT", None)
 
 
+    def test_empty_reply_hook_signals_takeover_when_tag_in_reasoning(self):
+        """Live bug: the AI put the tag in reasoning_content only, visible
+        reply came back empty. empty_retry fires on_empty_assistant_message
+        with the reasoning fields — the listener must return truthy so the
+        retry happens DIRECTLY (no nudge message between the tool pairs and
+        the retried tag reply, which would block the backward scan)."""
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+        hook = ctx.hooks["on_empty_assistant_message"]
+        self.assertTrue(hook(reasoning_content="thinking about it\n[COMPACT_SUMMARY:TOOLS]\nsummary", reasoning_field=""))
+        self.assertTrue(hook(reasoning_content="", reasoning_field="\n[COMPACT_SUMMARY:TOOLS]"))
+        self.assertIsNone(hook(reasoning_content="no tag here", reasoning_field=""))
+        self.assertIsNone(hook(reasoning_content=None, reasoning_field=None))
+
+    def test_empty_reply_hook_does_not_react_to_other_tags(self):
+        """cache_compact's [COMPACT_SUMMARY] (no :TOOLS) must NOT trigger the
+        takeover — disjoint tag, disjoint state machine."""
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+        hook = ctx.hooks["on_empty_assistant_message"]
+        self.assertIsNone(hook(reasoning_content="[COMPACT_SUMMARY]\nsummary", reasoning_field=""))
+
+    def test_empty_reply_hook_registered_only_when_enabled(self):
+        """TOOLS_COMPACT_ENABLED != '1' -> no listener registered."""
+        os.environ["TOOLS_COMPACT_ENABLED"] = "0"
+        try:
+            app, ctx, plugin = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+            self.assertIsNone(plugin)
+            self.assertNotIn("on_empty_assistant_message", ctx.hooks)
+        finally:
+            os.environ["TOOLS_COMPACT_ENABLED"] = "1"
+
+
+    def test_empty_reply_hook_claims_when_summary_expected(self):
+        """Genuinely empty reply (tag in NEITHER visible NOR reasoning) right
+        after the hard nudge: the AI's next visible reply was supposed to be
+        the tag summary but came back empty. The listener must claim so
+        empty_retry retries directly — otherwise the nudge message would sit
+        between the tool pairs and the retried tag reply and block the
+        backward scan (breaks at real user content), killing the consume."""
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"  # threshold = 100 tokens
+        try:
+            app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+            fire = ctx.hooks["after_tool_results_added"]
+            big = dict(TOOL_MSG, content=LONG_CONTENT)
+            app.message_history._msgs.append(big)
+            fire(big)  # loop 101 -> nudge delivered -> awaiting_summary
+            self.assertIn("system-reminder", self._last_content(app.message_history._msgs))
+
+            hook = ctx.hooks["on_empty_assistant_message"]
+            self.assertTrue(hook(reasoning_content="", reasoning_field=""))  # claim
+
+            # AI replies properly -> expectation over -> no claim anymore
+            ctx.hooks["after_assistant_message_added"](PLAIN_REPLY)
+            self.assertIsNone(hook(reasoning_content="", reasoning_field=""))
+        finally:
+            os.environ["TOOLS_COMPACT_LOOP_PCT"] = "2"
+
+    def test_empty_reply_hook_claim_cleared_by_turn_end(self):
+        """The AI finishing its turn (after_ai_processing(False)) resets the
+        summary expectation — a later empty reply is no longer a lost
+        summary attempt."""
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"  # threshold = 100 tokens
+        try:
+            app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+            fire = ctx.hooks["after_tool_results_added"]
+            big = dict(TOOL_MSG, content=LONG_CONTENT)
+            app.message_history._msgs.append(big)
+            fire(big)  # loop 101 -> nudge
+            hook = ctx.hooks["on_empty_assistant_message"]
+            self.assertTrue(hook(reasoning_content="", reasoning_field=""))
+
+            ctx.hooks["after_ai_processing"](False)  # turn over -> reset
+            self.assertIsNone(hook(reasoning_content="", reasoning_field=""))
+        finally:
+            os.environ["TOOLS_COMPACT_LOOP_PCT"] = "2"
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
