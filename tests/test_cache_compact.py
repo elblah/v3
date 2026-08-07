@@ -224,3 +224,40 @@ def test_reminder_strip_regex(ps):
     text = "Q\n\n<system-reminder>\nSYSTEM: x\n</system-reminder>"
     stripped = ps.module._RE_SYSTEM_REMINDER.sub("", text)
     assert stripped == "Q"
+
+
+def test_nudge_format_tagged(ps):
+    """Compaction reminders carry [NUDGE:COMPACTION] (clearable category)."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    assert "[NUDGE:COMPACTION]" in _reminders(ps)[0]["content"]
+
+
+def test_external_compaction_clears_nudges(ps):
+    """after_compaction (compact_strategy/core//compact): COMPACTION nudges
+    removed + guard set. Stale-reminder compliance refused, no second
+    compaction; next normal reply clears guard without injecting; fresh
+    cycle still works."""
+    _seed(ps)
+    _assistant_turn(ps, "working...", _pct(ps, 78))
+    assert len(_reminders(ps)) == 1
+
+    ps.ps.call_hooks("after_compaction")  # external compaction fired
+    assert _reminders(ps) == []  # stale reminder gone
+
+    # AI still emits a summary (empty-retry / continuation compliance):
+    # refused and dropped, no second compaction.
+    n = len(ps.app.message_history.get_messages())
+    junk = _assistant_turn(ps, "[COMPACT_SUMMARY] stale compliance", _pct(ps, 78))
+    msgs = ps.app.message_history.get_messages()
+    assert junk not in msgs
+    assert len(msgs) == n
+    assert ps.app.message_history.compaction_count == 0
+
+    # Next normal reply: guard cleared, no re-inject.
+    _assistant_turn(ps, "resuming", _pct(ps, 78))
+    assert _reminders(ps) == []
+
+    # Fresh cycle works.
+    _assistant_turn(ps, "more", _pct(ps, 78))
+    assert len(_reminders(ps)) == 1

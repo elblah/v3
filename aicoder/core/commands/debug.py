@@ -50,6 +50,10 @@ class DebugCommand(BaseCommand):
         if action in ["rebuild-prompt", "rp", "reload-prompt"]:
             return self._rebuild_prompt()
 
+        # Handle fix-tools (extreme repair of broken tool chains)
+        if action in ["fix-tools", "ft"]:
+            return self._fix_tools()
+
         # Handle help/status
         if action in ["help", "h", "status", "s"]:
             return self._show_help()
@@ -83,6 +87,7 @@ class DebugCommand(BaseCommand):
             ("prompt",         "Print the full system prompt sent to the AI"),
             ("rebuild-prompt", "Re-read all files and rebuild system prompt (rp, reload-prompt)"),
             ("breakpoint",     "Trigger Python breakpoint() (bp, break, b)"),
+            ("fix-tools",      "Extreme repair: drop user msgs between tool calls/results + orphan tool results (ft)"),
             ("help",           "Show this help message"),
         ]
         pad = max(len(n) for n, _ in subcmds) + 1
@@ -153,6 +158,81 @@ class DebugCommand(BaseCommand):
             LogUtils.print(ln)
         LogUtils.print(f"{c['dim']}{'─' * 60}{c['reset']}")
 
+        return CommandResult(should_quit=False, run_api_call=False)
+
+    def _fix_tools(self) -> CommandResult:
+        """Extreme repair of broken tool chains in message history.
+
+        Removes:
+        1. User messages sitting between an assistant tool_calls message and
+           its tool results (e.g. mis-timed nudge <system-reminder> inserts).
+        2. Orphan/duplicate tool results — tool messages whose tool_call_id
+           was already answered or has no parent call in history.
+        3. Assistant tool_calls messages whose results never arrived (dangling
+           calls), including any still pending at end of history.
+
+        Intended for when a broken history makes the API reject requests with
+        "Messages with role 'tool' must be a response to a preceding message
+        with 'tool_calls'". Run at the prompt with no API call in flight.
+        """
+        mh = self.context.message_history
+        msgs = mh.get_messages()
+
+        pending = {}   # tool_call_id -> index of parent assistant message
+        to_remove = set()
+        for i, m in enumerate(msgs):
+            role = m.get("role")
+            if role == "assistant":
+                calls = m.get("tool_calls")
+                if calls:
+                    if pending:
+                        # new calls before old results arrived -> old pair broken
+                        to_remove.update(pending.values())
+                    pending = {}
+                    for tc in calls:
+                        if tc.get("id"):
+                            pending[tc.get("id")] = i
+                else:
+                    pending = {}  # plain assistant = turn boundary
+            elif role == "tool":
+                tid = m.get("tool_call_id")
+                if tid in pending:
+                    del pending[tid]
+                else:
+                    to_remove.add(i)  # orphan or duplicate result
+            elif role == "user" and pending:
+                to_remove.add(i)  # user message between call and result
+        to_remove.update(pending.values())  # dangling calls at end of history
+
+        c = Config.colors
+        if not to_remove:
+            LogUtils.success(
+                f"{c['green']}[fix-tools]{c['reset']} no issues found — "
+                f"history is valid ({len(msgs)} messages)"
+            )
+            return CommandResult(should_quit=False, run_api_call=False)
+
+        removed = [msgs[i] for i in sorted(to_remove)]
+        kept = [m for i, m in enumerate(msgs) if i not in to_remove]
+        mh.set_messages(kept)
+
+        LogUtils.warn(
+            f"{c['yellow']}[fix-tools]{c['reset']} removed {len(removed)} message(s) "
+            f"({len(msgs)} -> {len(kept)}):"
+        )
+        for i, m in zip(sorted(to_remove), removed):
+            content = m.get("content")
+            if isinstance(content, str):
+                preview = content.strip().replace("\n", " ")[:70]
+            elif isinstance(content, list):
+                preview = str(content)[:70]
+            else:
+                preview = ""
+            LogUtils.print(
+                f"  {c['dim']}#{i}{c['reset']} {c['brightCyan']}{m.get('role')}{c['reset']} "
+                f"{c['dim']}{m.get('tool_call_id') or ''}{c['reset']} {preview}"
+            )
+        LogUtils.info("Reload history in the editor (/es) if further surgery is needed.")
         return CommandResult(should_quit=False, run_api_call=False)
 
     def _enable_debug(self) -> CommandResult:
