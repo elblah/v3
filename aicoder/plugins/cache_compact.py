@@ -17,6 +17,7 @@ import os
 import re
 
 from aicoder.core.config import Config
+from aicoder.core.nudges import add_nudge, clear_nudges
 from aicoder.utils.log import LogUtils
 
 SUMMARY_TAG = "[SUMMARY]"
@@ -236,6 +237,15 @@ def create_plugin(ctx):
 
     state = {"cont_prompt": False}
 
+    def _on_after_compaction():
+        """Any compaction (compact_strategy, core auto-compact, /compact)
+        fulfilled context pressure. Remove all [NUDGE:COMPACTION] reminders —
+        they are stale: the AI may comply and re-compact. Also guard like our
+        own _compact: a summary in response to a stale reminder is refused and
+        dropped, and the next normal reply clears the guard without injecting."""
+        clear_nudges(app, "COMPACTION")
+        state["cont_prompt"] = True
+
     def _on_system_prompt_append():
         if cfg["threshold"] > 0:
             return PASSIVE_INSTRUCTION
@@ -251,8 +261,9 @@ def create_plugin(ctx):
             if state["cont_prompt"]:
                 # Summary right after a fulfilled compaction = AI re-compacting
                 # in response to the continuation prompt (14->13->... loop).
-                # Refuse and drop the junk message.
-                state["cont_prompt"] = False
+                # Refuse and drop the junk message. Guard stays set: a stale
+                # reminder compliance or empty-retry must not unlock a fresh
+                # injection cycle — only a real (non-summary) reply clears it.
                 if not message.get("tool_calls"):
                     msgs = app.message_history.get_messages()
                     if msgs and msgs[-1] is message:
@@ -281,9 +292,7 @@ def create_plugin(ctx):
             if pct < cfg["threshold"]:
                 return
 
-            app.message_history.add_user_message(
-                f"<system-reminder>\n{FORCE_COMPACT_INSTRUCTION}\n</system-reminder>"
-            )
+            add_nudge(app, "COMPACTION", FORCE_COMPACT_INSTRUCTION)
             state["cont_prompt"] = False  # new compaction cycle — reset loop guard
             if os.environ.get("CACHE_COMPACT_DEBUG"):
                 c = Config.colors
@@ -308,6 +317,7 @@ def create_plugin(ctx):
 
     ctx.register_hook("on_info", _on_info)
 
+    ctx.register_hook("after_compaction", _on_after_compaction)
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
 

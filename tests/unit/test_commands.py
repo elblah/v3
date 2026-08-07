@@ -20,6 +20,9 @@ class MockMessageHistory:
     def __init__(self):
         self._messages = []
 
+    def get_messages(self):
+        return [dict(m) for m in self._messages]
+
     def get_chat_messages(self):
         return self._messages
 
@@ -124,6 +127,122 @@ class TestDebugCommand:
             result = cmd.execute(["off"])
             assert result.should_quit is False
             mock_config.set_debug.assert_called_with(False)
+
+    def test_fix_tools_clean_history(self, mock_context):
+        """Fix-tools on valid history: nothing removed, no issues."""
+        mock_context.message_history._messages = [
+            {"role": "system", "content": "prompt"},
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "ok"},
+        ]
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m",
+                "dim": "\033[2m", "brightCyan": "\033[96m", "reset": "\033[0m"
+            }
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["fix-tools"])
+            assert result.should_quit is False
+            assert result.run_api_call is False
+            assert len(mock_context.message_history._messages) == 3
+
+    def test_fix_tools_removes_user_msg_between_call_and_result(self, mock_context):
+        """User message inserted between tool_calls and its result is dropped."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": "call_1", "type": "function",
+                             "function": {"name": "x", "arguments": "{}"}}]},
+            {"role": "user", "content": "stray nudge"},
+            {"role": "tool", "tool_call_id": "call_1", "content": "result"},
+            {"role": "assistant", "content": "done"},
+        ]
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m",
+                "dim": "\033[2m", "brightCyan": "\033[96m", "reset": "\033[0m"
+            }
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["fix-tools"])
+            assert result.run_api_call is False
+            roles = [m["role"] for m in mock_context.message_history._messages]
+            assert "stray nudge" not in [m.get("content") for m in mock_context.message_history._messages]
+            assert roles == ["user", "assistant", "tool", "assistant"]
+
+    def test_fix_tools_removes_orphan_tool_result(self, mock_context):
+        """Tool result with no matching pending call is dropped."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "ok"},
+            {"role": "tool", "tool_call_id": "call_ghost", "content": "orphan"},
+        ]
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m",
+                "dim": "\033[2m", "brightCyan": "\033[96m", "reset": "\033[0m"
+            }
+            cmd = DebugCommand(mock_context)
+            cmd.execute(["fix-tools"])
+            assert all(m.get("role") != "tool" for m in mock_context.message_history._messages)
+
+    def test_fix_tools_removes_dangling_calls(self, mock_context):
+        """Assistant tool_calls without results (incl. trailing) are dropped."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": "call_1", "type": "function",
+                             "function": {"name": "x", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "result"},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": "call_2", "type": "function",
+                             "function": {"name": "y", "arguments": "{}"}}]},
+        ]
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m",
+                "dim": "\033[2m", "brightCyan": "\033[96m", "reset": "\033[0m"
+            }
+            cmd = DebugCommand(mock_context)
+            cmd.execute(["fix-tools"])
+            remaining = mock_context.message_history._messages
+            assert [m["role"] for m in remaining] == ["user", "assistant", "tool"]
+            assert remaining[1]["tool_calls"][0]["id"] == "call_1"
+
+    def test_fix_tools_idempotent(self, mock_context):
+        """Second run on fixed history reports no issues."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": "call_1", "type": "function",
+                             "function": {"name": "x", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "result"},
+        ]
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m",
+                "dim": "\033[2m", "brightCyan": "\033[96m", "reset": "\033[0m"
+            }
+            cmd = DebugCommand(mock_context)
+            cmd.execute(["fix-tools"])
+            before = mock_context.message_history._messages
+            cmd.execute(["fix-tools"])
+            assert mock_context.message_history._messages == before
+
+    def test_fix_tools_alias_ft(self, mock_context):
+        """Alias 'ft' dispatches to fix-tools."""
+        mock_context.message_history._messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "ok"},
+        ]
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "green": "\033[32m", "yellow": "\033[33m", "cyan": "\033[36m",
+                "dim": "\033[2m", "brightCyan": "\033[96m", "reset": "\033[0m"
+            }
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["ft"])
+            assert result.should_quit is False
+            assert result.run_api_call is False
 
 class TestDetailCommand:
     """Test DetailCommand."""

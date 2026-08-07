@@ -17,6 +17,21 @@ from pathlib import Path
 
 from aicoder.utils.log import LogUtils
 
+def _orphan_tool_result_count(messages):
+    """Count tool results whose parent tool_calls message is missing."""
+    call_ids = set()
+    for m in messages:
+        for tc in (m.get("tool_calls") or []):
+            if isinstance(tc, dict) and tc.get("id"):
+                call_ids.add(tc["id"])
+    return sum(
+        1
+        for m in messages
+        if m.get("role") == "tool"
+        and m.get("tool_call_id")
+        and m["tool_call_id"] not in call_ids
+    )
+
 def create_plugin(ctx):
     """Create session autosaver plugin"""
     
@@ -63,9 +78,31 @@ def create_plugin(ctx):
                     loaded = existing_messages
                 ctx.app.message_history.set_messages(loaded)
                 
+                # Drop orphaned tool results (parent tool call missing — e.g.
+                # straggler results arriving after compaction). Keeping them
+                # poisons every reload: provider 400 "tool role must follow
+                # tool_calls". set_messages already cleans memory, so gate
+                # the file rewrite on whether the FILE contained orphans.
+                ctx.app.message_history.remove_orphan_tool_results()
+                
                 from aicoder.core.config import Config
+                file_orphans = _orphan_tool_result_count(existing_messages)
                 if Config.debug():
                     LogUtils.print(f"[*] Loaded {len(existing_messages)} messages from {session_file}")
+                    if file_orphans:
+                        LogUtils.print(f"[*] Removed {file_orphans} orphaned tool result(s) from session file")
+                
+                if file_orphans:
+                    try:
+                        chat_messages = ctx.app.message_history.get_chat_messages()
+                        if is_jsonl:
+                            from aicoder.utils.jsonl_utils import write_file as write_jsonl
+                            write_jsonl(session_file, chat_messages)
+                        else:
+                            from aicoder.utils.json_utils import write_file as write_json
+                            write_json(session_file, chat_messages)
+                    except Exception as e:
+                        LogUtils.error(f"[!] Failed to persist cleaned session: {e}")
                 
                 # Re-estimate context after loading
                 ctx.app.message_history.estimate_context()
