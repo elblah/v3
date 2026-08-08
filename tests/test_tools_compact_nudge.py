@@ -489,6 +489,95 @@ class NudgeTests(unittest.TestCase):
             if m.get("role") == "tool":
                 self.assertIn(m["tool_call_id"], kept_ids)
 
+    def test_reasoning_only_tag_promoted_and_consumed(self):
+        """Some models write the tag+summary into reasoning_content while the
+        visible reply misses the tag. Without a fix: no consume, no re-nudge
+        (once-per-cycle), loop survives -> next request repeats it (wasted
+        turn). Now the hook promotes the reasoning summary into the visible
+        content and consumes on the SAME message. The full promoted summary
+        must be PRINTED (user can't see the reasoning with show-reasoning
+        off) and the accept log must say it came from the reasoning field."""
+        import contextlib
+        import io
+
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"  # threshold = 100 tokens
+        reply = {
+            "role": "assistant",
+            "content": "visible text without tag",
+            "reasoning_content": "[COMPACT_SUMMARY:TOOLS]\nsummary from reasoning",
+        }
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+        app.message_history._msgs.append(reply)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ctx.hooks["after_assistant_message_added"](reply)
+        msgs = app.message_history._msgs
+        self.assertEqual(len(msgs), 1)  # pair consumed on the same message
+        self.assertEqual(
+            msgs[0]["content"],
+            "[COMPACT_SUMMARY:TOOLS]\nsummary from reasoning\n\nvisible text without tag",
+        )
+        self.assertNotIn("reasoning_content", msgs[0])  # no duplicate tokens on resend
+        printed = out.getvalue()
+        # user sees the full promoted summary even with show-reasoning off
+        self.assertIn("[COMPACT_SUMMARY:TOOLS]\nsummary from reasoning", printed)
+        # accept log names the source field
+        self.assertIn("accepted [COMPACT_SUMMARY:TOOLS] (from reasoning field)", printed)
+
+    def test_reasoning_only_tag_empty_visible_promoted(self):
+        """Reasoning tag with empty visible content: promotion also covers it
+        (real empty replies go through empty-retry and never reach this hook,
+        but a hook-level call must not double the tag)."""
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"
+        reply = {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "thinking\n[COMPACT_SUMMARY:TOOLS]\nsummary",
+        }
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+        app.message_history._msgs.append(reply)
+        ctx.hooks["after_assistant_message_added"](reply)
+        msgs = app.message_history._msgs
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(
+            msgs[0]["content"], "[COMPACT_SUMMARY:TOOLS]\nsummary"
+        )
+        self.assertNotIn("reasoning_content", msgs[0])
+
+    def test_reasoning_tag_not_at_line_start_no_promote(self):
+        """Tag quoted/explained mid-reasoning (not at line start) must NOT
+        promote — same false-positive protection as visible content."""
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"
+        reply = {
+            "role": "assistant",
+            "content": "explaining the mechanism",
+            "reasoning_content": "I could emit [COMPACT_SUMMARY:TOOLS] here",
+        }
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+        app.message_history._msgs.append(reply)
+        ctx.hooks["after_assistant_message_added"](reply)
+        msgs = app.message_history._msgs
+        self.assertEqual(len(msgs), 3)  # untouched — no consume, no promote
+        self.assertEqual(msgs[2]["content"], "explaining the mechanism")
+        self.assertIn("reasoning_content", msgs[2])
+
+    def test_reasoning_tag_with_tool_calls_no_promote(self):
+        """A reply that keeps working (tool_calls) is not a summary attempt —
+        promotion must not hijack a continuing turn into a compaction."""
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"
+        reply = {
+            "role": "assistant",
+            "content": "continuing work",
+            "tool_calls": [{"id": "call_9", "name": "fake", "arguments": "{}"}],
+            "reasoning_content": "[COMPACT_SUMMARY:TOOLS]\nsummary",
+        }
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG], 2000)
+        app.message_history._msgs.append(reply)
+        ctx.hooks["after_assistant_message_added"](reply)
+        msgs = app.message_history._msgs
+        self.assertEqual(len(msgs), 3)  # untouched
+        self.assertEqual(msgs[2]["content"], "continuing work")
+
     def test_after_compaction_resets_loop_state(self):
         """Core compaction fires after_compaction: the live-loop cost is
         stale afterwards — no nudge may fire until a fresh loop builds up.

@@ -572,6 +572,16 @@ class Config:
         return set()
 
     @staticmethod
+    def tools_not_found_relist() -> bool:
+        """
+        Whether a tool-not-found error relists the available tool names.
+
+        Default: enabled (some models repeatedly call nonexistent tools).
+        Set TOOLS_NOT_FOUND_RELIST=0 to disable.
+        """
+        return os.environ.get("TOOLS_NOT_FOUND_RELIST", "1") != "0"
+
+    @staticmethod
     def plugins_allow() -> Optional[Set[str]]:
         """
         Get allowed plugins from PLUGINS_ALLOW environment variable.
