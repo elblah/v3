@@ -14,9 +14,15 @@ RULES:
    appending to an existing topic file (index.md, todo.md, ideas.md, etc.).
    Create a new file ONLY when a topic is large and distinct enough to
    justify its permanent listing cost.
-3. autoload.md = critical operational facts ONLY, under its byte limit
+3. Topic files are `NN-name.md`: NN = IMPORTANCE BAND (00 critical /
+   10 important / 20 reference / 30 cold), NOT unique, NOT sequential —
+   many files may share a band (tie-break alphabetical). Lower band =
+   listed first, survives the listing cut (AICODER_MEMORY_LIST_LIMIT,
+   default 25). NEVER renumber for sequence polish — only on a tier
+   change. `archive/` = keep-without-cost (never listed, still readable).
+4. autoload.md = critical operational facts ONLY, under its byte limit
    (AICODER_MEMORY_AUTOLOAD_LIMIT). Pointers beat inlining
-   (`see memory/xxx.md`). Truncation cuts the TAIL — critical facts first.
-4. After reorganizing: report what moved where, what was wiped and why,
+   (`see 10-xxx.md`). Truncation cuts the TAIL — critical facts first.
+5. After reorganizing: report what moved where, what was wiped and why,
    and the new autoload.md size. No silent deletions.
 </system-reminder>
