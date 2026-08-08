@@ -4,10 +4,10 @@ Extracted from AICoder class for better separation of concerns
 """
 
 import json
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List
 
 from aicoder.core.config import Config
-from aicoder.utils.log import LogUtils, LogOptions
+from aicoder.utils.log import LogUtils
 
 
 class SessionManager:
@@ -132,9 +132,7 @@ class SessionManager:
         if not valid_tool_calls:
             LogUtils.error("No valid tool calls to execute")
             # Add user message to inform AI about the JSON validation failure
-            self.message_history.add_user_message(
-                "ERROR: The tool calls you sent had invalid JSON format and could not be processed. Please try again with properly formatted JSON."
-            )
+            self.message_history.add_user_message(self._format_validation_error())
             return False, "validation_error"
 
         # Add assistant message with tool calls and reasoning
@@ -237,28 +235,54 @@ class SessionManager:
     def _validate_tool_calls(self, tool_calls: dict) -> list:
         """Validate tool calls - rejects malformed JSON completely"""
         valid_tool_calls = []
-        
+        rejected = []
+
         for tool_call in tool_calls.values():
-            # Basic structure validation
-            if not (tool_call.get("function", {}).get("name") and tool_call.get("id")):
-                continue
-                
             function = tool_call.get("function", {})
+            name = function.get("name", "") or "(unknown)"
+            call_id = tool_call.get("id", "")
+
+            # Basic structure validation
+            if not (function.get("name") and call_id):
+                reason = []
+                if not function.get("name"):
+                    reason.append("missing function name")
+                if not call_id:
+                    reason.append("missing id")
+                rejected.append((name, "; ".join(reason)))
+                continue
+
             arguments_raw = function.get("arguments", "")
-            
+
             # Validate JSON format - reject if malformed
             if isinstance(arguments_raw, str):
                 try:
                     # Try to parse the JSON - if it fails, reject this tool call entirely
                     json.loads(arguments_raw)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     if Config.debug():
-                        LogUtils.warn(f"[!] Malformed JSON in tool call '{function.get('name', 'unknown')}': {arguments_raw}")
+                        LogUtils.warn(f"[!] Malformed JSON in tool call '{name}': {arguments_raw}")
+                    rejected.append((name, f"invalid JSON arguments ({e.msg})"))
                     continue  # Skip this tool call entirely
-            
+
             valid_tool_calls.append(tool_call)
-        
+
+        self._last_rejected_calls = rejected
         return valid_tool_calls
+
+    def _format_validation_error(self) -> str:
+        """Build user-facing error message for rejected tool calls"""
+        msg = ("ERROR: The tool calls you sent had invalid JSON format and could not be "
+               "processed. Please try again with properly formatted JSON.")
+        rejected = getattr(self, "_last_rejected_calls", None)
+        if rejected:
+            details = "; ".join(f"{name} ({reason})" for name, reason in rejected)
+            msg += f"\nRejected tool calls: {details}"
+        if self.tool_executor and self.tool_executor.tool_manager:
+            names = sorted(self.tool_executor.tool_manager.tools.keys())
+            if names:
+                msg += f"\nAvailable tools: {', '.join(names)}"
+        return msg
 
     def _force_compaction(self) -> None:
         """Force compaction of messages (compacts 1 oldest round)"""
