@@ -19,6 +19,8 @@ MEMORY_DIR = os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory")
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
 MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
+# Max topic files listed in the system prompt (sorted by NN- band); rest are counted, not named
+LIST_LIMIT = int(os.environ.get("AICODER_MEMORY_LIST_LIMIT", "25"))
 LIMIT_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_limit")
 
 
@@ -207,11 +209,15 @@ def create_plugin(ctx):
         return content
 
     def list_memory_files() -> list[str]:
-        """List .md files in memory directory"""
+        """List topic .md files in memory directory (sorted; autoload.md/index.md excluded)"""
         try:
             files = []
             for fname in os.listdir(MEMORY_DIR):
-                if fname.endswith(".md") and os.path.isfile(os.path.join(MEMORY_DIR, fname)):
+                if not fname.endswith(".md"):
+                    continue
+                if fname == "autoload.md" or fname == "index.md":
+                    continue
+                if os.path.isfile(os.path.join(MEMORY_DIR, fname)):
                     files.append(fname)
             return sorted(files)
         except FileNotFoundError:
@@ -260,6 +266,11 @@ def create_plugin(ctx):
             "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) — injected into every session's system prompt. "
             "Every byte costs tokens. Write terse bullets. Pointers beat inlining (`see api-notes.md`).\n"
             "- `index.md` — main working memory.\n"
+            "- Topic files: `NN-name.md` — NN is an IMPORTANCE BAND, NOT unique, NOT sequential "
+            "(many files may share it; tie-break alphabetical). Lower band = listed first = survives the listing cut.\n"
+            "- Only the top " + str(LIST_LIMIT) + " topic files are listed; the rest are counted, not named "
+            "(inspect with `list_directory` on `.aicoder/memory/`). "
+            "`archive/` holds keep-without-cost files (never listed).\n"
             "- Prune stale entries — they waste every future session.\n"
             "\n"
             "Write autonomously when you learn something worth persisting. "
@@ -272,8 +283,12 @@ def create_plugin(ctx):
 
         if files:
             section += "\n### Memory Files\n"
-            for name in files:
+            for name in files[:LIST_LIMIT]:
                 section += f"- {name}\n"
+            hidden = len(files) - LIST_LIMIT
+            if hidden > 0:
+                section += (f"- …and {hidden} more files in `.aicoder/memory/` "
+                            "(lower priority — inspect with `list_directory` on `.aicoder/memory/`).\n")
 
         if autoload:
             section += "\n### autoload.md\n" + autoload
