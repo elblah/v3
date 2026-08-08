@@ -10,6 +10,30 @@ import os
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
+# Internal skills are virtual files served via read_file as /internal/<skill>/<file>
+INTERNAL_PREFIX = "/internal/"
+
+
+def _merge_internal_results(results) -> dict:
+    """
+    Merge on_internal_skills hook results into a single {name: skill} dict.
+
+    First-wins in hook load order (local > global > bundled). Non-dict
+    entries (None, garbage) at the outer level are skipped.
+    """
+    merged = {}
+    if not results:
+        return merged
+
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        for name, skill in result.items():
+            if name not in merged and isinstance(skill, dict):
+                merged[name] = skill
+
+    return merged
+
 
 def _parse_yaml_frontmatter(text: str) -> dict:
     """
@@ -135,15 +159,19 @@ class SkillsManager:
 
         return loaded
 
-    def generate_skills_text(self) -> str:
+    def generate_skills_text(self, internal_skills: dict = None) -> str:
         """Generate skills section for system prompt"""
-        if not self.skills and self.extra_count == 0:
+        if not self.skills and self.extra_count == 0 and not internal_skills:
             return ""
 
         lines = []
         for skill_name, skill_info in sorted(self.skills.items()):
             lines.append(
                 f"- {skill_name} ({skill_info['path']}): {skill_info['description']}"
+            )
+        for name, skill in sorted((internal_skills or {}).items()):
+            lines.append(
+                f"- {name} ({INTERNAL_PREFIX}{name}/SKILL.md): {skill.get('description', '')}"
             )
 
         result = (
@@ -195,12 +223,49 @@ def create_plugin(ctx):
     manager = SkillsManager()
     count = manager.discover_skills()
 
+    def internal_registry() -> dict:
+        """Lazily query on_internal_skills hooks -> {name: {description, files}}.
+
+        Fired on first need (prompt build, /skills, read_file intercept) — all
+        plugins are already subscribed by then, so no lifecycle hook needed.
+        """
+        if not ctx.app or not ctx.app.plugin_system:
+            return {}
+        results = ctx.app.plugin_system.call_hooks("on_internal_skills")
+        return _merge_internal_results(results)
+
+    def handle_internal_read(path: str):
+        """on_read_file intercept: serve /internal/<skill>/<file> virtual files.
+
+        Returns None for non-internal paths or unknown skills/files — read_file
+        falls through to normal sandbox/file handling then.
+        """
+        if not path.startswith(INTERNAL_PREFIX):
+            return None
+
+        rest = path[len(INTERNAL_PREFIX):]
+        parts = rest.split("/", 1)
+        skill_name = parts[0]
+        file_name = parts[1] if len(parts) > 1 and parts[1] else "SKILL.md"
+        if not skill_name:
+            return None
+
+        skill = internal_registry().get(skill_name)
+        if not skill:
+            return None
+
+        files = skill.get("files") or {}
+        if file_name in files:
+            return files[file_name]
+        return None
+
     def handle_skills_command(args_str: str) -> str:
         """Handle /skills command"""
         args = args_str.strip().split(maxsplit=1) if args_str.strip() else []
 
         if not args:
-            if not manager.skills and manager.extra_count == 0:
+            internal = internal_registry()
+            if not manager.skills and manager.extra_count == 0 and not internal:
                 return "No skills directories found (.aicoder/skills* or ~/.config/aicoder-v3/skills*)"
             dirs_display = ", ".join(manager._loaded_dirs)
             output = f"Available Skills (loading from {dirs_display}):\n\n"
@@ -208,9 +273,14 @@ def create_plugin(ctx):
                 source = skill_info.get("source", "unknown")
                 output += f"  \u2022 {skill_name} [{source}]\n"
                 output += f"    {skill_info['description']}\n\n"
+            if internal:
+                output += "Internal Skills (virtual — served via read_file):\n\n"
+                for name, info in sorted(internal.items()):
+                    output += f"  \u2022 {name} ({INTERNAL_PREFIX}{name}/SKILL.md)\n"
+                    output += f"    {info.get('description', '')}\n\n"
             if manager.extra_count > 0:
                 output += f"[+] {manager.extra_count} extra skill(s) — use /skills extra to list\n"
-            output += f"Total: {len(manager.skills)} skill(s) loaded"
+            output += f"Total: {len(manager.skills)} skill(s) loaded, {len(internal)} internal skill(s)"
             return output
 
         if args[0] == "extra":
@@ -237,9 +307,10 @@ Any dir: skill_name/SKILL.md with YAML frontmatter."""
         return f"Unknown command: {args[0]}. Use /skills help for usage."
 
     def on_system_prompt_append():
-        return manager.generate_skills_text()
+        return manager.generate_skills_text(internal_registry())
 
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
+    ctx.register_hook("on_read_file", handle_internal_read)
     ctx.register_command("skills", handle_skills_command, description="List available skills")
 
     if Config.debug():
