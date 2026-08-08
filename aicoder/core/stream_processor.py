@@ -64,7 +64,7 @@ class StreamProcessor:
                     }
 
                 # Update token stats if present
-                if "usage" in chunk and chunk["usage"]:
+                if chunk.get("usage"):
                     self.streaming_client.update_token_stats(chunk["usage"])
 
                 # Process choice
@@ -185,33 +185,40 @@ class StreamProcessor:
             return
 
         index = tool_call.get("index")
+        function = tool_call.get("function")
+        if not isinstance(function, dict):
+            function = {}
+        name = function.get("name") or ""
+        args = function.get("arguments") or ""
+        tool_id = tool_call.get("id") or ""
         if Config.debug():
-            name = tool_call.get("function", {}).get("name", "unknown")
-            args = tool_call.get("function", {}).get("arguments", "")[:50]
-            LogUtils.debug(f"*** accumulate_tool_call: index={index}, name={name}, args={repr(args)}")
+            LogUtils.debug(
+                f"*** accumulate_tool_call: index={index}, name={name or 'unknown'}, "
+                f"args={args[:50]!r}"
+            )
 
-        if index in accumulated_tool_calls:
-            # Existing tool call - accumulate arguments
-            existing = accumulated_tool_calls[index]
-            new_args = tool_call.get("function", {}).get("arguments")
-            if new_args:
-                # Ensure existing arguments is a string, not None
-                if existing["function"]["arguments"] is None:
-                    existing["function"]["arguments"] = new_args
-                else:
-                    existing["function"]["arguments"] += new_args
+        if index not in accumulated_tool_calls:
+            accumulated_tool_calls[index] = {
+                "id": tool_id or f"tool_call_{index}_{int(time.time())}",
+                "type": tool_call.get("type") or "function",
+                "function": {
+                    "name": name,
+                    "arguments": args,
+                },
+            }
             return
 
-        # New tool call
-        if not tool_call.get("function", {}).get("name"):
-            LogUtils.error("Invalid tool call: missing function name")
-            return
-
-        accumulated_tool_calls[index] = {
-            "id": tool_call.get("id", f"tool_call_{index}_{int(time.time())}"),
-            "type": tool_call.get("type", "function"),
-            "function": {
-                "name": tool_call["function"]["name"],
-                "arguments": tool_call.get("function", {}).get("arguments") or "",
-            },
-        }
+        # Deltas may carry metadata and arguments separately. Preserve metadata
+        # from earlier deltas while appending every argument fragment.
+        existing = accumulated_tool_calls[index]
+        existing_function = existing.setdefault("function", {})
+        if name and name != "unknown":
+            existing_function["name"] = name
+        if tool_id:
+            existing["id"] = tool_id
+        if tool_call.get("type"):
+            existing["type"] = tool_call["type"]
+        if args:
+            existing_function["arguments"] = (
+                existing_function.get("arguments") or ""
+            ) + args
