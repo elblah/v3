@@ -180,6 +180,43 @@ def test_summary_triggers_compact(ps):
     assert ps.app.next_prompt is not None  # continuation prompt set
 
 
+def test_quoted_tag_does_not_compact(ps):
+    """Aug 8 dogfood regression: AI quoting the tag (backtick-wrapped at line
+    start) must NOT compact — byte-identical to an old-style wrapped tag."""
+    _seed(ps)
+    _assistant_turn(ps, "working...", _pct(ps, 78))
+    _assistant_turn(
+        ps,
+        "`[COMPACT_SUMMARY]` (without `:TOOLS`) is full-conversation "
+        "compaction, not the tools variant.",
+        _pct(ps, 78),
+    )
+    assert len(_reminders(ps)) == 2, "quote must not consume the request — non-complying reply gets a fresh injection (old lenient regex would have compacted, dropping the request)"
+    assert not any(str(m.get("content", "")).startswith("[SUMMARY]")
+                   for m in ps.app.message_history.get_messages())
+
+
+def test_bold_wrapped_tag_does_not_compact(ps):
+    """Markdown-wrapped tag (**...**) is a quote, not a summary — no compact."""
+    _seed(ps)
+    _assistant_turn(ps, "working...", _pct(ps, 78))
+    _assistant_turn(ps, "**[COMPACT_SUMMARY]** is the full-compaction tag.",
+                    _pct(ps, 78))
+    assert len(_reminders(ps)) == 2  # quote -> no consume -> fresh injection
+    assert ps.app.next_prompt is None
+
+
+def test_own_line_tag_compacts(ps):
+    """Canonical form: tag alone on its own line, summary below."""
+    _seed(ps)
+    _assistant_turn(ps, "working...", _pct(ps, 78))
+    _assistant_turn(ps, "[COMPACT_SUMMARY]\nDone: fixed regex, ran tests.",
+                    _pct(ps, 78))
+    contents = [str(m.get("content", ""))
+                for m in ps.app.message_history.get_messages()]
+    assert any(c.startswith("[SUMMARY]") for c in contents)
+
+
 def test_continuation_turn_no_reinject(ps):
     """After compaction, the continuation reply clears the guard without injecting."""
     _seed(ps)

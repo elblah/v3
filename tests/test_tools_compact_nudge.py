@@ -372,6 +372,22 @@ class NudgeTests(unittest.TestCase):
         finally:
             os.environ["TOOLS_COMPACT_LOOP_PCT"] = "2"
 
+    def test_quoted_tag_reply_does_not_consume(self):
+        """Aug 8 dogfood regression: the AI quoted the tag in backticks at
+        line start while explaining the mechanism. Markdown wrappers are
+        byte-identical to a quoted tag, so the detection is whitespace-only
+        prefix — a quoted tag must NOT consume the loop."""
+        os.environ["TOOLS_COMPACT_LOOP_PCT"] = "1"  # threshold = 100 tokens
+        quoted = dict(PLAIN_REPLY, content="`[COMPACT_SUMMARY:TOOLS]` is for tool loops")
+        app, ctx, _ = make_env([ASSISTANT_PARENT, TOOL_MSG, OPEN_CHAIN, quoted], 2000)
+        big = dict(TOOL_MSG, content=LONG_CONTENT)
+        ctx.hooks["after_tool_results_added"](big)  # loop 101 -> threshold, blocked
+        ctx.hooks["after_assistant_message_added"](quoted)
+        msgs = app.message_history._msgs
+        # loop untouched: parent + tool + chain + quoted reply + nudge = 5
+        self.assertEqual(len(msgs), 5)
+        self.assertEqual(msgs[3], quoted)
+
     def test_pending_nudge_superseded_by_tag_compaction(self):
         """A tag reply clears the deferred nudge and compacts normally —
         the nudge must not land after the kept summary."""

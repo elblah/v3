@@ -47,7 +47,7 @@ export COMPACT_STRATEGY_KEEP_PERCENT=${COMPACT_STRATEGY_KEEP_PERCENT:-10}
 export CONTEXT_COMPACT_PERCENTAGE=${CONTEXT_COMPACT_PERCENTAGE:-95}
 
 # Amount of tokens the AI is allowed to use for autoloaded memory into session prompt
-export AICODER_MEMORY_AUTOLOAD_LIMIT=4096
+export AICODER_MEMORY_AUTOLOAD_LIMIT=2048
 
 # Keep "auto next forever" loop
 export AUTO_NEXT_MAX_ATTEMPTS=9999
