@@ -87,6 +87,28 @@ def _find_compact_tag(text: str) -> int:
     return m.start() if m else -1
 
 
+def _reasoning_fields() -> list:
+    """Field names that may hold provider reasoning content."""
+    override = Config.get_reasoning_field()
+    fields = [override] if override else []
+    for field in Config.get_possible_reasoning_fields():
+        if field not in fields:
+            fields.append(field)
+    return fields
+
+
+def _reasoning_tag_text(message) -> str:
+    """Return reasoning content carrying [COMPACT_SUMMARY], or ''."""
+    for field in _reasoning_fields():
+        value = message.get(field)
+        if not value:
+            continue
+        text = value if isinstance(value, str) else _content_str(value)
+        if text and _find_compact_tag(text) != -1:
+            return text
+    return ""
+
+
 def _strip_before_tag(content: str) -> str:
     """Strip everything before the line containing [COMPACT_SUMMARY]."""
     idx = _find_compact_tag(content)
@@ -135,7 +157,7 @@ def _select_recent_by_percent(messages, keep_percent, max_tokens):
     return result
 
 
-def _compact(messages, app, state, keep_percent=0):
+def _compact(messages, app, state, keep_percent=0, from_reasoning=False):
     """Replace history with [system, summary, ...recent], reset state."""
     system_msg = messages[0] if messages[0].get("role") == "system" else None
     # If there's already a [SUMMARY] user message, keep it as-is
@@ -175,13 +197,16 @@ def _compact(messages, app, state, keep_percent=0):
     state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
+    source = " (from reasoning)" if from_reasoning else ""
     LogUtils.print(
-        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [COMPACT_SUMMARY] "
-        f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
+        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [COMPACT_SUMMARY]"
+        f"{source} -> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
     )
 
 
-def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
+def _compact_keep_assistant(
+    app, state, assistant_msg, keep_percent=0, from_reasoning=False
+):
     """Compact old messages but keep the assistant message (with tool_calls) intact."""
     messages = app.message_history.get_messages()
     system_msg = (
@@ -227,9 +252,11 @@ def _compact_keep_assistant(app, state, assistant_msg, keep_percent=0):
     state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
+    source = " (from reasoning)" if from_reasoning else ""
     LogUtils.print(
-        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [COMPACT_SUMMARY] (with tool_calls) "
-        f"-> {before} to {len(new_msgs)} msgs{keep_info}{c['reset']}\n"
+        f"\n\n{c['bold']}{c['green']}[cache_compact] accepted [COMPACT_SUMMARY]"
+        f"{source} (with tool_calls) -> {before} to {len(new_msgs)} msgs"
+        f"{keep_info}{c['reset']}\n"
     )
 
 
@@ -263,6 +290,25 @@ def create_plugin(ctx):
             return
         content = _content_str(message.get("content", ""))
         is_summary = content and _is_summary_first_printable(content)
+        from_reasoning = False
+        if not is_summary:
+            reasoning = _reasoning_tag_text(message)
+            if reasoning:
+                promoted = reasoning[_find_compact_tag(reasoning):]
+                if content:
+                    promoted += "\n\n" + content
+                message["content"] = promoted
+                for field in _reasoning_fields():
+                    message.pop(field, None)
+                content = promoted
+                is_summary = True
+                from_reasoning = True
+                c = Config.colors
+                LogUtils.print(
+                    f"\n{c['bold']}{c['brightYellow']}[cache_compact]{c['reset']} "
+                    f"summary found in reasoning field (show-reasoning may be "
+                    f"off) — promoted to visible content:\n{promoted}"
+                )
         if is_summary:
             if state["cont_prompt"]:
                 # Summary right after a fulfilled compaction = AI re-compacting
@@ -276,9 +322,14 @@ def create_plugin(ctx):
                         app.message_history.set_messages(msgs[:-1])
                 return
             if message.get("tool_calls"):
-                _compact_keep_assistant(app, state, message, cfg["keep_percent"])
+                _compact_keep_assistant(
+                    app, state, message, cfg["keep_percent"], from_reasoning
+                )
             else:
-                _compact(app.message_history.get_messages(), app, state, cfg["keep_percent"])
+                _compact(
+                    app.message_history.get_messages(), app, state,
+                    cfg["keep_percent"], from_reasoning
+                )
         else:
             if state["cont_prompt"]:
                 # Continuation turn after a fulfilled compaction — done. Clear
