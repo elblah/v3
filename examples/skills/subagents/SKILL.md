@@ -86,23 +86,25 @@ rm -rf "$SCRIPT_DIR" # cleanup
 
 ## Session Persistence (Optional)
 
-For multi-phase workflows where later phases need earlier context:
+Only the **most important instance** of a run should persist its session.
+Satellite/exploratory instances should run with `SESSION_FILE` **unset** —
+session-autosaver then stays disabled: no lock, no persistence, no conflict.
 
 ```bash
-# Phase 1: Save session (own file per phase — parallel instances must never share SESSION_FILE)
-echo "Task 1" | SESSION_FILE=/tmp/session-phase1.jsonl $AICODER_CMD > /tmp/phase1.txt &
+# Main instance: owns persistence (holds exclusive flock on <file>.lock)
+echo "Task 1" | SESSION_FILE=/tmp/session-main.jsonl $AICODER_CMD > /tmp/phase1.txt &
 
-# Phase 2: Continue with a different file
-echo "Task 2" | SESSION_FILE=/tmp/session-phase2.jsonl $AICODER_CMD > /tmp/phase2.txt &
+# Satellite instances: unset SESSION_FILE -> no autosaver, no lock
+echo "Search 1" | env -u SESSION_FILE $AICODER_CMD > /tmp/search1.txt &
+echo "Search 2" | env -u SESSION_FILE $AICODER_CMD > /tmp/search2.txt &
 wait
 ```
 
-> **Never share one SESSION_FILE between parallel instances.** The
+> Never share one SESSION_FILE between parallel instances. The
 > session-autosaver takes an exclusive flock on `<file>.lock`; a second
-> instance exits immediately with an error. Use per-phase/per-agent files.
-> To continue from an earlier phase's context, run the phases sequentially
-> (wait for the phase to finish), then point the next phase at that phase's
-> file — a file may be reused by only one instance at a time.
+> instance exits immediately with an error. Only one instance per session
+> file at a time; a file may be reused sequentially (wait for the phase to
+> finish, then point the next phase at that phase's file).
 
 Requires `session-autosaver` plugin (auto-activates when SESSION_FILE is set).
 
