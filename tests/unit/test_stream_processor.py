@@ -452,9 +452,9 @@ class TestAccumulateToolCall:
 
         self.processor.accumulate_tool_call(tool_call, accumulated)
 
-        assert 0 in accumulated
-        assert accumulated[0]["function"]["name"] == "read_file"
-        assert accumulated[0]["function"]["arguments"] == "path=\"/test\""
+        assert "call_1" in accumulated
+        assert accumulated["call_1"]["function"]["name"] == "read_file"
+        assert accumulated["call_1"]["function"]["arguments"] == "path=\"/test\""
 
     def test_accumulate_arguments(self):
         """Test accumulating arguments for existing tool call."""
@@ -473,7 +473,7 @@ class TestAccumulateToolCall:
         self.processor.accumulate_tool_call(tool_call1, accumulated)
         self.processor.accumulate_tool_call(tool_call2, accumulated)
 
-        assert accumulated[0]["function"]["arguments"] == "echo hello"
+        assert accumulated["call_1"]["function"]["arguments"] == "echo hello"
 
     def test_accumulate_multiple_tool_calls(self):
         """Test accumulating multiple tool calls."""
@@ -495,8 +495,8 @@ class TestAccumulateToolCall:
         self.processor.accumulate_tool_call(tool_call2, accumulated)
 
         assert len(accumulated) == 2
-        assert 0 in accumulated
-        assert 1 in accumulated
+        assert "call_1" in accumulated
+        assert "call_2" in accumulated
 
     def test_accumulate_invalid_tool_call(self):
         """Test accumulating invalid tool call (not dict)."""
@@ -515,7 +515,57 @@ class TestAccumulateToolCall:
         }
         accumulated = {}
 
-        # Should not raise exception
+        # Should not raise exception; entry created with empty name
         self.processor.accumulate_tool_call(tool_call, accumulated)
-        # Empty accumulated since no name
-        assert 0 not in accumulated or "name" not in accumulated[0].get("function", {})
+        assert accumulated["call_1"]["function"]["name"] == ""
+
+    def test_zen_proxy_parallel_calls_same_index(self):
+        """Regression: opencode zen sends index=0 on every chunk. Parallel
+        calls must key by id, not index, or args concatenate into one call."""
+        chunks = [
+            {"index": 0, "id": "fc_tmp_a", "type": "function", "function": {"name": "grep", "arguments": ""}},
+            {"index": 0, "function": {"arguments": '{"text":"one"'}},
+            {"index": 0, "id": "fc_tmp_b", "type": "function", "function": {"name": "grep", "arguments": ""}},
+            {"index": 0, "function": {"arguments": ',"path":"a"}'}},
+            {"index": 0, "id": "fc_tmp_c", "type": "function", "function": {"name": "grep", "arguments": ""}},
+            {"index": 0, "function": {"arguments": '{"text":"two"'}},
+        ]
+        accumulated = {}
+        for c in chunks:
+            self.processor.accumulate_tool_call(c, accumulated)
+
+        assert len(accumulated) == 3
+        assert accumulated["fc_tmp_a"]["function"]["arguments"] == '{"text":"one"'
+        assert accumulated["fc_tmp_a"]["function"]["name"] == "grep"
+        assert accumulated["fc_tmp_b"]["function"]["arguments"] == ',"path":"a"}'
+        assert accumulated["fc_tmp_b"]["function"]["name"] == "grep"
+        assert accumulated["fc_tmp_c"]["function"]["arguments"] == '{"text":"two"'
+
+    def test_args_delta_unmapped_index_goes_to_last_active(self):
+        """Args delta with an index never seen falls back to the most
+        recently touched call."""
+        tool_call1 = {
+            "index": 0,
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "read_file", "arguments": ""}
+        }
+        args_delta = {"index": 5, "function": {"arguments": '{"path":"x"}'}}
+
+        accumulated = {}
+        self.processor.accumulate_tool_call(tool_call1, accumulated)
+        self.processor.accumulate_tool_call(args_delta, accumulated)
+
+        assert accumulated["call_1"]["function"]["arguments"] == '{"path":"x"}'
+
+    def test_id_less_provider_name_starts_new_call(self):
+        """Providers without ids: name-bearing chunk starts a new call."""
+        tool_call1 = {"index": 0, "type": "function", "function": {"name": "grep", "arguments": ""}}
+        tool_call2 = {"index": 0, "type": "function", "function": {"name": "ls", "arguments": ""}}
+
+        accumulated = {}
+        self.processor.accumulate_tool_call(tool_call1, accumulated)
+        self.processor.accumulate_tool_call(tool_call2, accumulated)
+
+        assert len(accumulated) == 2
+        assert list(accumulated) == ["tool_call_0", "tool_call_1"]
