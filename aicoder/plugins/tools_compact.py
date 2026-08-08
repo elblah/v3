@@ -178,6 +178,32 @@ def _find_tag(text: str) -> int:
     return m.start() if m else -1
 
 
+def _reasoning_fields() -> list:
+    """Field names that may hold provider reasoning content: the explicit
+    override first (when set), then the multi-field guess list."""
+    override = Config.get_reasoning_field()
+    fields = [override] if override else []
+    for f in Config.get_possible_reasoning_fields():
+        if f not in fields:
+            fields.append(f)
+    return fields
+
+
+def _reasoning_tag_text(message) -> str:
+    """Reasoning content carrying [COMPACT_SUMMARY:TOOLS] at line start, or
+    ''. Some models write the tag + summary into the reasoning/thinking
+    field while the visible reply misses the tag — promote it instead of
+    wasting a request on a retry."""
+    for field in _reasoning_fields():
+        val = message.get(field)
+        if not val:
+            continue
+        text = val if isinstance(val, str) else _content_str(val)
+        if text and _find_tag(text) != -1:
+            return text
+    return ""
+
+
 def _find_parent_assistant(msgs, tool_call_id):
     """Most recent assistant message whose tool_calls include tool_call_id,
     searching back to the last real user message (results never cross a user
@@ -390,6 +416,40 @@ def create_plugin(ctx):
             return
         content = _content_str(message.get("content", ""))
         has_tag = bool(content) and _find_tag(content) >= 0
+        from_reasoning = False
+
+        # Reasoning-only compliance: the model put the tag+summary in its
+        # reasoning/thinking field but the visible reply lacks the tag. No
+        # consume happens on this message and no re-nudge fires (once-per-
+        # cycle), so the loop survives and the next request repeats it —
+        # a wasted turn. Promote the reasoning summary into the visible
+        # content NOW: the stored message dict is the hook's exact reference
+        # (message_history appends then fires), so mutation persists and the
+        # consume path below runs on this same message. Empty-visible replies
+        # never reach this hook (they go through empty-retry instead).
+        if not has_tag and not message.get("tool_calls"):
+            reason = _reasoning_tag_text(message)
+            if reason:
+                # reason starts with the tag at line start — slice from there
+                # so the promoted content leads with exactly one tag
+                promoted = reason[_find_tag(reason):]
+                if content:
+                    promoted += "\n\n" + content
+                message["content"] = promoted
+                for field in _reasoning_fields():
+                    message.pop(field, None)
+                content = promoted
+                has_tag = True
+                from_reasoning = True
+                # The reply was already streamed without this text and the
+                # reasoning may never be shown (show-reasoning off) — print
+                # the full promoted summary so the user can read it.
+                c = Config.colors
+                LogUtils.print(
+                    f"\n{c['bold']}{c['brightYellow']}[tools_compact]{c['reset']} "
+                    f"summary found in reasoning field (show-reasoning may be "
+                    f"off) — promoted to visible content:\n{promoted}"
+                )
         # The AI replied (empty replies never enter history — they go through
         # the empty-retry path instead), so the summary expectation is over.
         state["awaiting_summary"] = False
@@ -452,10 +512,11 @@ def create_plugin(ctx):
         app.message_history.increment_compaction_count()
 
         c = Config.colors
+        src = " (from reasoning field)" if from_reasoning else ""
         # AI reply content is streamed with end="" (stream_processor.py) — the
         # stream ends mid-line, so start this log on a fresh line.
         LogUtils.print(
-            f"\n{c['bold']}{c['green']}[tools_compact] accepted {TAG} "
+            f"\n{c['bold']}{c['green']}[tools_compact] accepted {TAG}{src} "
             f"-> {before} to {start + 1} msgs, freed ~{freed} tokens "
             f"({pairs} tool pair(s)){c['reset']}"
         )

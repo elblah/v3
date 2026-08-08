@@ -132,6 +132,33 @@ class TestToolExecutorHandleToolNotFound:
         # Adds user message (not system message) for tool not found error
         mock_message_history.add_user_message.assert_called_once()
 
+    def test_handle_tool_not_found_lists_available(self):
+        """Default: error message relists available tool names."""
+        mock_tool_manager = MagicMock()
+        mock_tool_manager.tools = {"grep": {}, "read_file": {}}
+        mock_message_history = MagicMock()
+
+        executor = ToolExecutor(mock_tool_manager, mock_message_history)
+
+        result = executor._handle_tool_not_found("unknown_tool", "call_123")
+
+        assert "Available tools: grep, read_file" in result["content"]
+        sent = mock_message_history.add_user_message.call_args[0][0]
+        assert "Available tools: grep, read_file" in sent
+
+    def test_handle_tool_not_found_relist_disabled(self):
+        """TOOLS_NOT_FOUND_RELIST=0 disables the listing."""
+        mock_tool_manager = MagicMock()
+        mock_tool_manager.tools = {"grep": {}, "read_file": {}}
+        mock_message_history = MagicMock()
+
+        executor = ToolExecutor(mock_tool_manager, mock_message_history)
+
+        with patch.dict("os.environ", {"TOOLS_NOT_FOUND_RELIST": "0"}, clear=False):
+            result = executor._handle_tool_not_found("unknown_tool", "call_123")
+
+        assert "Available tools" not in result["content"]
+
 class TestToolExecutorShouldShowPreview:
     """Test ToolExecutor preview display logic."""
 

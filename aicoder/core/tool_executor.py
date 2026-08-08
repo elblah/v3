@@ -133,12 +133,17 @@ class ToolExecutor:
     def _handle_tool_not_found(self, tool_name: str, tool_call_id: str) -> Dict[str, Any]:
         """Handle case where tool is not found"""
         LogUtils.error(f"[x] Tool not found: {tool_name}")
-        self.message_history.add_user_message(
-            f"Error: Tool '{tool_name}' does not exist."
-        )
+        msg = f"Error: Tool '{tool_name}' does not exist."
+        # Some models repeatedly hallucinate tool names — relist what exists
+        # at the point of failure (default on, TOOLS_NOT_FOUND_RELIST=0 off).
+        if Config.tools_not_found_relist() and self.tool_manager:
+            names = sorted(self.tool_manager.tools.keys())
+            if names:
+                msg += f"\nAvailable tools: {', '.join(names)}"
+        self.message_history.add_user_message(msg)
         return {
             "tool_call_id": tool_call_id,
-            "content": f"Error: Tool '{tool_name}' does not exist.",
+            "content": msg,
         }
 
     def _should_show_preview(self, tool_def: Dict[str, Any], arguments: Dict[str, Any]) -> bool:
