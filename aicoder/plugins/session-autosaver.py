@@ -210,6 +210,19 @@ def create_plugin(ctx):
     
     def on_tool_results_added(message):
         """Handle tool results addition"""
+        # Defense: never persist a tool result whose parent tool_calls message
+        # is missing from live history (add_tool_results now drops those, but
+        # other hook paths could still surface an orphan — the file must not
+        # re-poisons the next session load).
+        if message.get("role") == "tool" and message.get("tool_call_id"):
+            call_ids = {
+                tc.get("id")
+                for m in ctx.app.message_history.get_messages()
+                for tc in (m.get("tool_calls") or [])
+                if isinstance(tc, dict)
+            }
+            if message["tool_call_id"] not in call_ids:
+                return
         save_message_to_session(message)
     
     def on_messages_set(messages):
