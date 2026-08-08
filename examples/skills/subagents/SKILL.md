@@ -89,13 +89,20 @@ rm -rf "$SCRIPT_DIR" # cleanup
 For multi-phase workflows where later phases need earlier context:
 
 ```bash
-# Phase 1: Save session
-echo "Task 1" | SESSION_FILE=/tmp/session.jsonl $AICODER_CMD > /tmp/phase1.txt &
+# Phase 1: Save session (own file per phase — parallel instances must never share SESSION_FILE)
+echo "Task 1" | SESSION_FILE=/tmp/session-phase1.jsonl $AICODER_CMD > /tmp/phase1.txt &
 
-# Phase 2: Load session, continue
-echo "Task 2" | SESSION_FILE=/tmp/session.jsonl $AICODER_CMD > /tmp/phase2.txt &
+# Phase 2: Continue with a different file
+echo "Task 2" | SESSION_FILE=/tmp/session-phase2.jsonl $AICODER_CMD > /tmp/phase2.txt &
 wait
 ```
+
+> **Never share one SESSION_FILE between parallel instances.** The
+> session-autosaver takes an exclusive flock on `<file>.lock`; a second
+> instance exits immediately with an error. Use per-phase/per-agent files.
+> To continue from an earlier phase's context, run the phases sequentially
+> (wait for the phase to finish), then point the next phase at that phase's
+> file — a file may be reused by only one instance at a time.
 
 Requires `session-autosaver` plugin (auto-activates when SESSION_FILE is set).
 

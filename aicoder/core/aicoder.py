@@ -85,7 +85,18 @@ class AICoder:
         self._is_pipe_mode = not sys.stdin.isatty()
         
         # Auto-save functionality
-        self._auto_save_enabled = os.environ.get("AICODER_AUTO_SAVE", "1").lower() in ("1", "true", "yes")
+        # When SESSION_FILE is set, the session-autosaver plugin owns
+        # persistence (and takes an exclusive lock on it); core atexit
+        # autosave then defaults OFF so only one mechanism writes session
+        # state. An explicit AICODER_AUTO_SAVE always wins.
+        auto_save_env = os.environ.get("AICODER_AUTO_SAVE")
+        if auto_save_env is not None:
+            self._auto_save_enabled = auto_save_env.lower() in ("1", "true", "yes")
+        else:
+            session_file_env = os.environ.get("SESSION_FILE")
+            self._auto_save_enabled = not (
+                session_file_env and session_file_env != "/dev/null"
+            )
         default_path = os.path.join(".aicoder", "last-session.json")
         self._session_file_path = os.environ.get("AICODER_AUTO_SAVE_FILE", default_path)
         self._using_default_save_path = self._session_file_path == default_path

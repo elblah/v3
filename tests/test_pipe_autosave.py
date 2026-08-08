@@ -101,6 +101,46 @@ def test_save_decision_logic():
             f"Failed for is_pipe_mode={is_pipe_mode}, using_default={using_default}"
 
 
+def test_session_file_disables_core_autosave():
+    """SESSION_FILE set -> session-autosaver plugin owns persistence,
+    core atexit autosave defaults OFF (single writer per session)"""
+    sys.path.insert(0, '.')
+    old_env = os.environ.get("SESSION_FILE")
+    os.environ["SESSION_FILE"] = "/tmp/session.jsonl"
+    try:
+        from aicoder.core.aicoder import AICoder
+        app = AICoder()
+        assert app._auto_save_enabled == False
+    finally:
+        if old_env is not None:
+            os.environ["SESSION_FILE"] = old_env
+        else:
+            os.environ.pop("SESSION_FILE", None)
+
+
+def test_explicit_auto_save_env_wins_over_session_file():
+    """AICODER_AUTO_SAVE explicitly set -> always wins over SESSION_FILE"""
+    sys.path.insert(0, '.')
+    old_session = os.environ.get("SESSION_FILE")
+    old_auto = os.environ.get("AICODER_AUTO_SAVE")
+    os.environ["SESSION_FILE"] = "/tmp/session.jsonl"
+    try:
+        os.environ["AICODER_AUTO_SAVE"] = "1"
+        from aicoder.core.aicoder import AICoder
+        assert AICoder()._auto_save_enabled == True
+        os.environ["AICODER_AUTO_SAVE"] = "0"
+        assert AICoder()._auto_save_enabled == False
+    finally:
+        if old_session is not None:
+            os.environ["SESSION_FILE"] = old_session
+        else:
+            os.environ.pop("SESSION_FILE", None)
+        if old_auto is not None:
+            os.environ["AICODER_AUTO_SAVE"] = old_auto
+        else:
+            os.environ.pop("AICODER_AUTO_SAVE", None)
+
+
 if __name__ == "__main__":
     test_logic_directly()
     test_aicoder_initialization()
