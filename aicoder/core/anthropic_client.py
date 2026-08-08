@@ -14,6 +14,7 @@ from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
 from aicoder.utils.log import LogUtils, warn as log_warn, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
+from aicoder.utils.file_utils import rotate_debug_log
 
 
 class AnthropicClient:
@@ -297,7 +298,11 @@ class AnthropicClient:
             try:
                 debug_dir = os.path.join(os.getcwd(), ".aicoder")
                 os.makedirs(debug_dir, exist_ok=True)
-                resp_log = open(os.path.join(debug_dir, "last-response.log"), "w")
+                debug_file = os.path.join(debug_dir, "last-response.log")
+                moved = rotate_debug_log(debug_file)
+                if moved:
+                    log_debug(f"*** Previous response log kept: {moved}")
+                resp_log = open(debug_file, "w")
             except Exception as e:
                 log_debug(f"*** Failed to open response log: {e}")
 

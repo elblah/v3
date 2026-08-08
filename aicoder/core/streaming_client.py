@@ -12,6 +12,7 @@ from aicoder.core.config import Config
 from aicoder.core.markdown_colorizer import MarkdownColorizer
 from aicoder.utils.log import error as log_error, warn as log_warn, info as log_info, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
+from aicoder.utils.file_utils import rotate_debug_log
 
 
 
@@ -95,6 +96,9 @@ class StreamingClient:
                     debug_dir = os.path.join(os.getcwd(), ".aicoder")
                     os.makedirs(debug_dir, exist_ok=True)
                     debug_file = os.path.join(debug_dir, "last-request.json")
+                    moved = rotate_debug_log(debug_file)
+                    if moved:
+                        log_debug(f"*** Previous request log kept: {moved}")
                     try:
                         with open(debug_file, "w") as f:
                             json.dump({
@@ -631,6 +635,9 @@ class StreamingClient:
                 debug_dir = os.path.join(os.getcwd(), ".aicoder")
                 os.makedirs(debug_dir, exist_ok=True)
                 debug_file = os.path.join(debug_dir, "last-response.log")
+                moved = rotate_debug_log(debug_file)
+                if moved:
+                    log_debug(f"*** Previous response log kept: {moved}")
                 try:
                     with open(debug_file, "w") as f:
                         f.write(raw_response)
@@ -649,6 +656,9 @@ class StreamingClient:
             debug_dir = os.path.join(os.getcwd(), ".aicoder")
             os.makedirs(debug_dir, exist_ok=True)
             debug_file = os.path.join(debug_dir, "last-response.json")
+            moved = rotate_debug_log(debug_file)
+            if moved:
+                log_debug(f"*** Previous response log kept: {moved}")
             try:
                 with open(debug_file, "w") as f:
                     json.dump(data, f, indent=2)

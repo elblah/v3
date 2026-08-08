@@ -4,7 +4,6 @@ Extracted from AICoder class for better separation of concerns
 """
 
 import builtins
-import time
 from typing import Dict, Any, List
 
 from aicoder.core.config import Config
@@ -16,6 +15,9 @@ class StreamProcessor:
 
     def __init__(self, streaming_client):
         self.streaming_client = streaming_client
+        # Maps tool_calls[] index -> call id for this stream. Some proxies
+        # (opencode zen) send index=0 on every chunk; id is the reliable key.
+        self._index_to_tool_id: Dict[Any, str] = {}
 
     def process_stream(
         self,
@@ -24,6 +26,7 @@ class StreamProcessor:
         process_chunk_callback
     ) -> Dict[str, Any]:
         """Process streaming response from API"""
+        self._index_to_tool_id.clear()
         full_response = ""
         accumulated_reasoning = ""
         accumulated_tool_calls = {}
@@ -176,9 +179,15 @@ class StreamProcessor:
     def accumulate_tool_call(
         self,
         tool_call: Dict[str, Any],
-        accumulated_tool_calls: Dict[int, Dict[str, Any]]
+        accumulated_tool_calls: Dict[str, Dict[str, Any]]
     ) -> None:
-        """Accumulate tool call from stream"""
+        """Accumulate tool call from stream.
+
+        Keying: tool-call id when present; else a name-bearing chunk starts a
+        new call; else (pure args delta) route via the index map, falling back
+        to the most recently touched call. Some proxies (opencode zen) send
+        index=0 on every chunk — index alone cannot distinguish parallel calls.
+        """
         # Handle case where tool_call might not be a dict (unexpected API format)
         if not isinstance(tool_call, dict):
             LogUtils.error(f"Tool call is not a dict: {type(tool_call)} - {tool_call}")
@@ -197,9 +206,40 @@ class StreamProcessor:
                 f"args={args[:50]!r}"
             )
 
-        if index not in accumulated_tool_calls:
-            accumulated_tool_calls[index] = {
-                "id": tool_id or f"tool_call_{index}_{int(time.time())}",
+        # Determine which accumulated call this chunk belongs to.
+        if tool_id:
+            key = tool_id
+            if index is not None:
+                self._index_to_tool_id[index] = tool_id
+        elif name:
+            # Name-bearing chunk without id: continuation if the index maps to
+            # a call with the same name (some providers repeat the name on
+            # every delta); otherwise start a new call.
+            key = self._index_to_tool_id.get(index) if index is not None else None
+            if key is not None and key in accumulated_tool_calls:
+                existing_name = accumulated_tool_calls[key]["function"].get("name")
+                if existing_name and existing_name != name:
+                    key = None  # different call, same index
+            if key is None:
+                key = f"tool_call_{len(accumulated_tool_calls)}"
+                if index is not None:
+                    self._index_to_tool_id[index] = key
+        else:
+            # Pure args delta: route via index map, else most recent call.
+            key = self._index_to_tool_id.get(index) if index is not None else None
+            if key is None or key not in accumulated_tool_calls:
+                if not accumulated_tool_calls:
+                    LogUtils.warn(
+                        f"[!] Tool call delta with no target: index={index}, name={name!r}"
+                    )
+                    return
+                key = next(reversed(accumulated_tool_calls))
+                # Re-insert to keep "most recent" ordering deterministic.
+                accumulated_tool_calls[key] = accumulated_tool_calls.pop(key)
+
+        if key not in accumulated_tool_calls:
+            accumulated_tool_calls[key] = {
+                "id": tool_id or key,
                 "type": tool_call.get("type") or "function",
                 "function": {
                     "name": name,
@@ -210,9 +250,9 @@ class StreamProcessor:
 
         # Deltas may carry metadata and arguments separately. Preserve metadata
         # from earlier deltas while appending every argument fragment.
-        existing = accumulated_tool_calls[index]
+        existing = accumulated_tool_calls[key]
         existing_function = existing.setdefault("function", {})
-        if name and name != "unknown":
+        if name:
             existing_function["name"] = name
         if tool_id:
             existing["id"] = tool_id

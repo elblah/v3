@@ -4,8 +4,9 @@ Stateless module functions - no classes needed
 """
 
 import os
+import time
 from pathlib import Path
-from typing import Set
+from typing import Optional, Set
 
 # Module-level state
 _current_dir = os.getcwd()
@@ -33,6 +34,29 @@ def get_relative_path(path: str) -> str:
     except Exception:
         # Fallback to original path
         return path
+
+
+def rotate_debug_log(path: str) -> Optional[str]:
+    """Keep previous debug log when KEEP_LAST_RESPONSE_LOG=1.
+
+    Moves the existing file to .aicoder/debug/responses/<stem>-<timestamp><ext>
+    before the new log overwrites it. Returns the new path, or None if nothing
+    was moved.
+    """
+    if os.environ.get("KEEP_LAST_RESPONSE_LOG", "").lower() in ("", "0", "false", "no", "off"):
+        return None
+    if not os.path.exists(path):
+        return None
+    stem, ext = os.path.splitext(os.path.basename(path))
+    archive_dir = os.path.join(os.getcwd(), ".aicoder", "debug", "responses")
+    os.makedirs(archive_dir, exist_ok=True)
+    new_path = os.path.join(archive_dir, f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}{ext}")
+    n = 1
+    while os.path.exists(new_path):
+        new_path = os.path.join(archive_dir, f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}-{n}{ext}")
+        n += 1
+    os.rename(path, new_path)
+    return new_path
 
 
 def check_sandbox(path: str, context: str = "file operation") -> bool:
