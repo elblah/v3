@@ -15,6 +15,18 @@ def message_history():
     return MessageHistory(Stats())
 
 
+def _add_tool_calls(message_history, call_ids):
+    """Seed an assistant message with tool_calls so add_tool_results can pair results."""
+    message_history.add_assistant_message({
+        "role": "assistant",
+        "content": "Calling tools",
+        "tool_calls": [
+            {"id": cid, "type": "function", "function": {"name": "test", "arguments": "{}"}}
+            for cid in call_ids
+        ],
+    })
+
+
 def test_message_history_initialization(message_history):
     """Test MessageHistory initialization"""
     assert message_history.messages == []
@@ -65,6 +77,7 @@ def test_add_assistant_message(message_history):
 
 def test_add_tool_results_list(message_history):
     """Test adding tool results as list"""
+    _add_tool_calls(message_history, ["call_1", "call_2"])
     tool_results = [
         {"tool_call_id": "call_1", "content": "Result 1"},
         {"tool_call_id": "call_2", "content": "Result 2"},
@@ -72,20 +85,21 @@ def test_add_tool_results_list(message_history):
 
     message_history.add_tool_results(tool_results)
 
-    assert len(message_history.messages) == 2
-    assert message_history.messages[0]["role"] == "tool"
+    assert len(message_history.messages) == 3
     assert message_history.messages[1]["role"] == "tool"
+    assert message_history.messages[2]["role"] == "tool"
 
 
 def test_add_single_tool_result(message_history):
     """Test adding single tool result"""
+    _add_tool_calls(message_history, ["call_1"])
     tool_result = {"tool_call_id": "call_1", "content": "Single result"}
     message_history.add_tool_results([tool_result])
 
-    assert len(message_history.messages) == 1
-    assert message_history.messages[0]["role"] == "tool"
-    assert message_history.messages[0]["tool_call_id"] == "call_1"
-    assert message_history.messages[0]["content"] == "Single result"
+    assert len(message_history.messages) == 2
+    assert message_history.messages[1]["role"] == "tool"
+    assert message_history.messages[1]["tool_call_id"] == "call_1"
+    assert message_history.messages[1]["content"] == "Single result"
 
 
 def test_get_messages(message_history):
@@ -137,8 +151,8 @@ def test_get_message_count(message_history):
     message_history.add_system_message("System")
     message_history.add_user_message("User 1")
     message_history.add_user_message("User 2")
-    message_history.add_assistant_message({"role": "assistant", "content": "Assistant"})
-    message_history.add_tool_results({"call_1": "Result"})
+    _add_tool_calls(message_history, ["call_1"])
+    message_history.add_tool_results([{"tool_call_id": "call_1", "content": "Result"}])
 
     assert message_history.get_message_count() == 5
 
@@ -244,7 +258,7 @@ def test_insert_user_message_at_beginning(message_history):
 def test_insert_user_message_after_tool(message_history):
     """Test inserting user message after tool response"""
     message_history.add_user_message("User 1")
-    message_history.add_assistant_message({"role": "assistant", "content": "Assistant"})
+    _add_tool_calls(message_history, ["call_1"])
     message_history.add_tool_results([{"tool_call_id": "call_1", "content": "Tool result"}])
 
     # Insert should go after tool response (priority 1)
@@ -312,6 +326,7 @@ def test_get_tool_result_messages_empty(message_history):
 def test_get_tool_result_messages_with_tools(message_history):
     """Test get_tool_result_messages returns only tool messages"""
     message_history.add_user_message("User")
+    _add_tool_calls(message_history, ["call_1", "call_2"])
     message_history.add_tool_results([
         {"tool_call_id": "call_1", "content": "Result 1"},
         {"tool_call_id": "call_2", "content": "Result 2"}
@@ -333,6 +348,7 @@ def test_get_tool_call_stats_empty(message_history):
 
 def test_get_tool_call_stats_with_tools(message_history):
     """Test get_tool_call_stats calculates statistics"""
+    _add_tool_calls(message_history, ["call_1", "call_2"])
     message_history.add_tool_results([
         {"tool_call_id": "call_1", "content": "Result 1"},
         {"tool_call_id": "call_2", "content": "AB"}  # 2 bytes
@@ -363,11 +379,12 @@ def test_prune_tool_results_small_content(message_history):
 
     # Create a small tool result (below protection threshold)
     small_content = "A" * 100
+    _add_tool_calls(message_history, ["call_1"])
     message_history.add_tool_results([{"tool_call_id": "call_1", "content": small_content}])
 
     result = message_history.prune_tool_results([0])
     assert result == 0  # Should not prune
-    assert message_history.messages[0]["content"] == small_content
+    assert message_history.messages[1]["content"] == small_content
 
 
 def test_prune_tool_results_large_content(message_history):
@@ -376,17 +393,19 @@ def test_prune_tool_results_large_content(message_history):
 
     # Create a large tool result
     large_content = "A" * 1000
+    _add_tool_calls(message_history, ["call_1"])
     message_history.add_tool_results([{"tool_call_id": "call_1", "content": large_content}])
 
     result = message_history.prune_tool_results([0])
     assert result == 1
-    assert message_history.messages[0]["content"] == PRUNED_TOOL_MESSAGE
+    assert message_history.messages[1]["content"] == PRUNED_TOOL_MESSAGE
 
 
 def test_prune_all_tool_results(message_history):
     """Test prune_all_tool_results prunes all tool results"""
     from aicoder.core.message_history import PRUNED_TOOL_MESSAGE
 
+    _add_tool_calls(message_history, ["call_1", "call_2"])
     message_history.add_tool_results([
         {"tool_call_id": "call_1", "content": "Large content A" * 100},
         {"tool_call_id": "call_2", "content": "Large content B" * 100}
@@ -394,14 +413,15 @@ def test_prune_all_tool_results(message_history):
 
     result = message_history.prune_all_tool_results()
     assert result == 2
-    assert message_history.messages[0]["content"] == PRUNED_TOOL_MESSAGE
     assert message_history.messages[1]["content"] == PRUNED_TOOL_MESSAGE
+    assert message_history.messages[2]["content"] == PRUNED_TOOL_MESSAGE
 
 
 def test_prune_oldest_tool_results(message_history):
     """Test prune_oldest_tool_results prunes oldest results first"""
     from aicoder.core.message_history import PRUNED_TOOL_MESSAGE
 
+    _add_tool_calls(message_history, ["call_1", "call_2"])
     message_history.add_tool_results([
         {"tool_call_id": "call_1", "content": "Large content A" * 100},
         {"tool_call_id": "call_2", "content": "Large content B" * 100}
@@ -409,9 +429,9 @@ def test_prune_oldest_tool_results(message_history):
 
     result = message_history.prune_oldest_tool_results(1)
     assert result == 1
-    assert message_history.messages[0]["content"] == PRUNED_TOOL_MESSAGE
+    assert message_history.messages[1]["content"] == PRUNED_TOOL_MESSAGE
     # Second should still have original content
-    assert "Large content B" in message_history.messages[1]["content"]
+    assert "Large content B" in message_history.messages[2]["content"]
 
 
 def test_prune_tool_results_by_percentage_no_tools(message_history):
@@ -481,11 +501,12 @@ def test_add_tool_results_object(message_history):
         tool_call_id = "call_1"
         content = "Result from object"
 
+    _add_tool_calls(message_history, ["call_1"])
     message_history.add_tool_results(ToolResult())
 
-    assert len(message_history.messages) == 1
-    assert message_history.messages[0]["role"] == "tool"
-    assert message_history.messages[0]["tool_call_id"] == "call_1"
+    assert len(message_history.messages) == 2
+    assert message_history.messages[1]["role"] == "tool"
+    assert message_history.messages[1]["tool_call_id"] == "call_1"
 
 
 def test_force_compact_messages(message_history):
@@ -551,12 +572,13 @@ def test_add_assistant_message_calls_hook(message_history):
 def test_add_tool_results_calls_hook(message_history):
     """Test that tool results addition triggers hook"""
     mock_plugin_system = MagicMock()
+    _add_tool_calls(message_history, ["call_1"])  # seed parent BEFORE hook attaches
     message_history.set_plugin_system(mock_plugin_system)
 
     message_history.add_tool_results([{"tool_call_id": "call_1", "content": "Result"}])
 
-    # Should be called for each tool result
-    assert mock_plugin_system.call_hooks.call_count >= 1
+    # Should be called once for the tool result
+    assert mock_plugin_system.call_hooks.call_count == 1
 
 
 def test_set_messages_calls_hook(message_history):
@@ -618,23 +640,27 @@ class TestToolResultInsertPosition:
         assert tool_result_idx == 3, "Tool result should be at index 3 (right after call)"
         assert summary_idx == 4, "Summary should be after tool result"
 
-    def test_tool_result_appended_when_no_matching_call(self, message_history):
-        """If no matching tool call found, append at end (backward compatible)"""
+    def test_tool_result_dropped_when_no_matching_call(self, message_history):
+        """Tool result with no parent call must be dropped, not appended.
+
+        Appending would create an orphan tool message after the summary user message
+        (parent was consumed by tools_compact), causing provider 400
+        "tool role must follow tool_calls".
+        """
         message_history.messages = [
             {"role": "system", "content": "System"},
             {"role": "user", "content": "hello"},
         ]
 
-        # Add tool result with unknown call ID
+        # Add tool result with unknown call ID (parent already compacted away)
         message_history.add_tool_results({
             "tool_call_id": "unknown_call",
             "content": "Some result"
         })
 
-        # Should append at end
-        assert len(message_history.messages) == 3
-        assert message_history.messages[-1]["role"] == "tool"
-        assert message_history.messages[-1]["content"] == "Some result"
+        # Must be dropped: no orphan tool message at tail
+        assert len(message_history.messages) == 2
+        assert all(msg["role"] != "tool" for msg in message_history.messages)
 
     def test_tool_result_finds_most_recent_call_when_multiple(self, message_history):
         """When multiple tool calls exist, find the most recent one (bottom-up search)"""
@@ -679,8 +705,8 @@ class TestToolResultInsertPosition:
         assert result_b_idx == call_b_idx + 1, \
             f"Result B should be after call B: call_b={call_b_idx}, result={result_b_idx}"
 
-    def test_tool_result_with_no_id_appended_at_end(self, message_history):
-        """When tool result has no ID, append at end (backward compatible)"""
+    def test_tool_result_with_no_id_dropped(self, message_history):
+        """When tool result has no tool_call_id, drop it (cannot be paired)"""
         message_history.messages = [
             {"role": "system", "content": "System"},
             {"role": "user", "content": "hello"},
@@ -691,9 +717,9 @@ class TestToolResultInsertPosition:
             "content": "Some result without ID"
         })
 
-        # Should append at end
-        assert len(message_history.messages) == 3
-        assert message_history.messages[-1]["role"] == "tool"
+        # Must be dropped, not appended
+        assert len(message_history.messages) == 2
+        assert all(msg["role"] != "tool" for msg in message_history.messages)
 
     def test_multiple_tool_results_maintain_order(self, message_history):
         """Multiple tool results should both go after the matching assistant message.

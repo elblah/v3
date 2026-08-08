@@ -223,17 +223,24 @@ class MessageHistory:
             from .token_estimator import cache_message
             cache_message(tool_message)
             
-            # Try to insert after matching tool call, fallback to append
+            # Try to insert after matching tool call. If the parent is gone
+            # (compacted/consumed away), DROP the result — appending would
+            # orphan it at the tail: provider 400 on next request, and the
+            # autosaver would persist the orphan to the session file.
             if tool_call_id:
                 insert_index = self._find_tool_insert_position(tool_call_id)
                 if insert_index != -1:
                     self.messages.insert(insert_index, tool_message)
                 else:
-                    # No matching call found - append at end (backward compatible)
-                    self.messages.append(tool_message)
+                    LogUtils.warn(
+                        f"[!] Dropping tool result for {tool_call_id}: parent "
+                        "tool_calls message no longer in history"
+                    )
+                    continue
             else:
-                # No ID provided - append at end
-                self.messages.append(tool_message)
+                # No ID provided - cannot pair, drop
+                LogUtils.warn("[!] Dropping tool result with no tool_call_id")
+                continue
             
             # Call plugin hooks for each tool message
             if self._plugin_system:
