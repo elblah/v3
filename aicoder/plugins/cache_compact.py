@@ -23,9 +23,10 @@ from aicoder.utils.log import LogUtils
 SUMMARY_TAG = "[SUMMARY]"
 COMPACT_TAG = "[COMPACT_SUMMARY]"
 
-PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with `[COMPACT_SUMMARY]` as your VISIBLE reply text (never inside your reasoning/thinking). If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
+PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation feels long, you may optionally begin your response with [COMPACT_SUMMARY] as your VISIBLE reply text (never inside your reasoning/thinking). If you do, follow with a summary of task, progress, decisions, files, next steps. This replaces everything else in context with just that summary. Use rarely — only when genuinely helpful to save space."""
 
-# Detect [COMPACT_SUMMARY] even if dumb AIs wrap it in markdown formatting
+# Normalize the detected leading tag -> [SUMMARY] (whitespace prefix tolerated;
+# match is strict anyway since detection now requires the unwrapped tag)
 _RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
 
@@ -44,10 +45,15 @@ FORCE_COMPACT_INSTRUCTION = (
 )
 
 
-# Regex to find [COMPACT_SUMMARY] at line start (allows leading whitespace/markdown,
-# and trailing text on the same line — instructions say "begin with the tag",
-# so same-line summaries like "[COMPACT_SUMMARY] <summary>" must be accepted)
-_RE_COMPACT_TAG_LINE = re.compile(r"(?m)^[\s*_`#]*\[COMPACT_SUMMARY\](?=[\s*_`#]|$)")
+# Regex to find [COMPACT_SUMMARY] at line start. Strict: leading whitespace
+# only, tag followed by whitespace or EOL. Same-line summaries like
+# "[COMPACT_SUMMARY] <summary>" are accepted.
+# Deliberately NO markdown-wrapper allowance (*_`#): a backtick- or
+# bold-quoted tag at line start is byte-identical to a wrapped tag, so
+# quoting "[COMPACT_SUMMARY]" in an explanation would false-positive and
+# destroy the conversation. False negatives are safe (nudge re-injects);
+# false positives are not.
+_RE_COMPACT_TAG_LINE = re.compile(r"(?m)^\s*\[COMPACT_SUMMARY\](?=\s|$)")
 
 
 def _content_str(content):

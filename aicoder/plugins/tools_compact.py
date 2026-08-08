@@ -52,20 +52,22 @@ from aicoder.utils.log import LogUtils
 
 TAG = "[COMPACT_SUMMARY:TOOLS]"
 
-# Detect the tag at line start (leading whitespace/markdown allowed).
+# Detect the tag at line start (leading whitespace only — no markdown
+# wrappers: a quoted tag like "`[COMPACT_SUMMARY:TOOLS]`" is byte-identical
+# to a wrapped one, so quoting it would false-positive and eat the loop).
 # Disjoint from cache_compact's [COMPACT_SUMMARY] regex: its lookahead
-# ([\s*_`#]|$) fails on ':' — verified both directions.
-_RE_TAG_LINE = re.compile(r"(?m)^[\s*_`#]*\[COMPACT_SUMMARY:TOOLS\](?=[\s*_`#]|$)")
+# (\s|$) fails on ':' — verified both directions.
+_RE_TAG_LINE = re.compile(r"(?m)^\s*\[COMPACT_SUMMARY:TOOLS\](?=\s|$)")
 
 PASSIVE_INSTRUCTION = (
-    "`[COMPACT_SUMMARY:TOOLS]` is available: begin a VISIBLE reply with it "
+    "[COMPACT_SUMMARY:TOOLS] is available: begin a VISIBLE reply with it "
     "(never inside your reasoning/thinking) to replace the preceding tool "
     "call/result loop with your summary. The platform consumes the loop pairs, "
     "keeps your reply as the summary, and automatically continues your turn. "
     "Make the summary self-contained: what the tools did, key findings, "
     "decisions, open threads, next steps. Scope: only the loop since the "
     "previous summary — earlier summaries and their tool results are kept, "
-    "never replaced. This is NOT `[COMPACT_SUMMARY]` "
+    "never replaced. This is NOT [COMPACT_SUMMARY] "
     "(full-conversation compaction) — only tool-loop pairs are removed."
 )
 
@@ -77,6 +79,65 @@ HARD_NUDGE = (
     "this loop and free the window. THIS IS MANDATORY — do not continue "
     "working without compacting it."
 )
+
+# Internal skill content — served to the AI as /internal/tools-compact/SKILL.md
+# (virtual file via the on_internal_skills lazy query, see skills.py).
+TOOLS_COMPACT_SKILL = """\
+---
+name: tools-compact
+description: >
+  Tool-loop micro-compaction: how to emit [COMPACT_SUMMARY:TOOLS], what gets
+  consumed, and summary rules. Load when a tool loop is long or the
+  compaction demand fires.
+---
+
+# tools-compact — tool-loop micro-compaction
+
+## What it is
+After a long sequence of tool calls the history is resubmitted to the
+provider on every request. tools_compact lets you trade a finished loop for
+one summary line, freeing the window.
+
+## Mechanics
+- Begin a VISIBLE reply with [COMPACT_SUMMARY:TOOLS] at line start (leading
+  whitespace allowed). Never wrap the tag in markdown (backticks, bold) —
+  only the unwrapped line-start form is detected.
+- Never put it inside reasoning/thinking.
+- The platform consumes every consecutive tool_calls+results pair preceding
+  your reply, keeps your reply as the summary, and automatically continues
+  your turn ("Continue.").
+- Scope: ONLY the loop since the previous summary or the last real user turn.
+  Earlier summaries and their results are kept — never touch them.
+- A tag reply that itself carries tool calls is fine: the consumed range ends
+  before that message.
+
+## When to use it
+- When the hard demand arrives — "TOOLS COMPACTION REQUIRED NOW ... THIS IS
+  MANDATORY" — the loop crossed the threshold. Comply on your next visible
+  reply; do not keep working without compacting.
+- Proactively: after a finished multi-tool loop (several file edits, a long
+  investigation), especially when the loop was token-heavy.
+- NOT when: the loop is small, work is mid-turn, or you still need the raw
+  tool output verbatim.
+
+## Writing the summary — CRITICAL
+The consumed pairs are DELETED. Your summary becomes the ONLY record of what
+the tools did. Make it self-contained:
+- What the tools did (actions, files, commands)
+- Key findings: exact values, paths, error messages, numbers — anything you
+  will cite later
+- Decisions made; open threads; next steps
+
+Coverage over brevity: a slightly longer summary that preserves facts beats a
+short one that loses them. This is NOT full-conversation compaction
+(`[COMPACT_SUMMARY]` is a separate mechanism) — only tool-loop pairs are
+removed, and your summary replaces them.
+
+## Rules recap
+- Visible reply only; tag at line start
+- Consumed: only the current loop
+- The summary is the loop's last record — write it accordingly
+"""
 
 
 def _content_str(content):
@@ -500,6 +561,22 @@ def create_plugin(ctx):
             return PASSIVE_INSTRUCTION
         return None
 
+    def _on_internal_skills():
+        """Lazy skill provider (see skills.py on_internal_skills): serves
+        /internal/tools-compact/SKILL.md so the AI can load usage rules for
+        this plugin on demand."""
+        return {
+            "tools-compact": {
+                "description": (
+                    "Tool-loop micro-compaction: how to emit "
+                    "[COMPACT_SUMMARY:TOOLS], what gets consumed, and summary "
+                    "rules. Load when a tool loop is long or the compaction "
+                    "demand fires."
+                ),
+                "files": {"SKILL.md": TOOLS_COMPACT_SKILL},
+            }
+        }
+
     def _on_info(sub: str) -> None:
         if sub == "config":
             c = Config.colors
@@ -552,6 +629,7 @@ def create_plugin(ctx):
 
     ctx.register_hook("on_info", _on_info)
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
+    ctx.register_hook("on_internal_skills", _on_internal_skills)
     ctx.register_hook("on_empty_assistant_message", _on_empty_assistant_message)
     ctx.register_hook("after_tool_results_added", _on_tool_results_added)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
