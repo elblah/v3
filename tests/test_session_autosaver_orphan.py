@@ -114,22 +114,42 @@ class TestLoaderOrphanCleanup(unittest.TestCase):
         self.assertTrue(any(
             m.get("tool_call_id") == "call_1" for m in file_msgs
         ))
+        plugin["cleanup"]()
 
     def test_clean_file_untouched(self):
         write_jsonl(self.session_file, [PARENT_MSG, RESULT_MSG])
 
-        app, ctx, _plugin = self._make_plugin()
+        app, ctx, plugin = self._make_plugin()
         ctx.hooks["after_session_initialized"]([])
 
         self.assertEqual(len(app.message_history.messages), 3)  # system + parent + result
         file_msgs = read_jsonl(self.session_file)
         self.assertEqual(len(file_msgs), 2)
+        plugin["cleanup"]()
 
     def test_disabled_without_session_file(self):
         os.environ.pop("SESSION_FILE", None)
         app = FakeApp([SYSTEM_MSG])
         ctx = FakeCtx(app)
         self.assertIsNone(autosaver.create_plugin(ctx))
+
+    def test_lock_sidecar_created_and_acquired(self):
+        app, ctx, plugin = self._make_plugin()
+        self.assertIsNotNone(plugin)
+        self.assertTrue(os.path.exists(self.session_file + ".lock"))
+        plugin["cleanup"]()
+
+    def test_lock_contention_exits(self):
+        import fcntl
+
+        lock_path = self.session_file + ".lock"
+        with open(lock_path, "w") as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            app = FakeApp([SYSTEM_MSG])
+            ctx = FakeCtx(app)
+            with self.assertRaises(SystemExit):
+                autosaver.create_plugin(ctx)
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":

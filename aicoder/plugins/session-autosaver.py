@@ -13,6 +13,7 @@ Automatically loads and saves session to SESSION_FILE in JSONL format.
 
 import sys
 import os
+import fcntl
 from pathlib import Path
 
 from aicoder.utils.log import LogUtils
@@ -45,6 +46,29 @@ def create_plugin(ctx):
     if not is_jsonl and session_path.suffix.lower() != ".json":
         LogUtils.error(f"[!] Unsupported session file format: {session_path.suffix}, expected .json or .jsonl")
         return None
+    
+    # Multi-instance guard: exclusive advisory lock on a sidecar file.
+    # flock (not lockf) — survives unrelated fd closes; sidecar (not the
+    # session file itself) survives /new unlinking the session file.
+    # Acquired here, before any load, so a second instance exits before
+    # touching the session. Released automatically at process exit.
+    lock_path = session_path.with_name(session_path.name + ".lock")
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+    except OSError as e:
+        LogUtils.error(f"[!] Cannot create session lock {lock_path}: {e}")
+        sys.exit(1)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(lock_fd)
+        LogUtils.error(
+            f"[!] Session file {session_file} is locked by another aicoder "
+            f"instance (lock: {lock_path}). Use a distinct SESSION_FILE per "
+            f"instance (e.g. per tmux pane) or exit the other instance first."
+        )
+        sys.exit(1)
     
     from aicoder.core.config import Config
     if Config.debug():
@@ -270,4 +294,12 @@ def create_plugin(ctx):
     if Config.debug():
         LogUtils.debug("[+] Session autosaver plugin loaded successfully")
     
-    return {"cleanup": lambda: LogUtils.print("[-] Session autosaver plugin unloaded")}
+    def cleanup():
+        """Release the session lock"""
+        try:
+            os.close(lock_fd)
+        except OSError:
+            pass
+        LogUtils.print("[-] Session autosaver plugin unloaded")
+    
+    return {"cleanup": cleanup}
