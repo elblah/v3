@@ -8,6 +8,7 @@ Usage:
     python ai_usage.py [today|yesterday|24h|week|month|year] # Preset periods
     python ai_usage.py hours <N> | days <N> | minutes <N>    # Custom durations
     python ai_usage.py YYYY-MM-DD YYYY-MM-DD                 # Date range
+    python ai_usage.py since YYYY-MM-DD                      # Since date (or just YYYY-MM-DD)
     python ai_usage.py update                                # Scan & update cache
     python ai_usage.py clear-cache                           # Delete cache
     python ai_usage.py help                                  # Show this usage
@@ -371,6 +372,7 @@ def main():
         print("  ai_usage.py [today|yesterday|24h|week|month|year]         # Time period")
         print("  ai_usage.py hours <N> | days <N> | minutes <N>           # Custom periods")
         print("  ai_usage.py YYYY-MM-DD YYYY-MM-DD                        # Date range")
+        print("  ai_usage.py since YYYY-MM-DD | YYYY-MM-DD               # Since date (to now)")
         print("  ai_usage.py update         # Scan all dirs below, update cache")
         print("  ai_usage.py clear-cache    # Delete cache")
         print("  LOCAL=1 ALL=1 ai_usage.py ...  # All cached dirs (ignore cwd filter)")
@@ -403,6 +405,16 @@ def main():
             end = now
         except ValueError:
             print(f"Error: Invalid number '{args[1]}'")
+            sys.exit(1)
+    elif len(args) >= 1 and ((args[0] == "since" and len(args) >= 2) or (len(args) == 1 and "-" in args[0])):
+        # "since YYYY-MM-DD" or bare "YYYY-MM-DD" = from that date to now
+        date_arg = args[1] if args[0] == "since" else args[0]
+        try:
+            start = datetime.strptime(date_arg, "%Y-%m-%d")
+            end = (datetime.now(timezone.utc) + _get_tz_offset()).replace(tzinfo=None)
+            label = f"since {date_arg}"
+        except ValueError:
+            print("Error: Invalid date format. Use YYYY-MM-DD")
             sys.exit(1)
     elif len(args) >= 2 and "-" in args[0]:
         try:
