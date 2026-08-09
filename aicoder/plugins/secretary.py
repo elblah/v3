@@ -111,6 +111,22 @@ def create_plugin(ctx):
             if unexpected:
                 raise ValueError(f"unexpected arguments: {', '.join(sorted(unexpected))}")
 
+        if action == "create_worker":
+            summary = (
+                f"workplace create_worker: name={args['name']!r}, "
+                f"role={args['role']!r}, project={args['project']!r}, "
+                f"goal={args['goal']!r}"
+            )
+        elif action == "send_worker":
+            summary = (
+                f"workplace send_worker: name={args['name']!r}, "
+                f"message={args['message']!r}"
+            )
+        elif action in ("capture_worker_screen", "stop_worker"):
+            summary = f"workplace {action}: name={args['name']!r}"
+        else:
+            summary = f"workplace {action}"
+
         result = subprocess.run(
             ["nc", "-N", "-U", socket_path],
             input=" ".join(request) + "\n",
@@ -121,10 +137,13 @@ def create_plugin(ctx):
         )
         if result.returncode != 0:
             detail = result.stderr.strip() or "workplace request failed"
-            raise RuntimeError(detail)
+            raise RuntimeError(f"{summary}\n{detail}")
 
-        output = result.stdout
-        return {"tool": "workplace", "friendly": output, "detailed": output}
+        output = result.stdout.strip()
+        friendly = summary
+        if output:
+            friendly += f"\n{output}"
+        return {"tool": "workplace", "friendly": friendly, "detailed": friendly}
 
     ctx.register_tool(
         "workplace",
