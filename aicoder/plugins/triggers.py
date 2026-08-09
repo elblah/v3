@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 
+from aicoder.core.config import Config
 from aicoder.core.nudges import add_nudge
 from aicoder.utils.log import LogUtils
 
@@ -76,6 +77,10 @@ def create_plugin(ctx):
     }
 
     def _run_rule(rule):
+        tag = f"{Config.colors['yellow']}[triggers]{Config.colors['reset']}"
+        LogUtils.print(
+            f"\n{tag} {rule['interval']} {rule['event']} {rule['command']}"
+        )
         try:
             result = subprocess.run(
                 rule["command"],
