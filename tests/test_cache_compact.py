@@ -166,6 +166,38 @@ def test_reinject_until_compliance(ps):
     assert len(_reminders(ps)) == 4
 
 
+def test_reasoning_only_summary_is_accepted(ps):
+    """A hidden summary is promoted before empty-retry can add a nudge."""
+    _seed(ps)
+    _assistant_turn(ps, "working...", _pct(ps, 78))
+    reasoning = "thinking\n[COMPACT_SUMMARY]\nDone in reasoning."
+
+    results = ps.ps.call_hooks(
+        "on_empty_assistant_message",
+        reasoning_content=reasoning,
+        reasoning_field="",
+        thinking_signature="sig",
+    )
+
+    assert any(results)
+    promoted = ps.app.message_history.get_messages()[-1]
+    assert promoted["content"].rstrip() == "[COMPACT_SUMMARY]\nDone in reasoning."
+    assert promoted["thinking_signature"] == "sig"
+    ps.ps.call_hooks("after_assistant_message_added", promoted)
+    assert any(str(m.get("content", "")).startswith("[SUMMARY]")
+               for m in ps.app.message_history.get_messages())
+
+
+def test_reasoning_without_summary_is_not_accepted(ps):
+    """Ordinary hidden reasoning still follows normal empty-retry handling."""
+    results = ps.ps.call_hooks(
+        "on_empty_assistant_message",
+        reasoning_content="ordinary hidden reasoning",
+        reasoning_field="",
+    )
+    assert not any(results)
+
+
 def test_summary_triggers_compact(ps):
     """Summary reply compacts: [SUMMARY] in history, reminder consumed, continuation set."""
     _seed(ps)
