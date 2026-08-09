@@ -68,7 +68,8 @@ export AICODER_THEME=luna
 export AICODER_SHELL_CLEAR_VARS=OPENAI_API_KEY,API_KEY,ANTHROPIC_API_KEY,GITHUB_TOKEN,SESSION_FILE
 
 #;Wikipedia,https://en.wikipedia.org/w/api.php?action=query&format=json&list=search&srsearch=
-export WEB_SEARCH_PROVIDERS="Brave,https://search.brave.com/search?q=;Mojeek,https://www.mojeek.com/search?q=;Startpage,https://www.startpage.com/search?q=;DuckDuckGo,https://lite.duckduckgo.com/lite/?q=;Searxng-Mdosch,https://search.mdosch.de/search?q=;Bing,https://www.bing.com/search?q=;Yahoo,https://search.yahoo.com/search?p="
+#;Startpage,https://www.startpage.com/search?q=
+export WEB_SEARCH_PROVIDERS="Brave,https://search.brave.com/search?q=;Mojeek,https://www.mojeek.com/search?q=;DuckDuckGo,https://lite.duckduckgo.com/lite/?q=;Searxng-Mdosch,https://search.mdosch.de/search?q=;Bing,https://www.bing.com/search?q=;Yahoo,https://search.yahoo.com/search?p="
 
 # Turn details tty on (show output of commands)
 #export DETAIL_TTY=1
