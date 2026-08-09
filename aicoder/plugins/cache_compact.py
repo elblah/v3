@@ -284,6 +284,29 @@ def create_plugin(ctx):
             return PASSIVE_INSTRUCTION
         return None
 
+    def _on_empty_assistant_message(reasoning_content=None, reasoning_field=None,
+                                    thinking_signature=None):
+        """Accept a summary that the provider returned only in reasoning.
+
+        Empty-reply handling runs before an assistant history message exists, so
+        the normal promotion path cannot see this response. Add the promoted
+        message here; add_assistant_message invokes the normal cache hook.
+        """
+        if cfg["threshold"] <= 0:
+            return None
+        reasoning = "\n".join(
+            part for part in (reasoning_content or "", reasoning_field or "") if part
+        )
+        tag = _find_compact_tag(reasoning)
+        if tag == -1:
+            return None
+
+        message = {"content": reasoning[tag:]}
+        if thinking_signature:
+            message["thinking_signature"] = thinking_signature
+        app.message_history.add_assistant_message(message)
+        return True
+
     def _on_assistant_message_added(message):
         """after_assistant_message_added hook - detect [COMPACT_SUMMARY] tag."""
         if cfg["threshold"] <= 0:
@@ -376,6 +399,7 @@ def create_plugin(ctx):
 
     ctx.register_hook("after_compaction", _on_after_compaction)
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
+    ctx.register_hook("on_empty_assistant_message", _on_empty_assistant_message)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
 
     if Config.debug():
