@@ -433,6 +433,10 @@ def create_plugin(ctx):
                 LogUtils.print(f"  Last memory write: {ago}s ago")
             LogUtils.dim(f"{'─' * 42}\n")
 
+        elif subcmd == "show":
+            # Print the exact section injected into the system prompt
+            LogUtils.print(on_system_prompt_append())
+
         elif subcmd == "export":
             if len(parts) < 2:
                 LogUtils.error("[memory] Usage: /memory export <archive-path>")
@@ -558,6 +562,7 @@ def create_plugin(ctx):
             LogUtils.dim("  /memory limit <size>   - Set per-project autoload size (e.g. 10k, 2m)")
             LogUtils.dim("  /memory rm-all         - Delete all memory (requires confirmation)")
             LogUtils.dim("  /memory status         - Show memory status and file sizes")
+            LogUtils.dim("  /memory show           - Print the memory section as injected into the prompt")
             LogUtils.dim("  Disable via PLUGINS_DENY=...,memory env var")
 
     # Print startup message if project uses custom memory limit
