@@ -9,7 +9,7 @@ if false && command -v rtk; then
 fi
 
 # Tools compaction (tools_compact plugin): nudge AI to compact tool-loop pairs
-export TOOLS_COMPACT_ENABLED=1
+export TOOLS_COMPACT_ENABLED=0
 export TOOLS_COMPACT_DEBUG=1
 # Show live loop cost in context bar as lb:N
 export TOOLS_COMPACT_SHOW_BUDGET=1
