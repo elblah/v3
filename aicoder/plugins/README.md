@@ -254,8 +254,9 @@ See `auto_approve.py` plugin for a regex-based implementation.
 
 - `notify_prompt.py` - Audio notifications for prompts/approvals
   - Hooks: `before_user_prompt`, `before_approval_prompt`
-  - Requires: espeak, pulseaudio/pipewire
-  - Features: HDMI audio sink detection
+  - Commands: `/notify-prompt on/off` (creates/deletes `.aicoder/.notify-prompt`)
+  - Env: `NOTIFY_PROMPT_CMD`, `NOTIFY_APPROVAL_CMD` (shell commands, run non-blocking)
+  - Fallback: espeak if installed when env vars unset; otherwise on-screen hint
 
 - `ruff.py` - Python code quality checks
   - Commands: `/ruff on/off`, `/ruff check-serious on/off`
