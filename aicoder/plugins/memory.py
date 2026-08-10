@@ -8,11 +8,16 @@ Creates `<MEMORY_DIR>/` structure (configurable via AICODER_MEMORY_DIR, defaults
 
 The AI uses write_file/edit_file tools to manage memory naturally.
 No special API calls or background processes needed.
+
+Transient band: `99-*.md` = scratch/temp/unsure notes, auto-archived to `archive/`
+after TRANSIENT_TTL_DAYS (default 7) without edits. Promotion = rename below 99.
+Editing refreshes the clock. No wipe hooks needed.
 """
 
 import os
 import sys
 import time
+import math
 from typing import List
 
 MEMORY_DIR = os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory")
@@ -60,6 +65,59 @@ NUDGE_SECONDS = int(os.environ.get("AICODER_MEMORY_NUDGE_SECONDS", "300"))
 AUTO_APPROVE_MEMORY = os.environ.get("AICODER_MEMORY_AUTO_APPROVE", "1").lower() not in ("0", "false", "no")
 # Hide memory-dir write previews entirely (default: show one-line summary instead of diff)
 PREVIEW_HIDE = os.environ.get("AICODER_MEMORY_PREVIEW_HIDE", "0").lower() not in ("0", "false", "no")
+
+# Transient band: 99-*.md files auto-archive to archive/ after TTL days without edits (promotion = rename below 99)
+TRANSIENT_BAND = 99
+TRANSIENT_TTL_DAYS = int(os.environ.get("AICODER_MEMORY_TRANSIENT_TTL_DAYS", "7"))
+
+
+def _band_of(fname: str) -> int | None:
+    """Extract NN band from a `NN-name.md` filename; None if not banded."""
+    if len(fname) >= 3 and fname[:2].isdigit() and fname[2] == "-":
+        return int(fname[:2])
+    return None
+
+
+def _is_transient(fname: str) -> bool:
+    return _band_of(fname) == TRANSIENT_BAND
+
+
+def _transient_days_left(fname: str, memory_dir: str = MEMORY_DIR) -> int | None:
+    """Days until a transient file auto-archives; None for non-transient files."""
+    if not _is_transient(fname):
+        return None
+    try:
+        age_days = (time.time() - os.path.getmtime(os.path.join(memory_dir, fname))) / 86400.0
+    except OSError:
+        return None
+    return max(0, math.ceil(TRANSIENT_TTL_DAYS - age_days))
+
+
+def _archive_expired(memory_dir: str = MEMORY_DIR) -> list[str]:
+    """Move 99- transient files past TTL (no edits in TRANSIENT_TTL_DAYS days) to archive/."""
+    now = time.time()
+    archived = []
+    archive_dir = os.path.join(memory_dir, "archive")
+    try:
+        for fname in os.listdir(memory_dir):
+            if not _is_transient(fname):
+                continue
+            fpath = os.path.join(memory_dir, fname)
+            try:
+                age_days = (now - os.path.getmtime(fpath)) / 86400.0
+            except OSError:
+                continue
+            if age_days >= TRANSIENT_TTL_DAYS:
+                try:
+                    os.makedirs(archive_dir, exist_ok=True)
+                    stamp = time.strftime("%Y%m%d", time.localtime(now))
+                    os.rename(fpath, os.path.join(archive_dir, f"{stamp}-{fname}"))
+                    archived.append(fname)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return archived
 
 
 def create_plugin(ctx):
@@ -183,7 +241,10 @@ def create_plugin(ctx):
         if not os.path.isfile(AUTOLOAD_FILE):
             with open(AUTOLOAD_FILE, "w", encoding="utf-8") as f:
                 f.write("_No persistent memories yet._")
+        archived = _archive_expired()
         from aicoder.utils.log import LogUtils
+        if archived and sys.stdout.isatty():
+            LogUtils.dim(f"[memory] archived transient: {', '.join(archived)}")
         if sys.stdout.isatty():
             LogUtils.printc(f"[memory] auto-initialized at {MEMORY_DIR}", color="blue", stderr=True)
 
@@ -268,6 +329,8 @@ def create_plugin(ctx):
             "- `index.md` — main working memory.\n"
             "- Topic files: `NN-name.md` — NN is an IMPORTANCE BAND, NOT unique, NOT sequential "
             "(many files may share it; tie-break alphabetical). Lower band = listed first = survives the listing cut.\n"
+            "- `99-*.md` = TRANSIENT (scratch, todos, unsure notes): auto-archived to `archive/` after "
+            + str(TRANSIENT_TTL_DAYS) + " days without edits. Promote: rename below 99 when it matters.\n"
             "- Only the top " + str(LIST_LIMIT) + " topic files are listed; the rest are counted, not named "
             "(inspect with `list_directory` on `.aicoder/memory/`). "
             "`archive/` holds keep-without-cost files (never listed).\n"
@@ -284,7 +347,9 @@ def create_plugin(ctx):
         if files:
             section += "\n### Memory Files\n"
             for name in files[:LIST_LIMIT]:
-                section += f"- {name}\n"
+                dl = _transient_days_left(name)
+                suffix = f" (transient: auto-archives in {dl}d)" if dl is not None else ""
+                section += f"- {name}{suffix}\n"
             hidden = len(files) - LIST_LIMIT
             if hidden > 0:
                 section += (f"- …and {hidden} more files in `.aicoder/memory/` "
@@ -352,8 +417,11 @@ def create_plugin(ctx):
                 LogUtils.print(f"  Location: {MEMORY_DIR}")
             LogUtils.dim(f"{'─' * 42}")
             for fname, size in sorted(files):
-                LogUtils.print(f"  {fname:<30} {size:>7} bytes")
+                dl = _transient_days_left(fname)
+                suffix = f" (transient, {dl}d left)" if dl is not None else ""
+                LogUtils.print(f"  {fname:<30} {size:>7} bytes{suffix}")
             LogUtils.dim(f"{'─' * 42}")
+            LogUtils.print(f"  Transient TTL: {TRANSIENT_TTL_DAYS}d (99-*.md -> archive/)")
             nudge_state = "on" if NUDGE_ENABLED else "off"
             LogUtils.print(f"  Nudge: {nudge_state} (chars>{NUDGE_CHARS}, stale>{NUDGE_SECONDS}s)")
             aa_state = "on" if AUTO_APPROVE_MEMORY else "off"
