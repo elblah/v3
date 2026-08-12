@@ -33,13 +33,13 @@ def main():
 
         # Calculate and display startup time (only in TTY)
         start_time_str = os.environ.get("AICODER_START_TIME")
-        if start_time_str and sys.stdout.isatty():
+        if start_time_str and sys.stderr.isatty():
             try:
                 start_time = float(start_time_str)
                 current_time = time.time()
                 startup_time = current_time - start_time
                 label = "total" if _AICODER_START_SET_BY_SHELL else "app loading"
-                LogUtils.printc(f"Startup time ({label}): {startup_time:.2f}s", color="brightCyan")
+                LogUtils.printc(f"Startup time ({label}): {startup_time:.2f}s", color="brightCyan", stderr=True)
             except ValueError:
                 pass
 

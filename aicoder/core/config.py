@@ -131,6 +131,36 @@ class Config:
         """Set show_reasoning state"""
         cls._show_reasoning = value
 
+    # Show context bar - initialize from env var ONCE at module load time
+    # AICODER_SHOW_CONTEXT_BAR=0 disables printing the "Context: ..." bar
+    # Default (unset or any other value): enabled
+    _show_context_bar = os.environ.get("AICODER_SHOW_CONTEXT_BAR", "1").lower() not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def show_context_bar() -> bool:
+        """Get show_context_bar state (true=print context bar, false=suppress)"""
+        return Config._show_context_bar
+
+    @classmethod
+    def set_show_context_bar(cls, value: bool) -> None:
+        """Set show_context_bar state"""
+        cls._show_context_bar = value
+
+    # Show AI prefix - initialize from env var ONCE at module load time
+    # AICODER_SHOW_AI_PREFIX=0 disables printing the "AI: " marker before responses
+    # Default (unset or any other value): enabled
+    _show_ai_prefix = os.environ.get("AICODER_SHOW_AI_PREFIX", "1").lower() not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def show_ai_prefix() -> bool:
+        """Get show_ai_prefix state (true=print "AI: " marker, false=suppress)"""
+        return Config._show_ai_prefix
+
+    @classmethod
+    def set_show_ai_prefix(cls, value: bool) -> None:
+        """Set show_ai_prefix state"""
+        cls._show_ai_prefix = value
+
     # Suppress error body - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # false = include error body in HTTP error messages (default)
