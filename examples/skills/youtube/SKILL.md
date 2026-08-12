@@ -24,6 +24,7 @@ Local service at `localhost:2222`. All commands: `echo "<command>" | nc localhos
 | `<video_id> --check` | Status: 0=available, 1=login-required, 2=unavailable, 3=upcoming |
 | `<video_id> --chapters` | Video chapters/music marks (timestamp | title) |
 | `<video_id> --subtitles-fetch` | Fetch subtitle text directly |
+| `<video_id> --subtitles-clean` | **PREFERRED for AI** — subtitles, timestamps stripped (still has `[hh:mm:ss]` markers + HTML entities; post-process: `html.unescape`, strip `\[\d{2}:\d{2}:\d{2}\]`, join lines) |
 
 ## Channel Commands
 
