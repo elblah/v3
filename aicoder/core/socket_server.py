@@ -133,10 +133,10 @@ class SocketServer:
             self.server_thread = threading.Thread(target=self._server_loop, daemon=True)
             self.server_thread.start()
 
-            # Print socket path only in TTY
-            if sys.stdout.isatty():
-                LogUtils.print(
-                    f"[Socket] {self.socket_path}"
+            # Print socket path only in TTY (stderr so it never mixes with stdout output)
+            if sys.stderr.isatty():
+                LogUtils.printc(
+                    f"[Socket] {self.socket_path}", stderr=True
                 )
 
         except Exception as e:

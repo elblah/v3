@@ -162,8 +162,8 @@ Always follow user instructions carefully and provide helpful responses."""
 
         env_prompt = Config.system_prompt()
         if env_prompt:
-            if sys.stdout.isatty():
-                LogUtils.info("Using AICODER_SYSTEM_PROMPT environment variable as system prompt")
+            if sys.stderr.isatty():
+                LogUtils.printc("Using AICODER_SYSTEM_PROMPT environment variable as system prompt", color="blue", stderr=True)
             options.override_prompt = env_prompt
         else:
             options.override_prompt = cls.load_prompt_override()
@@ -174,8 +174,8 @@ Always follow user instructions carefully and provide helpful responses."""
         # Append additional content from AICODER_SYSTEM_PROMPT_APPEND
         append_content = Config.system_prompt_append()
         if append_content:
-            if sys.stdout.isatty():
-                LogUtils.info("Appending AICODER_SYSTEM_PROMPT_APPEND to system prompt")
+            if sys.stderr.isatty():
+                LogUtils.printc("Appending AICODER_SYSTEM_PROMPT_APPEND to system prompt", color="blue", stderr=True)
             prompt += "\n\n" + append_content
 
         return prompt

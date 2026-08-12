@@ -82,7 +82,8 @@ class SessionManager:
         if self.plugin_system:
             self.plugin_system.call_hooks("before_ai_processing")
         
-        LogUtils.printc("AI: ", color="cyan", bold=True)
+        if Config.show_ai_prefix():
+            LogUtils.printc("AI: ", color="cyan", bold=True)
 
         # Check if interrupted
         if not self.is_processing:
