@@ -300,6 +300,9 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
         provider = entry.get("api_provider", "openai")
         usage = entry.get("usage", {})
         parsed = parse_usage(usage, provider)
+        # Entry-level enrichment (ai_cost plugin): cost_estimate always present
+        # when active; cost seeded only when provider reports one.
+        entry_cost = entry.get("cost", 0.0)
         return {
             "url": entry.get("url", ""),
             "model": entry.get("model", ""),
@@ -309,7 +312,8 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
             "elapsed": entry.get("elapsed", 0),
             "cache_read": parsed["cache_read"],
             "cache_miss": parsed["cache_miss"],
-            "cost": parsed["cost"],
+            "cost": parsed["cost"] or entry_cost,
+            "est": float(entry.get("cost_estimate") or 0.0),
         }
     except (json.JSONDecodeError, KeyError, ValueError):
         return None
@@ -452,7 +456,7 @@ def main():
             sys.exit(0)
 
     # Aggregate: url -> model -> stats
-    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0}))
+    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0}))
     for e in entries:
         if e["model"] == "test-model":
             continue
@@ -466,6 +470,7 @@ def main():
         if isinstance(cost, dict):
             cost = cost.get("usd", 0.0)
         agg[e["url"]][e["model"]]["cost"] += cost
+        agg[e["url"]][e["model"]]["est"] += e["est"]
 
     # Report
     print(f"\n{'='*60}")
@@ -477,7 +482,7 @@ def main():
         print(f"  Now:      {now.strftime('%Y-%m-%d %H:%M:%S')} (TZ={tz_name})")
         print(f"  Range:    {start.strftime('%Y-%m-%d %H:%M:%S')} → {end.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}\n")
-    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0}
+    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0}
 
     for url in sorted(agg):
         print(url)
@@ -499,6 +504,8 @@ def main():
             print(f"        Total Time:     {d['t']:.2f}s ({d['t'] / 60:.0f}m)")
             if d["cost"] > 0:
                 print(f"        Cost:           ${d['cost']:.6f}")
+            if d["est"] > 0:
+                print(f"        Est Cost:       ${d['est']:.6f}")
             print(f"        Avg Req Time:   {avg:.2f}s")
             print(f"        Output tok/s:   {tps:.1f}\n")
             total["n"] += d["n"]
@@ -508,6 +515,7 @@ def main():
             total["cr"] += d["cr"]
             total["cm"] += d["cm"]
             total["cost"] += d["cost"]
+            total["est"] += d["est"]
 
     n = total["n"]
     total_input_cache = total['cr'] + total['cm']
@@ -533,8 +541,10 @@ def main():
     print(f"    Avg Time/Request:    {total['t'] / n:.2f}s")
     print(f"    Total Output tok/s:  {total['c'] / total['t']:.1f}")
     if total["cost"] > 0:
-        print(f"    Total Cost:          ${total['cost']:.6f}\n")
-    else:
+        print(f"    Total Cost:          ${total['cost']:.6f}")
+    if total["est"] > 0:
+        print(f"    Total Est Cost:      ${total['est']:.6f}")
+    if total["cost"] > 0 or total["est"] > 0:
         print()
 
 
