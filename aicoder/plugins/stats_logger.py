@@ -10,6 +10,13 @@ Format: JSONL (one JSON object per line)
 Before writing, fires on_stats_entry(entry) so plugins can complement the
 entry (e.g. ai_cost sets entry["cost_estimate"] next to provider-reported
 entry["cost"]).
+
+WARNING (Aug 15): firing after_usage_data with this plugin registered writes
+to PRODUCTION data — stats_server daemon appends to
+~/.aicoder/central_stats.log (real usage reports, read by ai_usage.py).
+NEVER run this handler with test/synthetic usage: it pollutes real reports.
+Tests MUST set STATS_CENTRAL=0 (and STATS_FALLBACK_FILE=0) before firing,
+or stub sl._write_to_central.
 """
 
 import json
@@ -55,7 +62,11 @@ def _extract_cost(usage):
 
 
 def _write_to_central(line):
-    """Write to stats_server via Unix socket. Returns True on success."""
+    """Write to stats_server via Unix socket. Returns True on success.
+
+    PRODUCTION WRITE PATH: the daemon appends to ~/.aicoder/central_stats.log.
+    Never call with test/fake data; disable via STATS_CENTRAL=0.
+    """
     import socket
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -159,9 +170,13 @@ def create_plugin(ctx):
         with open(log_path, "a") as f:
             f.write(json_line + "\n")
 
-        # Send to central server (or fallback if unavailable)
-        if not _write_to_central(json_line + "\n"):
-            _write_central_fallback(json_line + "\n")
+        # Send to central server (or fallback if unavailable).
+        # PRODUCTION WRITE: lands in ~/.aicoder/central_stats.log via the
+        # stats_server daemon. Tests with synthetic usage MUST set
+        # STATS_CENTRAL=0 + STATS_FALLBACK_FILE=0 — this corrupts real reports.
+        if os.environ.get("STATS_CENTRAL", "1") != "0":
+            if not _write_to_central(json_line + "\n"):
+                _write_central_fallback(json_line + "\n")
 
     # Register hook for usage data (fires for ALL API calls including compaction)
     ctx.register_hook("after_usage_data", _on_usage_data)
