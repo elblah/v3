@@ -301,8 +301,9 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
         usage = entry.get("usage", {})
         parsed = parse_usage(usage, provider)
         # Entry-level enrichment (ai_cost plugin): cost_estimate always present
-        # when active; cost seeded only when provider reports one.
-        entry_cost = entry.get("cost", 0.0)
+        # when active; cost seeded only when provider reports one. Null-tolerant:
+        # some legacy entries carry "cost": null.
+        entry_cost = entry.get("cost") or 0.0
         return {
             "url": entry.get("url", ""),
             "model": entry.get("model", ""),
