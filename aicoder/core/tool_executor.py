@@ -132,7 +132,7 @@ class ToolExecutor:
 
     def _handle_tool_not_found(self, tool_name: str, tool_call_id: str) -> Dict[str, Any]:
         """Handle case where tool is not found"""
-        LogUtils.error(f"[x] Tool not found: {tool_name}")
+        LogUtils.error(f"\n[x] Tool not found: {tool_name}")
         msg = f"Error: Tool '{tool_name}' does not exist."
         # Some models repeatedly hallucinate tool names — relist what exists
         # at the point of failure (default on, TOOLS_NOT_FOUND_RELIST=0 off).
