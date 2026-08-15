@@ -134,17 +134,24 @@ def create_plugin(ctx):
             entry["cost_estimate"] = _estimate_cost(entry.get("usage") or {})
 
     def _on_stats(stats):
-        """Contribute lines to /stats output."""
+        """Contribute lines to /stats output.
+
+        "Session Cost" is printed only when the provider reported a cost
+        (bar shows `≈$X` in the other case). With no reported cost the
+        session value is purely an estimate, so only "Estimated:" shows —
+        "Session Cost" always means provider-reported.
+        """
         if _session_cost <= 0:
             return None
         avg = _session_cost / _request_count if _request_count else 0.0
-        lines = [
-            "--- AI Cost ---",
-            f"  Session Cost: ${_session_cost:.4f}",
-            f"  Requests: {_request_count} (avg ${avg:.4f}/req)",
-        ]
-        if _est_total > 0:
+        lines = ["--- AI Cost ---"]
+        if _has_reported:
+            lines.append(f"  Session Cost: ${_session_cost:.4f}")
+            if _est_total > 0:
+                lines.append(f"  Estimated:    ${_est_total:.4f}")
+        else:
             lines.append(f"  Estimated:    ${_est_total:.4f}")
+        lines.append(f"  Requests: {_request_count} (avg ${avg:.4f}/req)")
         return lines
 
     def _on_context_bar():
