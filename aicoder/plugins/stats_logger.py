@@ -6,6 +6,10 @@ Logs each AI API request to:
 - stats_server via Unix socket (for central aggregation)
 
 Format: JSONL (one JSON object per line)
+
+Before writing, fires on_stats_entry(entry) so plugins can complement the
+entry (e.g. ai_cost sets entry["cost_estimate"] next to provider-reported
+entry["cost"]).
 """
 
 import json
@@ -97,11 +101,10 @@ def _write_central_fallback(line):
 def create_plugin(ctx):
     """Plugin entry point"""
     session_id = None
-    total_cost = 0.0
 
     def _on_usage_data(usage):
         """Hook when usage data is received from API"""
-        nonlocal session_id, total_cost
+        nonlocal session_id
         if session_id is None:
             import uuid
             session_id = str(uuid.uuid4())
@@ -117,11 +120,6 @@ def create_plugin(ctx):
         base_url = Config.base_url() or Config.api_endpoint()
         elapsed = stats.last_api_time
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H:%M:%S")
-
-        # Accumulate cost
-        cost = _extract_cost(usage)
-        if cost is not None:
-            total_cost += cost
 
         # Build JSONL entry
         entry = {
@@ -141,6 +139,15 @@ def create_plugin(ctx):
         if tag:
             entry["tag"] = tag
 
+        # Provider-reported cost (field only added when provider reports one)
+        cost = _extract_cost(usage)
+        if cost is not None:
+            entry["cost"] = cost
+
+        # Let plugins complement the entry (e.g. ai_cost adds cost_estimate)
+        if ctx.app and ctx.app.plugin_system:
+            ctx.app.plugin_system.call_hooks("on_stats_entry", entry)
+
         json_line = json.dumps(entry, separators=(",", ":"))
 
         # Ensure .aicoder dir exists
@@ -156,23 +163,7 @@ def create_plugin(ctx):
         if not _write_to_central(json_line + "\n"):
             _write_central_fallback(json_line + "\n")
 
-    def _on_context_bar():
-        """Hook: Add cost to context bar"""
-        nonlocal total_cost
-        if total_cost <= 0:
-            return None
-        if os.environ.get("STATS_LOGGER_COST_CONTEXT_BAR", "1") == "0":
-            return None
-
-        # Show in cents if < $1, dollars if >= $1
-        if total_cost < 1.0:
-            cost_str = f"{total_cost * 100:.1f}¢"
-        else:
-            cost_str = f"${total_cost:.4f}"
-        return f"{Config.colors['dim']}{cost_str}{Config.colors['reset']}"
-
     # Register hook for usage data (fires for ALL API calls including compaction)
     ctx.register_hook("after_usage_data", _on_usage_data)
-    ctx.register_hook("on_context_bar", _on_context_bar)
 
     return {}
