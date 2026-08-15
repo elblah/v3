@@ -34,7 +34,10 @@ _compact_total = 0
 def _extract_cache_totals(usage):
     """Return (hit_tokens, total_input_tokens) for one usage dict.
 
-    Returns (None, 0) if cache data is missing or unusable.
+    Returns (None, 0) if cache data is missing or unusable — i.e. provider
+    never reported cache fields, or total is 0. A request that reports
+    cache fields with 0 cached tokens is a real full-miss and counts as
+    (0, total) — skipping it would inflate the rate.
     Total counts only input tokens; hit rate = hit / total.
     """
     if not isinstance(usage, dict):
@@ -48,11 +51,14 @@ def _extract_cache_totals(usage):
         total = miss + hit + creation
     else:
         # OpenAI-style: prompt_tokens includes cached
+        if ("prompt_tokens_details" not in usage
+                and "prompt_cache_hit_tokens" not in usage):
+            return None, 0
         ptd = usage.get("prompt_tokens_details") or {}
         hit = ptd.get("cached_tokens") or usage.get("prompt_cache_hit_tokens") or 0
         total = usage.get("prompt_tokens") or 0
 
-    if hit <= 0 or total <= 0:
+    if total <= 0:
         return None, 0
     return int(hit), int(total)
 
