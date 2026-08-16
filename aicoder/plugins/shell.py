@@ -14,7 +14,7 @@ import os
 from typing import Dict, Any
 
 from aicoder.core.config import Config
-from aicoder.tools.internal.run_shell_command import get_tty_path
+from aicoder.tools.internal.run_shell_command import _wrap_with_tee
 from aicoder.utils.log import LogUtils
 
 
@@ -24,7 +24,7 @@ def create_plugin(ctx):
     DEFAULT_TIMEOUT = 600  # 10 minutes - generous timeout with safety net
     DEFAULT_CWD = None  # Uses current working directory
 
-    def execute_shell(command: str, timeout: int = DEFAULT_TIMEOUT, cwd: str = DEFAULT_CWD) -> str:
+    def execute_shell(command: str, timeout: int = DEFAULT_TIMEOUT, cwd: str = DEFAULT_CWD, live: bool = False) -> str:
         """Execute a shell command and return output"""
         if not command or not command.strip():
             return "Error: Command cannot be empty"
@@ -34,13 +34,13 @@ def create_plugin(ctx):
             resolved_cwd = cwd if cwd else os.getcwd()
 
             # Wrap command with tee when detail TTY passthrough is enabled
-            # Must use bash explicitly — PIPESTATUS is bash-only
+            # OR per-call live flag. Must use bash explicitly — PIPESTATUS is bash-only.
             cmd = command
             shell_executable = None
-            if Config.detail_tty():
-                tty = get_tty_path()
-                if tty:
-                    cmd = f"({command}) 2>&1 | tee {tty} 2>/dev/null; exit ${{PIPESTATUS[0]}}"
+            if Config.detail_tty() or live:
+                wrapped = _wrap_with_tee(command)
+                if wrapped:
+                    cmd = wrapped
                     shell_executable = "/bin/bash"
 
             # Run command
@@ -91,6 +91,7 @@ Execute shell commands directly.
 
 Usage:
     /shell <command>
+    /shell live <command>    - Stream output live to terminal
 
 Examples:
     /shell pwd              - Show current working directory
@@ -98,12 +99,19 @@ Examples:
     /shell cp file.txt /mnt/ - Copy file to /mnt/
     /shell whoami           - Show current user
     /shell date             - Show current date/time
+    /shell live tail -f fetch_html.log  - Follow a log live (Ctrl+C to stop)
 
 Note: Commands have a 10-minute timeout (use Ctrl+C to cancel earlier).
 """
 
         command = args_str.strip()
-        output = execute_shell(command, DEFAULT_TIMEOUT)
+        live = False
+        if command == "live" or command.startswith("live "):
+            live = True
+            command = command[5:].strip()
+            if not command:
+                return "Error: Empty command after 'live'"
+        output = execute_shell(command, DEFAULT_TIMEOUT, live=live)
         return output
 
     # Register the /shell command
