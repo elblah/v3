@@ -7,10 +7,18 @@ Computes per-request cost live from the usage object using prices from env:
   PRICE_CACHE_READ  $ per 1M cache-read tokens        (optional, default 0)
   PRICE_CACHE_WRITE $ per 1M cache-creation tokens    (optional, default 0)
   PRICE_OUTPUT      $ per 1M output tokens            (required)
+  PEAK_MULT         peak-hour price multiplier; feature on only when > 1.0
+  PEAK_HOURS        UTC peak windows "01:00-04:00,06:00-10:00" (comma-separated,
+                    wrap-around aware, e.g. "22:00-01:00")
 
 Shows session cost in the context bar (dollars only, no cents). Inactive
 unless PRICE_INPUT/PRICE_OUTPUT are set. Handles OpenAI-style and
 Anthropic-style usage fields.
+
+When PEAK_MULT > 1.0 and PEAK_HOURS has a valid window, the estimate is
+multiplied by PEAK_MULT while the current UTC time is inside a peak window,
+and the context bar shows a fire (🔥) right after the session cost.
+Provider-reported costs are never multiplied.
 
 Also complements stats_logger's JSONL entries via the on_stats_entry hook:
 sets entry["cost_estimate"] (our env-var math) next to entry["cost"]
@@ -24,9 +32,12 @@ Token semantics (per provider):
 """
 
 import os
+from datetime import datetime, timezone
+
 from aicoder.core.config import Config
 
 _PRICES = None  # dict or None if plugin inactive
+_PEAK = None    # dict(mult, windows) or None if peak feature off
 _session_cost = 0.0     # per-request: reported cost wins, else estimate
 _request_count = 0
 _est_total = 0.0        # sum of env-var estimates (all requests)
@@ -52,6 +63,74 @@ def _load_prices():
         "cache_write": _get("PRICE_CACHE_WRITE") or 0.0,
         "output": p_out,
     }
+
+
+def _load_peak():
+    """Load PEAK_MULT/PEAK_HOURS. Returns dict or None if feature off.
+
+    Feature on only when PEAK_MULT > 1.0 AND at least one valid window.
+    """
+    try:
+        mult = float(os.environ.get("PEAK_MULT", "") or 1.0)
+    except (TypeError, ValueError):
+        return None
+    if mult <= 1.0:
+        return None
+    windows = _parse_windows(os.environ.get("PEAK_HOURS", ""))
+    if not windows:
+        return None
+    return {"mult": mult, "windows": windows}
+
+
+def _parse_windows(raw):
+    """Parse '01:00-04:00,06:00-10:00' into (start, end) minute-of-day tuples.
+
+    Wrap-around aware: '22:00-01:00' -> (1320, 60). Malformed tokens are
+    skipped. End is exclusive.
+    """
+    windows = []
+    for token in raw.split(","):
+        token = token.strip()
+        if "-" not in token:
+            continue
+        start_s, end_s = token.split("-", 1)
+        start = _to_minutes(start_s.strip())
+        end = _to_minutes(end_s.strip())
+        if start is None or end is None or start == end:
+            continue
+        windows.append((start, end))
+    return windows
+
+
+def _to_minutes(hhmm):
+    """'HH:MM' -> minutes since midnight, or None if malformed."""
+    try:
+        h, m = hhmm.split(":")
+        h, m = int(h), int(m)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return h * 60 + m
+
+
+def _minute_of_day(dt):
+    """Minutes since midnight for a datetime (UTC in production, injectable in tests)."""
+    return dt.hour * 60 + dt.minute
+
+
+def _in_peak():
+    """True if current UTC minute falls in any peak window."""
+    if _PEAK is None:
+        return False
+    t = _minute_of_day(datetime.now(timezone.utc))
+    for start, end in _PEAK["windows"]:
+        if start <= end:
+            if start <= t < end:
+                return True
+        elif t >= start or t < end:
+            return True
+    return False
 
 
 def _reported_cost(usage):
@@ -95,13 +174,17 @@ def _estimate_cost(usage):
         cache_write = 0
 
     p = _PRICES
-    return (miss * p["input"] + cache_read * p["cache_read"]
-            + cache_write * p["cache_write"] + output * p["output"]) / 1_000_000
+    est = (miss * p["input"] + cache_read * p["cache_read"]
+           + cache_write * p["cache_write"] + output * p["output"]) / 1_000_000
+    if _PEAK is not None and _in_peak():
+        est *= _PEAK["mult"]
+    return est
 
 
 def create_plugin(ctx):
-    global _PRICES, _session_cost, _request_count, _est_total, _has_reported
+    global _PRICES, _PEAK, _session_cost, _request_count, _est_total, _has_reported
     _PRICES = _load_prices()
+    _PEAK = _load_peak()
     if _PRICES is None:
         return {}
     _session_cost = 0.0
@@ -155,11 +238,15 @@ def create_plugin(ctx):
         return lines
 
     def _on_context_bar():
+        fire = ""
+        if _PEAK is not None and _in_peak():
+            fire = (f"{Config.colors['red']}{Config.colors['bold']}"
+                    f"\U0001F525{Config.colors['reset']}")
         if _session_cost <= 0:
-            return None
+            return fire or None
         prefix = "\u2248" if not _has_reported else ""  # ~: estimate-only session
         dim, reset = Config.colors["dim"], Config.colors["reset"]
-        return f"{dim}{prefix}${_session_cost:.4f}{reset}"
+        return f"{dim}{prefix}${_session_cost:.4f}{reset}{fire}"
 
     ctx.register_hook("after_usage_data", _on_usage_data)
     ctx.register_hook("on_session_change", _on_session_change)
