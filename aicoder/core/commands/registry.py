@@ -80,6 +80,7 @@ class CommandRegistry:
         from .thinking import ThinkingCommand
         from .context_size import ContextSizeCommand
 
+        thinking_cmd = ThinkingCommand(self.context)
         commands = [
             HelpCommand(self.context),
             QuitCommand(self.context),
@@ -95,12 +96,31 @@ class CommandRegistry:
             DetailCommand(self.context),
             NewCommand(self.context),
             DebugCommand(self.context),
-            ThinkingCommand(self.context),
+            thinking_cmd,
             ContextSizeCommand(self.context),
         ]
 
         for command in commands:
             self.register_command(command)
+
+        # Shorthand reasoning-effort commands: /+ /- /++ /--
+        # Mirror the /! precedent: real commands, not aliases. Each delegates to
+        # `/thinking effort <symbol>` (reuses validation + status print).
+        def _effort_shortcut(_args: str, symbol: str) -> str:
+            thinking_cmd.execute(["effort", symbol])
+            return ""
+
+        for sym, desc in (
+            ("+", "Reasoning effort: max (highest valid level)"),
+            ("-", "Reasoning effort: min (lowest valid level)"),
+            ("++", "Reasoning effort: step up one level"),
+            ("--", "Reasoning effort: step down one level"),
+        ):
+            self.register_simple_command(
+                sym,
+                lambda args_str, s=sym: _effort_shortcut(args_str, s),
+                desc,
+            )
 
     def register_command(self, command: Union[BaseCommand, SimplePluginCommand]):
         """Register a command"""
