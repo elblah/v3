@@ -158,6 +158,24 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
             _active_proc = None
 
 
+def _format_duration(seconds: float) -> str:
+    """Format elapsed wall-clock time into a compact human-readable string.
+
+    Sub-second -> '342ms', under 10 min -> '1.24s' / '45.7s',
+    longer -> '3m 05s' / '1h 02m 13s'.
+    """
+    if seconds < 1:
+        return f"{seconds * 1000:.0f}ms"
+    if seconds < 600:
+        return f"{seconds:.2f}s"
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m:02d}m {s:02d}s"
+    return f"{m}m {s:02d}s"
+
+
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute shell command with timeout"""
     command = args.get("command")
@@ -178,21 +196,23 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         if Config.debug():
             LogUtils.debug(f"[prepend-cmd] wrapped: {command!r}")
 
+    start = time.monotonic()
     try:
         # Execute command with proper process group termination
         result = execute_with_process_group(command, timeout, cwd, live_output=live_output)
+        elapsed_str = _format_duration(time.monotonic() - start)
 
         # Create friendly message
         if result.returncode == 0:
-            friendly = f"✓ Command completed (exit code: {result.returncode})"
+            friendly = f"✓ Command completed (exit code: {result.returncode}, elapsed: {elapsed_str})"
         elif result.returncode == -1:
-            friendly = f"✗ Command timed out after {timeout}s (process group terminated)"
+            friendly = f"✗ Command timed out after {timeout}s (process group terminated, elapsed: {elapsed_str})"
         elif result.returncode == 124:
             friendly = (
-                f"✗ Command timed out after {timeout}s (exit code: {result.returncode})"
+                f"✗ Command timed out after {timeout}s (exit code: {result.returncode}, elapsed: {elapsed_str})"
             )
         else:
-            friendly = f"✗ Command failed (exit code: {result.returncode})"
+            friendly = f"✗ Command failed (exit code: {result.returncode}, elapsed: {elapsed_str})"
 
         # Prepare output content
         output = result.stdout
