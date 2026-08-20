@@ -25,6 +25,7 @@ REMOTE_SKILLS=(
     "karpathy-guidelines|forrestchang/andrej-karpathy-skills|skills/karpathy-guidelines"
     "android-skill|elblah/android-cli-toolchain-skills|android-skill"
     "android-tcp-log|elblah/android-cli-toolchain-skills|android-tcp-log"
+    "unlazy|Leonxlnx/unlazy|."
 )
 
 # Build fzf list
@@ -87,11 +88,16 @@ install_remote() {
         return 1
     }
 
-    tar -xzf "$tarball" -C "$tmpdir" --wildcards "*/$path/*"
-
-    # Find the extracted dir
     local extracted
-    extracted=$(find "$tmpdir" -type d -name "$(basename "$path")" | head -1)
+    if [ "$path" = "." ]; then
+        # Skill lives at the tarball root: extract all, use the lone top-level dir
+        tar -xzf "$tarball" -C "$tmpdir"
+        extracted=$(find "$tmpdir" -maxdepth 1 -mindepth 1 -type d | head -1)
+    else
+        tar -xzf "$tarball" -C "$tmpdir" --wildcards "*/$path/*"
+        extracted=$(find "$tmpdir" -type d -name "$(basename "$path")" | head -1)
+    fi
+
     if [ -d "$extracted" ]; then
         cp -vR "$extracted/." "$SKILLS_DIR/$name"
     else
