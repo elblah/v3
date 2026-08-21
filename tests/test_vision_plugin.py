@@ -219,6 +219,131 @@ def test_plugin_integration():
     assert isinstance(result, dict)
 
 
+_MIN_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+
+
+def _make_vision_ctx():
+    """Build a mock PluginContext that records tools/commands like the real one."""
+    from types import SimpleNamespace
+    app = MockApp()
+    app.tool_manager = SimpleNamespace(tools={})
+    commands = {}
+
+    def _register_tool(name, fn, desc, params, auto_approved=False,
+                       format_arguments=None, generate_preview=None):
+        app.tool_manager.tools[name] = {
+            "execute": fn,
+            "description": desc,
+            "parameters": params,
+            "auto_approved": auto_approved,
+            "formatArguments": format_arguments,
+            "generatePreview": generate_preview,
+        }
+
+    ctx = SimpleNamespace()
+    ctx.app = app
+    ctx.register_hook = lambda name, fn: None
+    ctx.register_tool = _register_tool
+    ctx.register_command = lambda name, fn, description=None: commands.__setitem__(name, fn)
+    ctx._commands = commands
+    return ctx
+
+
+def _write_png():
+    f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    f.write(base64.b64decode(_MIN_PNG))
+    f.close()
+    return f.name
+
+
+def test_vision_gateway_path():
+    """read_image bridges to VISION_SCRIPT and returns its stdout as description."""
+    with tempfile.NamedTemporaryFile(suffix=".sh", delete=False, mode="w") as sf:
+        sf.write("#!/usr/bin/env bash\necho \"GATEWAY_DESC for $1\"\n")
+        script = sf.name
+    os.chmod(script, 0o755)
+    img = _write_png()
+
+    old = os.environ.get("VISION_SCRIPT")
+    os.environ["VISION_SCRIPT"] = script
+    try:
+        from aicoder.plugins.vision import create_plugin
+        ctx = _make_vision_ctx()
+        create_plugin(ctx)
+        assert "read_image" in ctx.app.tool_manager.tools, "auto-register when VISION_SCRIPT set"
+        result = ctx.app.tool_manager.tools["read_image"]["execute"]({"path": img})
+        assert "GATEWAY_DESC" in result["detailed"]
+        assert img in result["detailed"]
+    finally:
+        if old is None:
+            os.environ.pop("VISION_SCRIPT", None)
+        else:
+            os.environ["VISION_SCRIPT"] = old
+        os.unlink(script)
+        os.unlink(img)
+
+
+def test_vision_native_injection():
+    """Without a gateway, read_image injects the image for native vision models."""
+    img = _write_png()
+    old_en = os.environ.pop("VISION_ENABLE_TOOL", None)
+    vs = os.environ.pop("VISION_SCRIPT", None)
+    os.environ["VISION_ENABLE_TOOL"] = "1"
+    try:
+        from aicoder.plugins.vision import create_plugin
+        ctx = _make_vision_ctx()
+        create_plugin(ctx)
+        assert "read_image" in ctx.app.tool_manager.tools
+        before = len(ctx.app.test_messages)
+        result = ctx.app.tool_manager.tools["read_image"]["execute"]({"path": img})
+        assert "Image loaded" in result["detailed"]
+        assert len(ctx.app.test_messages) == before + 1
+        injected = ctx.app.test_messages[-1]
+        assert injected["role"] == "user"
+        assert isinstance(injected["content"], list)
+    finally:
+        os.environ.pop("VISION_ENABLE_TOOL", None)
+        if old_en is not None:
+            os.environ["VISION_ENABLE_TOOL"] = old_en
+        if vs is not None:
+            os.environ["VISION_SCRIPT"] = vs
+        os.unlink(img)
+
+
+def test_vision_command_toggle():
+    """/vision on|off|status|help toggles the tool's availability."""
+    os.environ.pop("VISION_SCRIPT", None)
+    os.environ.pop("VISION_ENABLE_TOOL", None)
+    from aicoder.plugins.vision import create_plugin
+    ctx = _make_vision_ctx()
+    create_plugin(ctx)
+    assert "read_image" not in ctx.app.tool_manager.tools, "no auto-register by default"
+
+    handler = ctx._commands["vision"]
+    assert "DISABLED" in handler("status")
+    assert "ENABLED" in handler("on")
+    assert "read_image" in ctx.app.tool_manager.tools
+    assert "DISABLED" in handler("off")
+    assert "read_image" not in ctx.app.tool_manager.tools
+    assert "/vision on" in handler("help")
+    assert "Unknown subcommand" in handler("bogus")
+
+
+def test_vision_script_missing_no_autoregister():
+    """VISION_SCRIPT that doesn't resolve must NOT auto-register read_image."""
+    os.environ["VISION_SCRIPT"] = "/nonexistent/vision-gateway-xyz"
+    old_en = os.environ.pop("VISION_ENABLE_TOOL", None)
+    try:
+        from aicoder.plugins.vision import create_plugin
+        ctx = _make_vision_ctx()
+        create_plugin(ctx)
+        assert "read_image" not in ctx.app.tool_manager.tools
+    finally:
+        os.environ.pop("VISION_SCRIPT", None)
+        if old_en is not None:
+            os.environ["VISION_ENABLE_TOOL"] = old_en
+
+
 def run_all_tests():
     """Run all tests"""
     tests = [
@@ -230,6 +355,10 @@ def run_all_tests():
         test_create_user_message,
         test_transform_user_input,
         test_plugin_integration,
+        test_vision_gateway_path,
+        test_vision_native_injection,
+        test_vision_command_toggle,
+        test_vision_script_missing_no_autoregister,
     ]
 
     passed = 0

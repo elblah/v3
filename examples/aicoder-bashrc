@@ -26,6 +26,11 @@ export SESSION_FILE=${SESSION_FILE:-".aicoder/current-session.jsonl"}
 
 export AICODER_FULL_VISION=1
 
+# Route blind models through dtx vision service via the gateway script.
+# If set + the script exists, the vision plugin auto-registers `read_image`
+# and calls this script (stdout = description). See examples/vision-gateway.
+export VISION_SCRIPT="$HOME/.local/bin/vision-gateway"
+
 # Save context tokens
 export CONTEXT_SIZE=100000
 

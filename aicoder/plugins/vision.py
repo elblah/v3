@@ -209,22 +209,37 @@ def create_plugin(ctx) -> Dict[str, Any]:
     def format_read_image_args(args):
         """Format read_image arguments for display"""
         path = args.get("path", "")
-        full_vision = os.environ.get("AICODER_FULL_VISION", "0") == "1"
-        force_ascii = args.get("force_ascii", False)
-        if force_ascii:
-            mode = "ASCII (forced)"
+        query = args.get("query", "").strip()
+        if _vision_script_path():
+            mode = "gateway (VISION_SCRIPT)"
         else:
-            mode = "full vision" if full_vision else "ASCII (chafa)"
-        return f"Path: {path}\nMode: {mode}"
+            mode = "native vision (image injection)"
+        out = f"Path: {path}\nMode: {mode}"
+        if query:
+            out += f"\nAsk: {query}"
+        return out
+
+    def _vision_script_path():
+        """Return the VISION_SCRIPT path if configured and usable, else None."""
+        script = os.environ.get("VISION_SCRIPT", "").strip()
+        if not script:
+            return None
+        if os.path.isabs(script):
+            return script if os.path.exists(script) else None
+        import shutil
+        found = shutil.which(script)
+        return found if found and os.path.exists(found) else None
 
     def read_image_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         """
         Read and analyze an image file.
 
-        If AICODER_FULL_VISION=1, sends text confirmation and adds a user message with the image.
-        Otherwise, converts the image to ASCII art using chafa.
+        If VISION_SCRIPT is configured (and exists), the image is sent to that
+        gateway script (e.g. dtx vision) and its stdout is returned as the
+        description. Otherwise the raw image is injected for native vision models.
         """
         file_path = args.get("path", "")
+        query = args.get("query", "").strip()
 
         if not file_path:
             return {
@@ -247,17 +262,65 @@ def create_plugin(ctx) -> Dict[str, Any]:
                 "detailed": f"Supported formats: {', '.join(SUPPORTED_FORMATS.keys())}"
             }
 
-        full_vision = os.environ.get("AICODER_FULL_VISION", "0") == "1"
-        force_ascii = args.get("force_ascii", False)
-
-        if full_vision and not force_ascii:
+        script = _vision_script_path()
+        if script:
+            import subprocess
             try:
-                # Add the image as a user message (same as @filename does)
+                cmd = [script, file_path]
+                if query:
+                    cmd.append(query)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                if result.returncode != 0:
+                    detail = result.stderr.strip() or result.stdout.strip() or "gateway returned non-zero exit"
+                    return {
+                        "tool": "read_image",
+                        "friendly": f"Error: vision gateway failed for {file_path}",
+                        "detailed": f"Gateway error (exit {result.returncode}): {detail}"
+                    }
+                description = result.stdout.strip()
+                if not description:
+                    return {
+                        "tool": "read_image",
+                        "friendly": f"Error: vision gateway returned no output for {file_path}",
+                        "detailed": "The VISION_SCRIPT produced no description on stdout."
+                    }
+                return {
+                    "tool": "read_image",
+                    "friendly": f"Image analyzed via gateway: {file_path}",
+                    "detailed": f"Vision gateway description of {file_path}:\n{description}"
+                }
+            except FileNotFoundError:
+                return {
+                    "tool": "read_image",
+                    "friendly": "Error: VISION_SCRIPT not found",
+                    "detailed": f"The configured VISION_SCRIPT '{script}' could not be executed."
+                }
+            except subprocess.TimeoutExpired:
+                return {
+                    "tool": "read_image",
+                    "friendly": "Error: vision gateway timed out",
+                    "detailed": "Vision gateway took too long (120s)."
+                }
+            except Exception as e:
+                return {
+                    "tool": "read_image",
+                    "friendly": f"Error running vision gateway: {e}",
+                    "detailed": str(e)
+                }
+        else:
+            # No gateway: inject raw image for native vision models.
+            try:
                 image_part = create_image_content_part(file_path)
+                ask = f"\nYou asked to analyze this image; instruction: {query}" if query else ""
                 user_message = {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"This is the image you requested: path={file_path}"},
+                        {"type": "text", "text": f"This is the image you requested: path={file_path}.{ask}"},
                         image_part
                     ]
                 }
@@ -265,7 +328,7 @@ def create_plugin(ctx) -> Dict[str, Any]:
 
                 return {
                     "tool": "read_image",
-                    "friendly": f"Image loaded: {file_path} (full vision)",
+                    "friendly": f"Image loaded: {file_path} (native vision)",
                     "detailed": f"Image loaded: {file_path}. A user message with the image has been added to the conversation."
                 }
             except Exception as e:
@@ -274,73 +337,87 @@ def create_plugin(ctx) -> Dict[str, Any]:
                     "friendly": f"Error loading image: {e}",
                     "detailed": str(e)
                 }
-        else:
-            import subprocess
-            try:
-                result = subprocess.run(
-                    ["chafa", "--symbols=block", "--fit-width", "--colors=none", "--size", "100x", file_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                if result.returncode != 0:
-                    return {
-                        "tool": "read_image",
-                        "friendly": f"Error: chafa failed for {file_path}",
-                        "detailed": f"chafa error: {result.stderr}"
-                    }
 
-                ascii_art = result.stdout
-                if len(ascii_art) > 15000:
-                    ascii_art = ascii_art[:15000] + "\n[... truncated ...]"
-
-                return {
-                    "tool": "read_image",
-                    "friendly": f"ASCII representation of {file_path}",
-                    "detailed": f"ASCII art of {file_path}:\n```\n{ascii_art}\n```"
-                }
-            except FileNotFoundError:
-                return {
-                    "tool": "read_image",
-                    "friendly": "Error: chafa not found",
-                    "detailed": "chafa is required for ASCII image conversion. Install it or set AICODER_FULL_VISION=1 for full image support."
-                }
-            except subprocess.TimeoutExpired:
-                return {
-                    "tool": "read_image",
-                    "friendly": "Error: chafa timed out",
-                    "detailed": "Image conversion took too long."
-                }
-            except Exception as e:
-                return {
-                    "tool": "read_image",
-                    "friendly": f"Error converting image: {e}",
-                    "detailed": str(e)
-                }
-
-    # Only register read_image tool if VISION_ENABLE_TOOL=1
-    if os.environ.get("VISION_ENABLE_TOOL", "0") == "1":
-        ctx.register_tool(
-            "read_image",
-            read_image_tool,
-            "Read and analyze an image. Uses full vision if AICODER_FULL_VISION=1, otherwise converts to ASCII via chafa.",
-            {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to the image file"
-                    },
-                    "force_ascii": {
-                        "type": "boolean",
-                        "description": "Force ASCII output even if full vision is available",
-                        "default": False
-                    }
+    # NOTE: register/unregister manipulate tool_manager.tools DIRECTLY (same
+    # pattern as python_runtime). ctx.register_tool writes to plugin_system.tools,
+    # which is only synced into tool_manager at startup — a runtime toggle via
+    # ctx.register_tool would never reach the API schema or /tools.
+    _read_image_tool_def = {
+        "execute": read_image_tool,
+        "description": ("Read and analyze an image. Uses VISION_SCRIPT gateway if configured, "
+                        "otherwise injects the raw image for native vision models. Always pass a "
+                        "'query' describing exactly what you want to know or do with the image."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the image file"
                 },
-                "required": ["path"]
+                "query": {
+                    "type": "string",
+                    "description": "What to ask the vision service about the image, e.g. 'what text is on the screen?'"
+                }
             },
-            format_arguments=format_read_image_args
-        )
+            "required": ["path"]
+        },
+        "auto_approved": False,
+        "formatArguments": format_read_image_args,
+    }
+
+    def _register_read_image():
+        """Make read_image available to the AI (idempotent)."""
+        if ctx.app and ctx.app.tool_manager and "read_image" not in ctx.app.tool_manager.tools:
+            ctx.app.tool_manager.tools["read_image"] = _read_image_tool_def
+
+    def _unregister_read_image():
+        """Remove read_image from the AI's available tools (idempotent)."""
+        if ctx.app and ctx.app.tool_manager and "read_image" in ctx.app.tool_manager.tools:
+            del ctx.app.tool_manager.tools["read_image"]
+
+    def _handle_vision_command(args_str: str) -> str:
+        """Handle /vision command: on | off | status | help."""
+        sub = args_str.strip()
+        if not sub or sub == "help":
+            return (
+                "Vision Plugin\n\n"
+                "Control the read_image tool. The tool is gated and never auto-registers\n"
+                "for blind (non-vision) models unless explicitly enabled.\n\n"
+                "    /vision on      - Enable read_image tool\n"
+                "    /vision off     - Disable read_image tool\n"
+                "    /vision status  - Show current state and mode\n"
+                "    /vision help    - Show this message\n\n"
+                "Mode: if VISION_SCRIPT is set and resolves to an executable, read_image\n"
+                "bridges to that gateway (e.g. dtx). Otherwise it injects the image for\n"
+                "native vision models."
+            )
+        if sub == "on":
+            _register_read_image()
+            return "Vision ENABLED — read_image tool is now available."
+        if sub == "off":
+            _unregister_read_image()
+            return "Vision DISABLED — read_image tool removed."
+        if sub == "status":
+            registered = "read_image" in ctx.app.tool_manager.tools
+            script = _vision_script_path()
+            env_script = os.environ.get("VISION_SCRIPT", "").strip()
+            if script:
+                mode = f"gateway: {script}"
+            elif env_script:
+                mode = f"gateway configured but NOT FOUND: {env_script}"
+            else:
+                mode = "no gateway (native injection)"
+            return (
+                f"read_image tool: {'ENABLED' if registered else 'DISABLED'}\n"
+                f"Mode: {mode}"
+            )
+        return f"Unknown subcommand: {sub}\nUsage: /vision [on|off|status|help]"
+
+    ctx.register_command("vision", _handle_vision_command, "Control the read_image vision tool (on|off|status)")
+
+    # Auto-enable read_image only when a gateway is configured or explicitly requested.
+    if _vision_script_path() or os.environ.get("VISION_ENABLE_TOOL", "0") == "1":
+        _register_read_image()
 
     # Screenshot command
     def has_x11_access():
