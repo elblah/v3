@@ -20,7 +20,11 @@ import time
 import math
 from typing import List
 
-MEMORY_DIR = os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory")
+# Resolve to an absolute path at load time so the prompt can show the exact
+# location. The relative default resolves against aicoder's working directory
+# (NOT the OS home dir) — surfacing the absolute path stops the AI from guessing
+# ~/.aicoder/memory and writing into a read-only location.
+MEMORY_DIR = os.path.abspath(os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memory"))
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
 MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
@@ -214,7 +218,7 @@ def create_plugin(ctx):
         return (
             f"{user_input}\n\n<system-reminder>\n"
             "If you learned anything worth persisting across sessions, "
-            "update your memory notes now (in .aicoder/memory/) — before your answer, not after.\n"
+            f"update your memory notes now (in `{MEMORY_DIR}`) — before your answer, not after.\n"
             "</system-reminder>"
         )
 
@@ -322,7 +326,11 @@ def create_plugin(ctx):
 
         section = (
             "\n\n## Persistent Memory\n"
-            "Files in `.aicoder/memory/` — manage with `write_file`/`edit_file`.\n"
+            "Your memory directory (absolute path — use this exact path):\n"
+            " `" + MEMORY_DIR + "`\n"
+            "This is aicoder's working-directory location, NOT `~/.aicoder/` and NOT your OS home "
+            "(`~/.aicoder` is a different, possibly read-only dir). Always pass the absolute path above "
+            "to `write_file`/`edit_file`.\n"
             "\n"
             "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) — injected into every session's system prompt. "
             "Every byte costs tokens. Write terse bullets. Pointers beat inlining (`see api-notes.md`).\n"
@@ -332,7 +340,7 @@ def create_plugin(ctx):
             "- `99-*.md` = TRANSIENT (scratch, todos, unsure notes): auto-archived to `archive/` after "
             + str(TRANSIENT_TTL_DAYS) + " days without edits. Promote: rename below 99 when it matters.\n"
             "- Only the top " + str(LIST_LIMIT) + " topic files are listed; the rest are counted, not named "
-            "(inspect with `list_directory` on `.aicoder/memory/`). "
+            "(inspect with `list_directory` on `" + MEMORY_DIR + "`). "
             "`archive/` holds keep-without-cost files (never listed).\n"
             "- Prune stale entries — they waste every future session.\n"
             "\n"
@@ -352,8 +360,8 @@ def create_plugin(ctx):
                 section += f"- {name}{suffix}\n"
             hidden = len(files) - LIST_LIMIT
             if hidden > 0:
-                section += (f"- …and {hidden} more files in `.aicoder/memory/` "
-                            "(lower priority — inspect with `list_directory` on `.aicoder/memory/`).\n")
+                section += (f"- …and {hidden} more files in `{MEMORY_DIR}` "
+                            f"(lower priority — inspect with `list_directory` on `{MEMORY_DIR}`).\n")
 
         if autoload:
             section += "\n### autoload.md\n" + autoload
