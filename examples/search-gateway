@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# search-gateway — bridge aicoder's web_search tools to the dtx gobrow service.
+#
+# Usage:
+#   search-gateway search "<query>" [max_tokens]
+#   search-gateway fetch  "<url>"   [max_tokens]
+#
+# Contract (consumed by aicoder/plugins/web_search.py via $WEB_SEARCH_SCRIPT):
+#   - search: runs `gobrow search` on dtx, prints ranked markdown results.
+#   - fetch:  runs `gobrow <url>` on dtx, prints the page as markdown.
+#   - Prints the dtx Output: section to stdout.
+#   - Exit non-zero on any failure (socket missing, dtx down, parse error).
+#
+# Backend: dtx exposes `gobrow` over a unix socket:
+#   gobrow search [flags] <query>   search web, print ranked result links
+#   gobrow [flags] <url>            fetch page -> markdown, cap tokens
+#
+# Expected dtx response (trimmed):
+#   Exit code: 0
+#
+#   Output:
+#   <the markdown content>
+#
+#   Stderr:
+#   <...>
+#
+# gobrow reads the same WEB_SEARCH_PROVIDERS env as the native plugin, so no
+# reconfiguration is needed. Requires nc with unix-socket support (-U) or socat.
+
+set -u
+
+SOCKET="${DTX_SOCKET:-/run/user/1000/tmp/dtx-server.sock}"
+MAX_TOKENS="${3:-8000}"
+
+die() {
+    echo "search-gateway: $*" >&2
+    exit 1
+}
+
+usage() {
+    echo "Usage: search-gateway <search|fetch> \"<arg>\" [max_tokens]" >&2
+    exit 2
+}
+
+[ $# -ge 2 ] || usage
+
+CMD="$1"
+ARG="$2"
+
+case "$CMD" in
+    search) REQ="gobrow search -max-tokens $MAX_TOKENS $ARG" ;;
+    fetch)  REQ="gobrow -max-tokens $MAX_TOKENS $ARG" ;;
+    *) usage ;;
+esac
+
+[ -S "$SOCKET" ] || die "dtx socket not found: $SOCKET"
+
+# Send the gobrow command and capture the raw response.
+if command -v nc >/dev/null 2>&1 && nc -h 2>&1 | grep -q -- '-U'; then
+    RESP=$(printf '%s\n' "$REQ" | nc -U "$SOCKET" 2>/dev/null)
+elif command -v socat >/dev/null 2>&1; then
+    RESP=$(printf '%s\n' "$REQ" | socat - "UNIX-CONNECT:$SOCKET" 2>/dev/null)
+else
+    die "need nc (with -U) or socat"
+fi
+
+[ -n "$RESP" ] || die "no response from dtx (socket busy or service down)"
+
+# Surface a non-zero dtx exit code as a warning (output is still parsed below).
+EXITCODE=$(printf '%s\n' "$RESP" | sed -n 's/^Exit code:[[:space:]]*\([0-9]*\).*/\1/p' | head -n1)
+if [ -n "$EXITCODE" ] && [ "$EXITCODE" != "0" ]; then
+    echo "search-gateway: dtx exit code $EXITCODE (see Stderr if empty)" >&2
+fi
+
+# Extract the Output section: lines between "Output:" and "Stderr:".
+OUT=$(printf '%s\n' "$RESP" | awk '
+    /^Output:/  { capture=1; next }
+    /^Stderr:/  { capture=0 }
+    capture     { print }
+')
+
+# Fallback: no "Stderr:" marker — grab everything after the Output: line.
+if [ -z "$OUT" ]; then
+    OUT=$(printf '%s\n' "$RESP" | awk 'BEGIN{c=0} /^Output:/{c=1;next} c{print}')
+fi
+
+# Trim leading/trailing blank lines.
+OUT=$(printf '%s\n' "$OUT" | sed -e '1{/^$/d}' -e '${/^$/d}')
+
+printf '%s\n' "$OUT"

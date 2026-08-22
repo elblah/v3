@@ -10,9 +10,14 @@ Environment Variables:
   Format: "ProviderName,URL;Provider2Name,URL2;"
   The URL should include the query parameter placeholder, the plugin appends the encoded query
   Default: None (must be configured)
+- WEB_SEARCH_SCRIPT: Optional path to a gateway script (e.g. examples/search-gateway).
+  If set and resolves to an executable, web_search/get_url_content route through it
+  (dtx gobrow, markdown output). If unset/missing, native lynx logic is used.
+  Default: None (native behavior)
 """
 
 import os
+import shutil
 import time
 from typing import Dict, Any, Tuple
 
@@ -61,6 +66,42 @@ def create_plugin(ctx):
         return providers if providers else None
 
     SEARCH_PROVIDERS = parse_providers()
+
+    def _search_script_path():
+        """Return the WEB_SEARCH_SCRIPT path if configured and usable, else None."""
+        script = os.environ.get("WEB_SEARCH_SCRIPT", "").strip()
+        if not script:
+            return None
+        if os.path.isabs(script):
+            return script if os.path.exists(script) else None
+        found = shutil.which(script)
+        return found if found and os.path.exists(found) else None
+
+    def _run_gateway(cmd: str, arg: str, max_tokens: int = 8000):
+        """Route through the WEB_SEARCH_SCRIPT gateway if configured.
+
+        Returns stdout text on success, or None when the script is unavailable
+        or failed (non-zero exit / exception) so the caller falls back to the
+        native lynx path. Empty stdout is treated as failure so a native retry
+        can run (e.g. gobrow 403 -> native may also fail, which is fine).
+        """
+        import subprocess
+        script = _search_script_path()
+        if not script:
+            return None
+        try:
+            result = subprocess.run(
+                [script, cmd, arg, str(max_tokens)],
+                capture_output=True,
+                text=True,
+                timeout=160,
+                check=False,
+            )
+            if result.returncode != 0:
+                return None
+            return result.stdout
+        except Exception:
+            return None
 
     def validate_url(url: str) -> bool:
         """Basic URL validation"""
@@ -171,6 +212,16 @@ def create_plugin(ctx):
                 "detailed": "Query cannot be empty",
             }
 
+        # Optional gateway (WEB_SEARCH_SCRIPT) — mirrors the vision plugin pattern.
+        gw = _run_gateway("search", query)
+        if gw is not None:
+            lines = gw.split("\n")[:DEFAULT_LINES_PER_PAGE]
+            return {
+                "tool": "web_search",
+                "friendly": f"Web search for '{query}' (gateway)",
+                "detailed": "Web search results:\n\n" + "\n".join(lines),
+            }
+
         if SEARCH_PROVIDERS is None:
             example = "WEB_SEARCH_PROVIDERS=MySearch,https://search.example.com/search?q="
             return {
@@ -258,6 +309,16 @@ def create_plugin(ctx):
                 "detailed": "Invalid URL format",
             }
 
+        # Optional gateway for text fetch (native path handles raw HTML).
+        if not raw:
+            gw = _run_gateway("fetch", url)
+            if gw is not None:
+                return {
+                    "tool": "get_url_content",
+                    "friendly": f"Fetched {url} (gateway)",
+                    "detailed": gw,
+                }
+
         # Cache key includes raw flag
         cache_key = f"{url}?raw={raw}"
 
@@ -319,12 +380,28 @@ def create_plugin(ctx):
 
     # Format function for get_url_content (shows URL during approval)
     def format_get_url_content(args):
-        """Format arguments for get_url_content"""
+        """Format arguments for get_url_content, including gateway mode"""
         url = args.get("url", "")
         page = args.get("page", 1)
         raw = args.get("raw", False)
         raw_str = " (raw HTML)" if raw else " (lynx text)"
-        return f"URL: {url}\nPage: {page}{raw_str}"
+        if raw:
+            mode = "native raw HTML (no gateway)"
+        elif _search_script_path():
+            mode = "gateway (WEB_SEARCH_SCRIPT)"
+        else:
+            mode = "native lynx"
+        return f"URL: {url}\nPage: {page}{raw_str}\nMode: {mode}"
+
+    # Format function for web_search (shows query + gateway mode during approval)
+    def format_web_search_args(args):
+        """Format arguments for web_search, including gateway mode"""
+        query = args.get("query", "").strip()
+        if _search_script_path():
+            mode = "gateway (WEB_SEARCH_SCRIPT)"
+        else:
+            mode = "native (providers/lynx)"
+        return f"Query: {query}\nMode: {mode}"
 
     # Register web_search tool
     ctx.register_tool(
@@ -341,7 +418,8 @@ def create_plugin(ctx):
             },
             "required": ["query"]
         },
-        auto_approved=True
+        auto_approved=True,
+        format_arguments=format_web_search_args
     )
 
     # Register get_url_content tool with formatArguments

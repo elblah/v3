@@ -4,6 +4,9 @@ import os
 import sys
 import tempfile
 import base64
+import random
+import struct
+import zlib
 
 # Add parent to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -215,7 +218,19 @@ def test_plugin_integration():
     mock_ctx.register_command = lambda name, fn, description=None: None
     mock_ctx.app = MockApp()
 
-    result = create_plugin(mock_ctx)
+    # Hemetic: an ambient VISION_SCRIPT/VISION_ENABLE_TOOL in the test process
+    # env triggers auto-registration of read_image, which MockApp cannot serve.
+    saved = {k: os.environ.get(k) for k in ("VISION_SCRIPT", "VISION_ENABLE_TOOL")}
+    for k in saved:
+        os.environ.pop(k, None)
+    try:
+        result = create_plugin(mock_ctx)
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+            else:
+                os.environ.pop(k, None)
     assert isinstance(result, dict)
 
 
@@ -254,6 +269,38 @@ def _write_png():
     f.write(base64.b64decode(_MIN_PNG))
     f.close()
     return f.name
+
+
+def _write_noisy_png(width, height, seed=7):
+    """Generate a solid-noise RGB PNG (stdlib only, incompressible-ish)."""
+    rnd = random.Random(seed)
+    raw = b"".join(
+        b"\x00" + bytes(rnd.randrange(256) for _ in range(width * 3))
+        for _ in range(height)
+    )
+
+    def chunk(tag, payload):
+        return (
+            struct.pack(">I", len(payload)) + tag + payload
+            + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+        )
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+    fd, path = tempfile.mkstemp(suffix=".png")
+    with os.fdopen(fd, "wb") as f:
+        f.write(png)
+    return path
+
+
+def _png_dims(data):
+    """Read width/height from a PNG's IHDR (stdlib only)."""
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return struct.unpack(">II", data[16:24])
 
 
 def test_vision_gateway_path():
@@ -344,6 +391,134 @@ def test_vision_script_missing_no_autoregister():
             os.environ["VISION_ENABLE_TOOL"] = old_en
 
 
+def test_vision_max_size_env_parsing():
+    """VISION_MAX_SIZE parsing: 0/negative=off, unset/invalid=built-in default."""
+    from aicoder.plugins.vision import _DEFAULT_MAX_SIZE, _get_max_size
+    old = os.environ.pop("VISION_MAX_SIZE", None)
+    try:
+        # unset -> built-in default
+        assert _get_max_size() == _DEFAULT_MAX_SIZE
+        assert _DEFAULT_MAX_SIZE > 0
+        os.environ["VISION_MAX_SIZE"] = "640"
+        assert _get_max_size() == 640
+        os.environ["VISION_MAX_SIZE"] = "0"
+        assert _get_max_size() is None
+        os.environ["VISION_MAX_SIZE"] = "-5"
+        assert _get_max_size() is None
+        os.environ["VISION_MAX_SIZE"] = "abc"
+        # invalid -> default, resizing stays on
+        assert _get_max_size() == _DEFAULT_MAX_SIZE
+    finally:
+        os.environ.pop("VISION_MAX_SIZE", None)
+        if old is not None:
+            os.environ["VISION_MAX_SIZE"] = old
+
+
+def test_vision_max_size_resize():
+    """VISION_MAX_SIZE downscales long side before base64; small images untouched."""
+    from aicoder.plugins.vision import _resize_image, create_image_content_part
+    big = _write_noisy_png(200, 150)
+    tiny = _write_noisy_png(10, 8)
+    old_en = os.environ.pop("VISION_MAX_SIZE", None)
+    old_provider = os.environ.pop("API_PROVIDER", None)
+    try:
+        # Probe for any usable resize backend (PIL/ImageMagick/ffmpeg/OpenCV/GM).
+        probed = _resize_image(big, 50)
+        if probed == big:
+            os.unlink(big)
+            os.unlink(tiny)
+            print("No resize backend available - skipping resize assertions")
+            return
+        os.unlink(probed)
+
+        os.environ["VISION_MAX_SIZE"] = "50"
+        part = create_image_content_part(big)
+        if part.get("type") == "image":  # anthropic format
+            encoded = part["source"]["data"]
+        else:  # openai format
+            encoded = part["image_url"]["url"].split(",", 1)[1]
+        w, h = _png_dims(base64.b64decode(encoded))
+        assert max(w, h) <= 50, f"expected longest side <= 50, got {w}x{h}"
+        assert (w, h) != (200, 150), "image was not resized"
+
+        # Already-small image must pass through unchanged.
+        part_t = create_image_content_part(tiny)
+        if part_t.get("type") == "image":
+            encoded_t = part_t["source"]["data"]
+        else:
+            encoded_t = part_t["image_url"]["url"].split(",", 1)[1]
+        tw, th = _png_dims(base64.b64decode(encoded_t))
+        assert (tw, th) == (10, 8), f"small image changed: {tw}x{th}"
+    finally:
+        os.unlink(big)
+        os.unlink(tiny)
+        os.environ.pop("VISION_MAX_SIZE", None)
+        if old_en is not None:
+            os.environ["VISION_MAX_SIZE"] = old_en
+        os.environ.pop("API_PROVIDER", None)
+        if old_provider is not None:
+            os.environ["API_PROVIDER"] = old_provider
+
+
+def test_vision_max_size_early_out():
+    """Images already within the limit are returned as-is — no re-encode, no temp copy."""
+    from aicoder.plugins.vision import _image_dimensions, _resize_image
+    small = _write_noisy_png(100, 80)
+    try:
+        if _image_dimensions(small) is None:
+            print("`file` utility unavailable - skipping early-out assertions")
+            return
+        assert _image_dimensions(small) == (100, 80)
+        assert _resize_image(small, 768) == small, "small image should be returned unchanged"
+        # Oversized images still go through the resize chain.
+        big = _write_noisy_png(200, 150)
+        try:
+            resized = _resize_image(big, 50)
+            assert resized != big, "oversized image should have been resized"
+            os.unlink(resized)
+        finally:
+            os.unlink(big)
+    finally:
+        os.unlink(small)
+
+
+def test_vision_header_dims_fallback():
+    """In-process PNG/JPEG header parse when `file` is unavailable."""
+    from aicoder.plugins.vision import _header_dimensions
+    png = _write_noisy_png(120, 90)
+    try:
+        assert _header_dimensions(png) == (120, 90)
+    finally:
+        os.unlink(png)
+    # Minimal valid JPEG structure: SOI, APP0 (JFIF), SOF0 (200x100).
+    jpeg = struct.pack(">2s2sH", b"\xff\xd8", b"\xff\xe0", 16) + b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    jpeg += struct.pack(">2sHB", b"\xff\xc0", 17, 8) + struct.pack(">HH", 100, 200) + b"\x03\x01\x11\x00\x02\x11\x01\x03\x11\x01"
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as jf:
+        jf.write(jpeg)
+    try:
+        assert _header_dimensions(jf.name) == (200, 100)
+    finally:
+        os.unlink(jf.name)
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as bogus:
+        bogus.write(b"this is not an image at all........")
+    try:
+        assert _header_dimensions(bogus.name) is None
+    finally:
+        os.unlink(bogus.name)
+
+
+def test_vision_parse_file_dimensions():
+    """Last-match wins: `file -b` JPEG output carries density BEFORE dims."""
+    from aicoder.plugins.vision import _parse_file_dimensions
+    jpeg = ("JPEG image data, JFIF standard 1.01, resolution (DPI), density "
+            "300x300, segment length 16, Exif Standard: [TIFF image data, "
+            "little-endian, direntries=7], progressive, precision 8, "
+            "1024x786, components 3")
+    assert _parse_file_dimensions(jpeg) == (1024, 786)
+    assert _parse_file_dimensions("PNG image data, 232 x 232, 8-bit/color RGBA") == (232, 232)
+    assert _parse_file_dimensions("no dimensions here") is None
+
+
 def run_all_tests():
     """Run all tests"""
     tests = [
@@ -359,6 +534,11 @@ def run_all_tests():
         test_vision_native_injection,
         test_vision_command_toggle,
         test_vision_script_missing_no_autoregister,
+        test_vision_max_size_env_parsing,
+        test_vision_max_size_resize,
+        test_vision_max_size_early_out,
+        test_vision_header_dims_fallback,
+        test_vision_parse_file_dimensions,
     ]
 
     passed = 0
