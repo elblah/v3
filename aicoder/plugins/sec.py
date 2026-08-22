@@ -30,6 +30,9 @@ _STRIP_VARS = (
     "WAYLAND_DISPLAY",
     "DBUS_SESSION_BUS_ADDRESS",
     "ADB_SERVER_SOCKET",
+    # OPTS = outer sandbox wrapper's bwrap argv — info leak, nothing
+    # inside the seal legitimately reads it. No recipe restores it.
+    "OPTS",
 )
 _ORIG_ENV: dict[str, str] = {v: os.environ[v] for v in _STRIP_VARS if v in os.environ}
 
