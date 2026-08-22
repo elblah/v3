@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from aicoder.core.config import Config
+from aicoder.tools.internal.run_shell_command import resolve_command
 from aicoder.utils.log import LogUtils, info, dim, warn, success, print
 
 
@@ -40,8 +41,10 @@ def create_plugin(ctx):
         """Start a background job with proper process group handling"""
         # Start with new session/process group (like run_shell_command does)
         # Redirect stdout/stderr to DEVNULL to prevent output appearing on screen
+        # resolve_command applies the same seal hook as run_shell_command
+        _, command_argv = resolve_command(command)
         process = subprocess.Popen(
-            ["bash", "-c", command],
+            command_argv if command_argv is not None else ["bash", "-c", command],
             preexec_fn=os.setsid,  # Create new process group
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
