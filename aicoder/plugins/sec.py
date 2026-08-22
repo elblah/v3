@@ -35,6 +35,7 @@ _ORIG_ENV: dict[str, str] = {v: os.environ[v] for v in _STRIP_VARS if v in os.en
 _state = {
     "sealed": True,  # always start sealed
     "allowed": set(),  # recipe names lifted at runtime
+    "net": True,  # network enabled by default; /sec net off -> bwrap --unshare-net
 }
 
 
@@ -86,6 +87,11 @@ def _build_argv(command: str) -> list[str]:
         if v in os.environ:
             argv += ["--unsetenv", v]
 
+    if not _state["net"]:
+        # Isolated netns: loopback only, and it starts DOWN — no
+        # egress, no LAN, no localhost services, no DNS.
+        argv += ["--unshare-net"]
+
     if "proc" in allowed:
         argv += ["--proc", "/proc"]
 
@@ -136,13 +142,19 @@ def _status() -> str:
     lines = []
     if not _state["sealed"]:
         lines.append("sec: UNSEALED - shell commands run without bwrap")
+        lines.append("  net: host (unsealed - full network, net toggle has no effect)")
     else:
         lines.append("sec: sealed - shell commands run in nested bwrap")
+        lines.append(
+            "  net: on" if _state["net"]
+            else "  net: OFF (isolated netns - no egress, no localhost, no DNS)"
+        )
+    rec = " ".join(
+        (r + "*") if r in _state["allowed"] else r for r in RECIPES
+    ) or "(none)"
+    lines.append(f"  recipes: {rec}   (* = allowed)")
     if not bwrap_ok:
         lines.append("  WARNING: bwrap not found - commands are BLOCKED (fail-closed)")
-    recipes = ", ".join(sorted(_state["allowed"])) if _state["allowed"] else "(none)"
-    lines.append(f"  recipes allowed: {recipes}")
-    lines.append(f"  recipes available: {', '.join(RECIPES)}")
     return "\n".join(lines)
 
 
@@ -160,6 +172,13 @@ def _handle_sec(args: str):
         _state["sealed"] = parts[1] == "on"
         return "sealed: nested bwrap active" if _state["sealed"] else \
             "UNSEALED: shell commands run without bwrap"
+
+    if cmd == "net":
+        if len(parts) < 2 or parts[1] not in ("on", "off"):
+            return "usage: /sec net on|off"
+        _state["net"] = parts[1] == "on"
+        return "net: ON (network available)" if _state["net"] else \
+            "net: OFF (isolated netns - no egress, no localhost services)"
 
     if cmd in ("allow", "deny"):
         if len(parts) < 2:
@@ -183,7 +202,7 @@ def _handle_sec(args: str):
         _state["allowed"].discard(name)
         return f"denied recipe '{name}'"
 
-    return "usage: /sec seal on|off | /sec allow|deny <recipe> | /sec status"
+    return "usage: /sec seal on|off | /sec net on|off | /sec allow|deny <recipe> | /sec status"
 
 
 def create_plugin(ctx):
@@ -201,5 +220,5 @@ def create_plugin(ctx):
     ctx.register_command(
         "sec",
         _handle_sec,
-        "Sandbox sealing control (seal on|off, allow|deny <recipe>, status)",
+        "Sandbox sealing control (seal on|off, net on|off, allow|deny <recipe>, status)",
     )
