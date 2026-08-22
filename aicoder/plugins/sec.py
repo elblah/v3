@@ -61,6 +61,10 @@ def _build_argv(command: str) -> list[str]:
         "--ro-bind", "/etc", "/etc",
         "--dev", "/dev",
         "--die-with-parent",
+        # Isolated PID namespace: host processes invisible (inner
+        # process only sees itself + pid 1). killpg/timeout-kill from
+        # the ancestor namespace still works (verified live).
+        "--unshare-pid",
     ]
 
     # Faithful nesting: binding outer's $HOME subtree carries its
