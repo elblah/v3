@@ -6,6 +6,11 @@
 #
 # Contract (consumed by aicoder/plugins/vision.py via $VISION_SCRIPT):
 #   - Reads one image file (relative paths are resolved from $PWD).
+#   - If VISION_MAX_SIZE is set (default 768), downscales the longest side to
+#     a temp copy (ImageMagick/ffmpeg/GraphicsMagick, best effort) and sends
+#     THAT to dtx — the original file is never modified. VISION_MAX_SIZE=0
+#     disables. Images that already fit are sent byte-for-byte unchanged
+#     (cheap dims check via `file`; chain skipped). Temp copy removed on exit.
 #   - Prints the vision description text to stdout.
 #   - Exit non-zero on any failure (image missing, dtx down, parse error).
 #
@@ -50,6 +55,66 @@ shift
 
 # dtx needs an absolute path; resolve it (relative => from $PWD).
 IMG="$(readlink -f "$IMG")" || die "cannot resolve path: $IMG"
+
+# --- Optional downscale to a temp copy (original is never touched) ---
+# Same semantics as the vision plugin: VISION_MAX_SIZE default 768,
+# 0 = off, unset/invalid = default. External tools only (no python libs):
+# ImageMagick (magick -> convert) -> ffmpeg -> GraphicsMagick. Best effort:
+# if every tool fails, the original image is sent unchanged.
+RESIZE_MAX="${VISION_MAX_SIZE:-768}"
+case "$RESIZE_MAX" in
+    '' | *[!0-9]*) RESIZE_MAX=768 ;;   # unset/empty/non-numeric -> default
+    0) RESIZE_MAX=off ;;
+esac
+
+# Early-out: if the image already fits, skip the chain entirely — send the
+# original byte-for-byte (no re-encode). Uses `file` (header-only, cheap).
+if [ "$RESIZE_MAX" != off ] && command -v file >/dev/null 2>&1; then
+    dims="$(file -b "$IMG" 2>/dev/null | sed -nE 's/.*([0-9]+)[[:space:]]*x[[:space:]]*([0-9]+).*/\1 \2/p' | head -n1)"
+    if [ -n "$dims" ]; then
+        w="${dims% *}"; h="${dims#* }"
+        [ "$w" -le "$RESIZE_MAX" ] && [ "$h" -le "$RESIZE_MAX" ] && RESIZE_MAX=off
+    fi
+fi
+RESIZED_TMP=""
+trap 'rm -f "$RESIZED_TMP"' EXIT
+
+resize_image() {  # $1=input $2=max $3=output; shrink-only, aspect preserved
+    local tool
+    if command -v magick >/dev/null 2>&1; then
+        magick "$1" -resize "${2}x${2}>" "$3" 2>/dev/null && [ -s "$3" ] && return 0
+        rm -f "$3"
+    fi
+    if command -v convert >/dev/null 2>&1; then
+        convert "$1" -resize "${2}x${2}>" "$3" 2>/dev/null && [ -s "$3" ] && return 0
+        rm -f "$3"
+    fi
+    if command -v ffmpeg >/dev/null 2>&1; then
+        ffmpeg -y -loglevel error -i "$1" \
+            -vf "scale=${2}:${2}:force_original_aspect_ratio=decrease" "$3" 2>/dev/null \
+            && [ -s "$3" ] && return 0
+        rm -f "$3"
+    fi
+    if command -v gm >/dev/null 2>&1; then
+        gm convert "$1" -resize "${2}x${2}>" "$3" 2>/dev/null && [ -s "$3" ] && return 0
+        rm -f "$3"
+    fi
+    return 1
+}
+
+if [ "$RESIZE_MAX" != off ]; then
+    ext="$(printf '%s' "$IMG" | sed 's/.*\.//' | tr 'A-Z' 'a-z')"
+    case "$ext" in png|jpg|jpeg|webp|gif|bmp) : ;; *) ext=png ;; esac
+    RESIZED_TMP="$(mktemp --suffix=".$ext")" || RESIZED_TMP=""
+    if [ -n "$RESIZED_TMP" ]; then
+        if resize_image "$IMG" "$RESIZE_MAX" "$RESIZED_TMP"; then
+            IMG="$RESIZED_TMP"          # send the resized copy to dtx
+        else
+            rm -f "$RESIZED_TMP"
+            RESIZED_TMP=""
+        fi
+    fi
+fi
 
 QUERY="$*"
 if [ -n "$QUERY" ]; then

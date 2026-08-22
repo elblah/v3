@@ -13,6 +13,10 @@ Usage:
 import base64
 import os
 import re
+import shutil
+import struct
+import subprocess
+import tempfile
 from typing import Dict, Any, List, Optional
 
 _mime_types_init = False
@@ -62,6 +66,243 @@ def encode_image(file_path: str) -> str:
     return base64.b64encode(binary_data).decode("utf-8")
 
 
+_DEFAULT_MAX_SIZE = 768
+
+
+def _get_max_size() -> Optional[int]:
+    """Parse VISION_MAX_SIZE (longest side). 0/negative = off; unset/invalid = default."""
+    raw = os.environ.get("VISION_MAX_SIZE", "").strip()
+    if not raw:
+        return _DEFAULT_MAX_SIZE
+    try:
+        n = int(raw)
+    except ValueError:
+        return _DEFAULT_MAX_SIZE
+    return n if n > 0 else None
+
+
+def _pil_resize(file_path: str, max_size: int) -> str:
+    from PIL import Image
+    with Image.open(file_path) as im:
+        width, height = im.size
+        if max(width, height) <= max_size:
+            return file_path
+        im.thumbnail((max_size, max_size))
+        fd, tmp = tempfile.mkstemp(suffix=os.path.splitext(file_path)[1] or ".png")
+        os.close(fd)
+        try:
+            im.save(tmp, quality=85)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return tmp
+
+
+def _subprocess_resize_tool(tool_args_fn):
+    """Factory for subprocess-based resizers: run tool, return temp path or raise."""
+    def resize(file_path: str, max_size: int) -> str:
+        fd, tmp = tempfile.mkstemp(suffix=os.path.splitext(file_path)[1] or ".png")
+        os.close(fd)
+        try:
+            subprocess.run(
+                tool_args_fn(file_path, tmp, max_size),
+                check=True, capture_output=True, timeout=60,
+            )
+            return tmp
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    return resize
+
+
+def _imagemagick_resize(file_path: str, max_size: int) -> str:
+    for exe in ("magick", "convert"):
+        tool = shutil.which(exe)
+        if not tool:
+            continue
+        return _subprocess_resize_tool(
+            lambda fp, tmp, ms, t=tool: [t, fp, "-resize", f"{ms}x{ms}>", tmp]
+        )(file_path, max_size)
+    raise RuntimeError("no imagemagick binary")
+
+
+def _ffmpeg_resize(file_path: str, max_size: int) -> str:
+    tool = shutil.which("ffmpeg")
+    if not tool:
+        raise RuntimeError("no ffmpeg binary")
+    return _subprocess_resize_tool(
+        lambda fp, tmp, ms: [
+            tool, "-y", "-i", fp,
+            "-vf", f"scale={ms}:{ms}:force_original_aspect_ratio=decrease",
+            tmp,
+        ]
+    )(file_path, max_size)
+
+
+def _graphicsmagick_resize(file_path: str, max_size: int) -> str:
+    tool = shutil.which("gm")
+    if not tool:
+        raise RuntimeError("no gm binary")
+    return _subprocess_resize_tool(
+        lambda fp, tmp, ms: [tool, "convert", fp, "-resize", f"{ms}x{ms}>", tmp]
+    )(file_path, max_size)
+
+
+def _opencv_resize(file_path: str, max_size: int) -> str:
+    import cv2
+    img = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise ValueError(f"cv2 cannot read {file_path}")
+    height, width = img.shape[:2]
+    if max(width, height) <= max_size:
+        return file_path
+    scale = max_size / float(max(width, height))
+    new_size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    resized = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
+    fd, tmp = tempfile.mkstemp(suffix=os.path.splitext(file_path)[1] or ".png")
+    os.close(fd)
+    try:
+        if not cv2.imwrite(tmp, resized):
+            raise ValueError("cv2.imwrite failed")
+        return tmp
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+# External tools first (zero memory footprint on the host process), then the
+# cheap in-proc lib, then cv2 last: its 100MB+ import is a heavy last resort.
+# rpi3 benchmark (1920x1080 -> <=1024, host wall): ffmpeg 2.2s, convert 2.6s,
+# magick 2.9s, PIL 1.4s, cv2 0.3s but +23s cold import / +109MB RSS.
+_RESIZE_BACKENDS = (
+    _imagemagick_resize,
+    _ffmpeg_resize,
+    _pil_resize,
+    _graphicsmagick_resize,
+    _opencv_resize,
+)
+
+
+def _parse_file_dimensions(stdout: str) -> Optional[tuple[int, int]]:
+    """Last WxH pair in `file -b` output. JPEG output reads "density 300x300
+    ..., precision 8, 1024x786, components 3" — the size always trails the
+    density, so take the last match (matches the gateway's greedy sed).
+    """
+    matches = re.findall(r"(\d+)\s*x\s*(\d+)", stdout)
+    if not matches:
+        return None
+    w, h = matches[-1]
+    return int(w), int(h)
+
+
+def _image_dimensions(file_path: str) -> Optional[tuple[int, int]]:
+    """Image dimensions for the early-out. Tries the `file` utility
+    (header-only, fast); falls back to an in-process PNG/JPEG header parse
+    when `file` is missing. Returns None when the size can't be determined
+    (e.g. SVG) — never fatal, the resize chain just runs as before.
+    """
+    try:
+        result = subprocess.run(
+            ["file", "-b", file_path],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        result = None
+    if result is not None and result.returncode == 0:
+        dims = _parse_file_dimensions(result.stdout)
+        if dims is not None:
+            return dims
+    return _header_dimensions(file_path)
+
+
+def _header_dimensions(file_path: str) -> Optional[tuple[int, int]]:
+    """In-process fallback: PNG + JPEG only (covers the images people actually
+    send). Magic-byte verified, so wrong file extensions don't matter.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            head = f.read(24)
+        if head[:8] == b"\x89PNG\r\n\x1a\n":
+            # IHDR: 8 sig + 4 len + 4 "IHDR" + 4+4 = w/h at offset 16.
+            return struct.unpack(">II", head[16:24])
+        if head[:2] == b"\xff\xd8":
+            return _jpeg_dimensions(file_path)
+    except Exception:
+        return None
+    return None
+
+
+def _jpeg_dimensions(file_path: str) -> Optional[tuple[int, int]]:
+    """Scan JPEG segments (skip APPn/COM/DQT/etc by length) until an SOF
+    marker; height/width live right after it. 64KB cap, corrupt => None.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read(65536)
+        i = 2
+        n = len(data)
+        while i + 9 < n:
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker = data[i + 1]
+            if marker in (
+                0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+            ):
+                # FF C0 len(2) precision(1) height(2) width(2)
+                h, w = struct.unpack(">HH", data[i + 5 : i + 9])
+                return w, h
+            if marker == 0xDA:  # reached scan data without an SOF: corrupt
+                return None
+            if marker in (0xFF, 0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                i += 2  # padding / SOI / TEM / RSTn: no length field
+                continue
+            seg_len = struct.unpack(">H", data[i + 2 : i + 4])[0]
+            if seg_len < 2:
+                return None
+            i += 2 + seg_len
+    except Exception:
+        return None
+    return None
+
+
+def _try_backend(backend, file_path: str, max_size: int) -> Optional[str]:
+    try:
+        return backend(file_path, max_size)
+    except Exception:
+        return None  # best-effort: next backend, or original path
+
+
+def _resize_image(file_path: str, max_size: int) -> str:
+    """
+    Best-effort downscale so the longest side is <= max_size (aspect preserved,
+    never upscales). Returns the path to a resized temp copy, or the original
+    path when it already fits or no backend can handle it.
+    """
+    if max_size <= 0:
+        return file_path
+    dims = _image_dimensions(file_path)
+    if dims is not None and max(dims) <= max_size:
+        return file_path  # already fits: no re-encode, send as-is
+    for backend in _RESIZE_BACKENDS:
+        result = _try_backend(backend, file_path, max_size)
+        if result is not None:
+            return result
+    return file_path
+
+
 def _is_anthropic_provider() -> bool:
     return os.environ.get("API_PROVIDER", "").lower() == "anthropic"
 
@@ -75,7 +316,18 @@ def create_image_content_part(file_path: str) -> Dict[str, Any]:
         mime = get_mime_type(file_path)
         raise ValueError(f"Unsupported format: {mime}")
 
-    base64_data = encode_image(file_path)
+    resize_path = file_path
+    max_size = _get_max_size()
+    if max_size:
+        resize_path = _resize_image(file_path, max_size)
+    try:
+        base64_data = encode_image(resize_path)
+    finally:
+        if resize_path != file_path:
+            try:
+                os.unlink(resize_path)
+            except OSError:
+                pass
     mime_type = get_mime_type(file_path)
 
     if _is_anthropic_provider():
@@ -226,7 +478,6 @@ def create_plugin(ctx) -> Dict[str, Any]:
             return None
         if os.path.isabs(script):
             return script if os.path.exists(script) else None
-        import shutil
         found = shutil.which(script)
         return found if found and os.path.exists(found) else None
 
@@ -264,7 +515,6 @@ def create_plugin(ctx) -> Dict[str, Any]:
 
         script = _vision_script_path()
         if script:
-            import subprocess
             try:
                 cmd = [script, file_path]
                 if query:
@@ -389,7 +639,10 @@ def create_plugin(ctx) -> Dict[str, Any]:
                 "    /vision help    - Show this message\n\n"
                 "Mode: if VISION_SCRIPT is set and resolves to an executable, read_image\n"
                 "bridges to that gateway (e.g. dtx). Otherwise it injects the image for\n"
-                "native vision models."
+                "native vision models.\n\n"
+                "Resize: VISION_MAX_SIZE env downscales the longest side before\n"
+                "base64 injection (external tools first, best effort). Default 768;\n"
+                "use VISION_MAX_SIZE=0 to disable. Example: VISION_MAX_SIZE=1024."
             )
         if sub == "on":
             _register_read_image()
@@ -407,9 +660,15 @@ def create_plugin(ctx) -> Dict[str, Any]:
                 mode = f"gateway configured but NOT FOUND: {env_script}"
             else:
                 mode = "no gateway (native injection)"
+            resize = _get_max_size()
+            resize_info = (
+                f"longest side <= {resize}px (VISION_MAX_SIZE)" if resize
+                else "disabled (no VISION_MAX_SIZE)"
+            )
             return (
                 f"read_image tool: {'ENABLED' if registered else 'DISABLED'}\n"
-                f"Mode: {mode}"
+                f"Mode: {mode}\n"
+                f"Resize before injection: {resize_info}"
             )
         return f"Unknown subcommand: {sub}\nUsage: /vision [on|off|status|help]"
 
@@ -422,7 +681,6 @@ def create_plugin(ctx) -> Dict[str, Any]:
     # Screenshot command
     def has_x11_access():
         """Check if X11 display is accessible."""
-        import subprocess
         result = subprocess.run(["xset", "q"], capture_output=True)
         return result.returncode == 0
 
@@ -434,12 +692,10 @@ def create_plugin(ctx) -> Dict[str, Any]:
             print("Error: No X11 access. Run 'xhost +' on your host.")
             return
 
-        import shutil
         if not shutil.which("flameshot"):
             print("Error: flameshot not found.")
             return
 
-        import subprocess
         print("Launching Flameshot...")
         result = subprocess.run(["flameshot", "gui", "--path", screenshot_path])
         if result.returncode != 0 or not os.path.exists(screenshot_path):

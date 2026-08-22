@@ -31,6 +31,17 @@ export AICODER_FULL_VISION=1
 # and calls this script (stdout = description). See examples/vision-gateway.
 export VISION_SCRIPT="$HOME/.local/bin/vision-gateway"
 
+# Route web_search/get_url_content through the dtx gobrow service via the
+# gateway script (stdout = markdown). If set + the script exists, the web
+# search plugin uses it; otherwise it falls back to native lynx. Optional.
+export WEB_SEARCH_SCRIPT="$HOME/.local/bin/search-gateway"
+
+# Downscale images (longest side, pixels) before base64 injection into the
+# message history. Uses whichever resizer is installed (ImageMagick/ffmpeg/
+# PIL/GraphicsMagick/OpenCV, external tools preferred), shrink-only, aspect
+# preserved. Code default is 768; VISION_MAX_SIZE=0 disables.
+export VISION_MAX_SIZE=768
+
 # Save context tokens
 export CONTEXT_SIZE=100000
 
