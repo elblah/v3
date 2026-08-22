@@ -18,7 +18,7 @@ import shutil
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
 
-RECIPES = ("proc", "tmux", "dtx", "dbus", "x11", "rt")
+RECIPES = ("proc", "tmux", "dtx", "dbus", "x11", "rt", "adb")
 
 # Env vars that leak host-service access: stripped in sealed mode,
 # restored by recipes from the values captured at plugin load.
@@ -29,8 +29,33 @@ _STRIP_VARS = (
     "DISPLAY",
     "WAYLAND_DISPLAY",
     "DBUS_SESSION_BUS_ADDRESS",
+    "ADB_SERVER_SOCKET",
 )
 _ORIG_ENV: dict[str, str] = {v: os.environ[v] for v in _STRIP_VARS if v in os.environ}
+
+# adb server spec: explicit env wins; else the canonical localfilesystem
+# default (host .bashrc sets TMPDIR=$XDG_RUNTIME_DIR/tmp, socket adb.sock).
+# Captured at load — the sealed env strips ADB_SERVER_SOCKET, and aicoder
+# may predate the export.
+_ADB_SPEC = os.environ.get(
+    "ADB_SERVER_SOCKET",
+    f"localfilesystem:{RT}/tmp/adb.sock",
+)
+
+# Directories to shadow so the adb client binary dangles. which()+realpath
+# finds the real install; the /lib twin matters because bwrap's
+# --ro-bind /lib /lib resolves the host's usr-merge symlink into a REAL
+# directory inside the seal - covering /usr/lib alone leaves /bin/adb's
+# ../lib/... symlink target alive (verified live).
+_ADB_COVERS = tuple({
+    d
+    for d in (
+        os.path.dirname(os.path.realpath(shutil.which("adb") or "")),
+        "/usr/lib/android-sdk/platform-tools",
+        "/lib/android-sdk/platform-tools",
+    )
+    if d and os.path.isdir(d)
+})
 
 _state = {
     "sealed": True,  # always start sealed
@@ -95,6 +120,25 @@ def _build_argv(command: str) -> list[str]:
         # Isolated netns: loopback only, and it starts DOWN — no
         # egress, no LAN, no localhost services, no DNS.
         argv += ["--unshare-net"]
+
+    if "adb" not in allowed:
+        # Inverse recipe: denied by default, restored by /sec allow adb.
+        # The adb client never talks to the LAN itself - the host adb
+        # server (localhost:5037) holds that connection, which the
+        # seal's egress filter can't see. Shadowing the client binary
+        # closes the practical path only; a hand-rolled client against
+        # the TCP port still works. Full fix: run the server on a
+        # filesystem unix socket (ADB_SERVER_SOCKET=localfilesystem:...)
+        # - the recipe below binds it back in when allowed.
+        for d in _ADB_COVERS:
+            argv += ["--tmpfs", d]
+
+    if "adb" in allowed:
+        if _ADB_SPEC.startswith("localfilesystem:"):
+            sock = _ADB_SPEC.split(":", 1)[1]
+            if os.path.exists(sock):
+                argv += ["--ro-bind", sock, sock]
+        argv += ["--setenv", "ADB_SERVER_SOCKET", _ADB_SPEC]
 
     if "proc" in allowed:
         argv += ["--proc", "/proc"]
@@ -199,6 +243,10 @@ def _handle_sec(args: str):
             elif name == "dtx":
                 note = f" (socket: {RT}/tmp/dtx-server.sock" + \
                     (", present)" if os.path.exists(f"{RT}/tmp/dtx-server.sock") else ", MISSING)")
+            elif name == "adb":
+                spec = _ORIG_ENV.get("ADB_SERVER_SOCKET")
+                note = f" (server: {spec})" if spec else \
+                    f" (binary: {shutil.which('adb') or 'not found'})"
             elif name == "dbus":
                 note = f" (bus: {RT}/bus" + \
                     (", present)" if os.path.exists(f"{RT}/bus") else ", MISSING)")
