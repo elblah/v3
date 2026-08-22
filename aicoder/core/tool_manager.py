@@ -45,6 +45,9 @@ class ToolManager:
         from aicoder.tools.internal.read_file import set_plugin_system as read_file_set_plugin_system
         read_file_set_plugin_system(plugin_system)
 
+        from aicoder.tools.internal.run_shell_command import set_plugin_system as run_shell_command_set_plugin_system
+        run_shell_command_set_plugin_system(plugin_system)
+
     def _register_internal_tools(self):
         """Register all internal tools (filtered by TOOLS_ALLOW and TOOLS_DENY)"""
         all_tools = {

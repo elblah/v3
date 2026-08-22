@@ -1,0 +1,205 @@
+"""
+Sandbox sealing plugin.
+
+Wraps every run_shell_command payload in a nested bwrap sandbox
+("sealed" mode). Sealed = the shell cannot reach host services
+(tmux socket, dbus, X11, dtx, pulse) or /proc — only recipes the
+user lifts at runtime restore specific access.
+
+State is runtime-only: every session starts sealed with no recipes.
+/seal off is the explicit escape hatch. Fail-closed: if the wrapper
+cannot be built, the command is blocked, never run unsealed.
+"""
+
+import os
+import shlex
+import shutil
+
+RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+HOME = os.environ.get("HOME") or ""
+
+RECIPES = ("proc", "tmux", "dtx", "dbus", "x11", "rt")
+
+# Env vars that leak host-service access: stripped in sealed mode,
+# restored by recipes from the values captured at plugin load.
+_STRIP_VARS = (
+    "TMUX",
+    "TMUX_PANE",
+    "AICODER_TMUX_PANE",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "DBUS_SESSION_BUS_ADDRESS",
+)
+_ORIG_ENV: dict[str, str] = {v: os.environ[v] for v in _STRIP_VARS if v in os.environ}
+
+_state = {
+    "sealed": True,  # always start sealed
+    "allowed": set(),  # recipe names lifted at runtime
+}
+
+
+def _blocked(msg: str) -> list[str]:
+    """Argv that prints an error and fails — fail-closed block."""
+    return ["/bin/sh", "-c", f"echo {shlex.quote('sec: ' + msg)} >&2; exit 126"]
+
+
+def _tmux_socket() -> str | None:
+    t = _ORIG_ENV.get("TMUX", "")
+    return t.split(",", 1)[0] if t else None
+
+
+def _build_argv(command: str) -> list[str]:
+    cwd = os.getcwd()
+    allowed: set[str] = _state["allowed"]
+
+    argv = [
+        "bwrap",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind", "/bin", "/bin",
+        "--ro-bind", "/lib", "/lib",
+        "--ro-bind", "/etc", "/etc",
+        "--dev", "/dev",
+        "--die-with-parent",
+    ]
+
+    # Faithful nesting: binding outer's $HOME subtree carries its
+    # submounts (tmpfs + ro-binds + rw workdir) with their own flags.
+    if HOME:
+        argv += ["--ro-bind", HOME, HOME]
+        # Writable ephemeral cache (uv & friends) inside the ro home.
+        argv += ["--tmpfs", os.path.join(HOME, ".cache")]
+
+    argv += ["--bind", cwd, cwd]
+
+    # /tmp must stay writable and shared with the outer sandbox
+    # (write_file("/tmp/x.py") -> run python3 /tmp/x.py).
+    argv += ["--bind", "/tmp", "/tmp"]
+    if "x11" not in allowed:
+        # Cover the X11 sockets inherited with /tmp.
+        argv += ["--tmpfs", "/tmp/.X11-unix"]
+
+    if os.path.isdir("/mnt/shared"):
+        argv += ["--bind", "/mnt/shared", "/mnt/shared"]
+
+    # Strip host-service env vars (recipes restore the ones they lift).
+    for v in _STRIP_VARS:
+        if v in os.environ:
+            argv += ["--unsetenv", v]
+
+    if "proc" in allowed:
+        argv += ["--proc", "/proc"]
+
+    if "tmux" in allowed:
+        sock = _tmux_socket()
+        if sock and os.path.exists(sock):
+            argv += ["--ro-bind", sock, sock]
+        for v in ("TMUX", "TMUX_PANE", "AICODER_TMUX_PANE"):
+            if v in _ORIG_ENV:
+                argv += ["--setenv", v, _ORIG_ENV[v]]
+
+    if "dtx" in allowed:
+        sock = f"{RT}/tmp/dtx-server.sock"
+        if os.path.exists(sock):
+            argv += ["--ro-bind", sock, sock]
+
+    if "dbus" in allowed:
+        bus = f"{RT}/bus"
+        if os.path.exists(bus):
+            argv += ["--ro-bind", bus, bus]
+        if "DBUS_SESSION_BUS_ADDRESS" in _ORIG_ENV:
+            argv += ["--setenv", "DBUS_SESSION_BUS_ADDRESS", _ORIG_ENV["DBUS_SESSION_BUS_ADDRESS"]]
+
+    if "x11" in allowed:
+        if os.path.exists("/tmp/.X11-unix"):
+            argv += ["--ro-bind", "/tmp/.X11-unix", "/tmp/.X11-unix"]
+        if "DISPLAY" in _ORIG_ENV:
+            argv += ["--setenv", "DISPLAY", _ORIG_ENV["DISPLAY"]]
+
+    if "rt" in allowed and os.path.isdir(RT):
+        argv += ["--ro-bind", RT, RT]
+
+    argv += ["/bin/bash", "-c", command]
+    return argv
+
+
+def _on_before_run_shell_command(command):
+    if not _state["sealed"]:
+        return None
+    try:
+        return _build_argv(command)
+    except Exception as e:  # noqa: BLE001 — fail-closed: any seal failure blocks the command
+        return _blocked(f"seal error ({e}); command blocked (fail-closed)")
+
+
+def _status() -> str:
+    bwrap_ok = shutil.which("bwrap") is not None
+    lines = []
+    if not _state["sealed"]:
+        lines.append("sec: UNSEALED - shell commands run without bwrap")
+    else:
+        lines.append("sec: sealed - shell commands run in nested bwrap")
+    if not bwrap_ok:
+        lines.append("  WARNING: bwrap not found - commands are BLOCKED (fail-closed)")
+    recipes = ", ".join(sorted(_state["allowed"])) if _state["allowed"] else "(none)"
+    lines.append(f"  recipes allowed: {recipes}")
+    lines.append(f"  recipes available: {', '.join(RECIPES)}")
+    return "\n".join(lines)
+
+
+def _handle_sec(args: str):
+    parts = args.strip().split()
+
+    if not parts or parts[0] == "status":
+        return _status()
+
+    cmd = parts[0]
+
+    if cmd == "seal":
+        if len(parts) < 2 or parts[1] not in ("on", "off"):
+            return "usage: /sec seal on|off"
+        _state["sealed"] = parts[1] == "on"
+        return "sealed: nested bwrap active" if _state["sealed"] else \
+            "UNSEALED: shell commands run without bwrap"
+
+    if cmd in ("allow", "deny"):
+        if len(parts) < 2:
+            return f"usage: /sec {cmd} <recipe>  (recipes: {', '.join(RECIPES)})"
+        name = parts[1]
+        if name not in RECIPES:
+            return f"unknown recipe '{name}'. recipes: {', '.join(RECIPES)}"
+        if cmd == "allow":
+            _state["allowed"].add(name)
+            note = ""
+            if name == "tmux":
+                sock = _tmux_socket()
+                note = f" (socket: {sock or 'NOT FOUND'})"
+            elif name == "dtx":
+                note = f" (socket: {RT}/tmp/dtx-server.sock" + \
+                    (", present)" if os.path.exists(f"{RT}/tmp/dtx-server.sock") else ", MISSING)")
+            elif name == "dbus":
+                note = f" (bus: {RT}/bus" + \
+                    (", present)" if os.path.exists(f"{RT}/bus") else ", MISSING)")
+            return f"allowed recipe '{name}'{note}"
+        _state["allowed"].discard(name)
+        return f"denied recipe '{name}'"
+
+    return "usage: /sec seal on|off | /sec allow|deny <recipe> | /sec status"
+
+
+def create_plugin(ctx):
+    if shutil.which("bwrap"):
+        ctx.register_hook("on_before_run_shell_command", _on_before_run_shell_command)
+    else:
+        # Fail-closed even when bwrap is missing: block everything.
+        ctx.register_hook(
+            "on_before_run_shell_command",
+            lambda command: _blocked(
+                "bwrap not found; command blocked (fail-closed). '/sec seal off' to disable sealing"
+            ),
+        )
+
+    ctx.register_command(
+        "sec",
+        _handle_sec,
+        "Sandbox sealing control (seal on|off, allow|deny <recipe>, status)",
+    )

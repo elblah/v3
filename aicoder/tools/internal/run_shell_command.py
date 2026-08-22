@@ -7,9 +7,38 @@ import subprocess
 import signal
 import os
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+
+# Plugin system reference (set at startup by ToolManager)
+_plugin_system = None
+
+
+def set_plugin_system(plugin_system) -> None:
+    """Set plugin system reference (for on_before_run_shell_command hooks)"""
+    global _plugin_system
+    _plugin_system = plugin_system
+
+
+def resolve_command(command: str):
+    """Apply the on_before_run_shell_command seal hook to a command.
+
+    Shared by run_shell_command and bg_jobs so every shell spawn goes
+    through the same sandbox interception. Returns (command, argv):
+      argv is None  -> run `bash -c command`
+      argv is a list -> exec argv directly (raw, skips shell wrapping)
+    """
+    if _plugin_system is None:
+        return command, None
+    transformed = _plugin_system.call_hooks_with_return(
+        "on_before_run_shell_command", command
+    )
+    if isinstance(transformed, list):
+        return command, transformed
+    if isinstance(transformed, str) and transformed:
+        return transformed, None
+    return command, None
 
 # Configuration
 DEFAULT_TIMEOUT = Config.default_shell_timeout()
@@ -89,22 +118,26 @@ def _wrap_with_tee(command: str) -> Optional[str]:
     return f"({command}) 2>&1 | tee {tty} 2>/dev/null; exit ${{PIPESTATUS[0]}}"
 
 
-def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None, live_output: bool = False) -> subprocess.CompletedProcess:
-    """Execute command with proper process group termination"""
+def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None, live_output: bool = False, argv: Optional[List[str]] = None) -> subprocess.CompletedProcess:
+    """Execute command with proper process group termination.
+
+    argv (list) bypasses bash -c and the tee wrap: the payload is exec'd
+    directly (used by the sec plugin to wrap commands in nested bwrap).
+    """
     global _active_proc
 
     # Get env with cleared vars (or None to inherit parent env)
     clean_env = _get_cleared_env()
 
     # Wrap command with tee when detail TTY passthrough is enabled OR per-call live_output flag
-    if Config.detail_tty() or live_output:
+    if argv is None and (Config.detail_tty() or live_output):
         wrapped = _wrap_with_tee(command)
         if wrapped:
             command = wrapped
 
     # Create process group for the entire process tree
     proc = subprocess.Popen(
-        ["bash", "-c", command],
+        argv if argv is not None else ["bash", "-c", command],
         shell=False,
         preexec_fn=os.setsid,  # Create new process group
         stdout=subprocess.PIPE,
@@ -189,9 +222,12 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if not command:
         raise Exception("Command is required")
 
+    # Let plugins intercept the command before execution (see resolve_command).
+    command, command_argv = resolve_command(command)
+
     # Prepend wrapper script if configured (e.g. AICODER_SHELL_PREPEND_CMD="rtk")
     prepend = Config.shell_prepend_cmd()
-    if prepend:
+    if prepend and command_argv is None:
         command = f"{prepend} {command}"
         if Config.debug():
             LogUtils.debug(f"[prepend-cmd] wrapped: {command!r}")
@@ -199,7 +235,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     start = time.monotonic()
     try:
         # Execute command with proper process group termination
-        result = execute_with_process_group(command, timeout, cwd, live_output=live_output)
+        result = execute_with_process_group(command, timeout, cwd, live_output=live_output, argv=command_argv)
         elapsed_str = _format_duration(time.monotonic() - start)
 
         # Create friendly message
