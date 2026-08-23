@@ -265,7 +265,7 @@ def _make_vision_ctx():
 
 
 def _write_png():
-    f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    f = tempfile.NamedTemporaryFile(dir=os.getcwd(), suffix=".png", delete=False)
     f.write(base64.b64decode(_MIN_PNG))
     f.close()
     return f.name
@@ -291,7 +291,7 @@ def _write_noisy_png(width, height, seed=7):
         + chunk(b"IDAT", zlib.compress(raw))
         + chunk(b"IEND", b"")
     )
-    fd, path = tempfile.mkstemp(suffix=".png")
+    fd, path = tempfile.mkstemp(dir=os.getcwd(), suffix=".png")
     with os.fdopen(fd, "wb") as f:
         f.write(png)
     return path
@@ -320,7 +320,10 @@ def test_vision_gateway_path():
         assert "read_image" in ctx.app.tool_manager.tools, "auto-register when VISION_SCRIPT set"
         result = ctx.app.tool_manager.tools["read_image"]["execute"]({"path": img})
         assert "GATEWAY_DESC" in result["detailed"]
-        assert img in result["detailed"]
+        # Gateway must only ever see the verified cwd copy, never the original path.
+        assert ".vision.png" in result["detailed"]
+        # Copy must be cleaned up after use.
+        assert not os.path.exists(os.path.join(os.getcwd(), ".vision.png"))
     finally:
         if old is None:
             os.environ.pop("VISION_SCRIPT", None)
