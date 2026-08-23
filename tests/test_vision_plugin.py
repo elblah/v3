@@ -1,6 +1,7 @@
 """Tests for vision plugin"""
 
 import os
+import re
 import sys
 import tempfile
 import base64
@@ -303,6 +304,11 @@ def _png_dims(data):
     return struct.unpack(">II", data[16:24])
 
 
+def _vision_strays():
+    """Stray .vision.* temp copies left in cwd after a read_image call."""
+    return [p for p in os.listdir(os.getcwd()) if p.startswith(".vision")]
+
+
 def test_vision_gateway_path():
     """read_image bridges to VISION_SCRIPT and returns its stdout as description."""
     with tempfile.NamedTemporaryFile(suffix=".sh", delete=False, mode="w") as sf:
@@ -321,9 +327,9 @@ def test_vision_gateway_path():
         result = ctx.app.tool_manager.tools["read_image"]["execute"]({"path": img})
         assert "GATEWAY_DESC" in result["detailed"]
         # Gateway must only ever see the verified cwd copy, never the original path.
-        assert ".vision.png" in result["detailed"]
+        assert re.search(r"\.vision\.[0-9a-f]{16}\.png", result["detailed"]), result["detailed"]
         # Copy must be cleaned up after use.
-        assert not os.path.exists(os.path.join(os.getcwd(), ".vision.png"))
+        assert not _vision_strays()
     finally:
         if old is None:
             os.environ.pop("VISION_SCRIPT", None)
@@ -331,6 +337,50 @@ def test_vision_gateway_path():
             os.environ["VISION_SCRIPT"] = old
         os.unlink(script)
         os.unlink(img)
+
+
+def test_vision_static_bait_symlink():
+    """A planted .vision.* bait symlink must never steer the temp write.
+
+    Round-4 regression (proven live by tester): the predictable
+    ``.vision.<ext>`` copy name + plain open('w') let a static symlink
+    bait redirect the write to an arbitrary writable path. Round 5 uses an
+    unpredictable name with O_CREAT|O_EXCL|O_NOFOLLOW, so the bait is
+    ignored and the decoy target stays untouched.
+    """
+    img = _write_png()
+    bait = os.path.join(os.getcwd(), ".vision.png")
+    decoy = os.path.join(os.getcwd(), "decoy.probe.png")
+    with open(decoy, "wb") as f:
+        f.write(b"SENTINEL-UNTOUCHED")
+    os.symlink(decoy, bait)
+    with tempfile.NamedTemporaryFile(suffix=".sh", delete=False, mode="w") as sf:
+        sf.write("#!/usr/bin/env bash\necho \"GATEWAY_DESC for $1\"\n")
+        script = sf.name
+    os.chmod(script, 0o755)
+    old = os.environ.get("VISION_SCRIPT")
+    os.environ["VISION_SCRIPT"] = script
+    try:
+        from aicoder.plugins.vision import create_plugin
+        ctx = _make_vision_ctx()
+        create_plugin(ctx)
+        result = ctx.app.tool_manager.tools["read_image"]["execute"]({"path": img})
+        assert "Error" not in result["friendly"], result
+        assert re.search(r"\.vision\.[0-9a-f]{16}\.png", result["detailed"])
+        with open(decoy, "rb") as f:
+            assert f.read() == b"SENTINEL-UNTOUCHED", "bait symlink steered the write"
+        # Only the bait itself may remain; the random-named copy is cleaned up.
+        assert [p for p in os.listdir(os.getcwd()) if p.startswith(".vision")] == [".vision.png"]
+    finally:
+        for p in (bait, decoy, img, script):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        if old is None:
+            os.environ.pop("VISION_SCRIPT", None)
+        else:
+            os.environ["VISION_SCRIPT"] = old
 
 
 def test_vision_native_injection():
