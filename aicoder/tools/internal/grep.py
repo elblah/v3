@@ -4,9 +4,11 @@ Grep tool - text search in files
 """
 
 import os
+import shlex
 import subprocess
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
+from aicoder.tools.internal.run_shell_command import resolve_command
 from aicoder.utils.log import LogUtils
 
 # Configuration
@@ -53,7 +55,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         # Check sandbox restrictions, but don't print message (will show in result)
         if not _check_sandbox(path, print_message=False):
             # Create sandbox message in result instead of printing
-            import os
             resolved_path = os.path.abspath(path)
             current_dir = os.getcwd()
             sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"'
@@ -72,8 +73,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Build command using ripgrep ()
-        import os
-
         search_path = os.path.abspath(path)
 
         cmd = [
@@ -83,6 +82,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             str(max_results),
             "-C",
             str(context),  # Context lines
+            "--",  # End of options: text can never be parsed as an rg flag
             text,
             search_path,
         ]
@@ -92,7 +92,26 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         if prepend:
             cmd = prepend.split() + cmd
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        # Route through the same seal hook as run_shell_command/bg_jobs
+        # (on_before_run_shell_command). Quoted so bash re-parses faithfully.
+        quoted = " ".join(shlex.quote(c) for c in cmd)
+        sealed_command, argv = resolve_command(quoted)
+        result = subprocess.run(
+            argv if argv is not None else ["bash", "-c", sealed_command],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # Surface failures (bad regex, seal block) instead of "no matches"
+        if result.returncode != 0 and result.stderr.strip():
+            err = result.stderr.strip()
+            friendly = f"🔍 Search failed: {err.splitlines()[-1]}"
+            return {
+                "tool": "grep",
+                "friendly": friendly,
+                "detailed": f"Command: {' '.join(cmd)}\n\nExit {result.returncode}:\n{err}"
+            }
 
         # Parse results
         matches = result.stdout.strip().split("\n") if result.stdout.strip() else []
@@ -121,15 +140,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             "friendly": f"❌ Search error: {str(e)}",
             "detailed": f"Search for '{text}' failed with error: {str(e)}"
         }
-
-
-def _has_ripgrep() -> bool:
-    """Check if ripgrep is available"""
-    try:
-        subprocess.run(["rg", "--version"], capture_output=True, check=True)
-        return True
-    except:
-        return False
 
 
 def _check_sandbox(path: str, print_message: bool = True) -> bool:
