@@ -10,4 +10,4 @@ from .core.message_history import MessageHistory
 
 __all__ = ["AICoder", "Config", "Stats", "ToolManager", "MessageHistory"]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
