@@ -6,6 +6,7 @@ Stateless module functions - no classes needed
 import ctypes
 import errno
 import os
+import stat
 import time
 from pathlib import Path
 from typing import Optional, Set
@@ -240,21 +241,116 @@ def _real_path_allowed(real: str, write: bool) -> bool:
     return False
 
 
-def _open_verified_proc(path: str, flags: int, context: str):
-    """Fallback verification: open, then prove inode stayed in-bounds.
+def _walk_parent_verified(root_fd: int, rel: str, context: str) -> int:
+    """Pin the parent directory of rel by fd, every hop proven in-bounds.
 
-    Closes the check/open TOCTOU: the fd is bound to whatever open()
-    actually followed; verifying its /proc realpath rejects escaped opens
-    (fail-closed) instead of returning foreign content.
+    Each component opens with O_NOFOLLOW under the previously pinned fd;
+    a symlink component is followed once and its resulting directory fd
+    is verified before the walk continues, so a swapped link can never
+    anchor creation outside the sandbox. Caller owns the returned fd.
     """
-    fd = os.open(path, flags | os.O_CLOEXEC)
+    parts = [p for p in rel.split("/") if p and p != "."][:-1]
+    cur = os.dup(root_fd)
+    prefix = ""
+    try:
+        for part in parts:
+            try:
+                nxt = os.open(
+                    part,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    dir_fd=cur,
+                )
+                prefix = os.path.normpath(os.path.join(prefix, part))
+            except OSError as error:
+                if error.errno not in (errno.ELOOP, errno.ENOTDIR):
+                    raise  # ENOENT/EACCES propagate to caller
+                # Some kernels give ENOTDIR rather than ELOOP for
+                # O_NOFOLLOW|O_DIRECTORY on a symlink; confirm it really
+                # is a symlink before following.
+                st = os.stat(part, dir_fd=cur, follow_symlinks=False)
+                if not stat.S_ISLNK(st.st_mode):
+                    raise  # genuine ENOTDIR (file used as directory)
+                # Symlinked directory component: follow it once, then
+                # prove where it actually landed before continuing.
+                target = os.readlink(part, dir_fd=cur)
+                if os.path.isabs(target):
+                    prefix = os.path.normpath(target)
+                else:
+                    prefix = os.path.normpath(os.path.join(prefix, target))
+                nxt = os.open(
+                    os.path.join(os.getcwd(), prefix)
+                    if not os.path.isabs(prefix)
+                    else prefix,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC,
+                )
+            real = _fd_realpath(nxt)
+            if real is None or not _real_path_allowed(real, True):
+                os.close(nxt)
+                raise SandboxRaceError(
+                    f'{context}: "{rel}" escapes sandbox via "{part}"; blocked'
+                )
+            os.close(cur)
+            cur = nxt
+        return cur
+    except BaseException:
+        os.close(cur)
+        raise
+
+
+def _open_verified_proc(root_fd: int, rel: str, path: str, flags: int, context: str):
+    """Fallback verification without openat2: prove in-bounds BEFORE any
+    filesystem side effect.
+
+    Reads (no side effects) still open-then-verify. Writes open WITHOUT
+    O_CREAT/O_TRUNC first and truncate only after verification, so a race
+    that swaps an escaping symlink into place leaves nothing behind — no
+    created file, no truncated victim. Creation happens only via
+    openat() with O_EXCL|O_NOFOLLOW inside an fd-pinned verified parent,
+    which pins the inode regardless of later path manipulation.
+    """
+    if not flags & (os.O_WRONLY | os.O_RDWR):
+        fd = os.open(path, flags | os.O_CLOEXEC)
+        real = _fd_realpath(fd)
+        if real is None or not _real_path_allowed(real, write=False):
+            os.close(fd)
+            raise SandboxRaceError(
+                f'{context}: "{path}" escaped sandbox during open '
+                f"(resolved to {real or 'unknown'}); blocked"
+            )
+        return fd
+
+    base_flags = flags & ~(os.O_CREAT | os.O_TRUNC)
+    try:
+        fd = os.open(path, base_flags | os.O_CLOEXEC)
+    except FileNotFoundError:
+        # Target absent: create it inside the fd-pinned verified parent.
+        parent = _walk_parent_verified(root_fd, rel, context)
+        try:
+            name = [p for p in rel.split("/") if p][-1]
+            fd = os.open(
+                name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                | os.O_CLOEXEC,
+                0o666,
+                dir_fd=parent,
+            )
+        except FileExistsError:
+            # Raced into existence between our probes: plain open.
+            fd = os.open(path, base_flags | os.O_CLOEXEC)
+        finally:
+            os.close(parent)
+    except OSError:
+        # Dangling final symlink (ENOENT after follow), EISDIR, EACCES...
+        raise
     real = _fd_realpath(fd)
-    if real is None or not _real_path_allowed(real, write=bool(flags & (os.O_WRONLY | os.O_RDWR))):
+    if real is None or not _real_path_allowed(real, True):
         os.close(fd)
         raise SandboxRaceError(
             f'{context}: "{path}" escaped sandbox during open '
             f"(resolved to {real or 'unknown'}); blocked"
         )
+    if flags & os.O_TRUNC:
+        os.ftruncate(fd, 0)  # post-verify: inode already proven in-bounds
     return fd
 
 
@@ -286,32 +382,34 @@ def _open_verified(path: str, flags: int, context: str):
     try:
         root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     except OSError as error:
-        raise SandboxRaceError(f"{context}: cannot open sandbox root '{root}': {error}")
+        raise SandboxRaceError(f"{context}: cannot open sandbox root '{root}': {error}") from error
 
     try:
-        return _openat2_beneath(
-            root_fd, rel, flags, 0o666 if flags & os.O_CREAT else 0
-        )
-    except OSError as error:
-        if error.errno == errno.EXDEV:
-            # RESOLVE_BENEATH rejects absolute symlinks outright and
-            # relative ones that escape. Re-check via /proc provenance so
-            # legitimate absolute-but-in-bounds symlinks still work;
-            # without /proc this fails closed.
-            if os.path.exists("/proc/self/fd"):
-                return _open_verified_proc(path, flags, context)
-            raise SandboxRaceError(
-                f'{context}: "{path}" escaped sandbox during open '
-                "(RESOLVE_BENEATH rejected symlink/traversal; no /proc "
-                "fallback); blocked"
+        try:
+            return _openat2_beneath(
+                root_fd, rel, flags, 0o666 if flags & os.O_CREAT else 0
             )
-        if error.errno not in (errno.ENOSYS, errno.EINVAL):
-            raise  # genuine open error (ENOENT, EACCES, ...)
+        except OSError as error:
+            if error.errno == errno.EXDEV:
+                # RESOLVE_BENEATH rejects absolute symlinks outright and
+                # relative ones that escape. Re-check via /proc provenance so
+                # legitimate absolute-but-in-bounds symlinks still work;
+                # without /proc this fails closed.
+                if os.path.exists("/proc/self/fd"):
+                    return _open_verified_proc(
+                        root_fd, rel, path, flags, context
+                    )
+                raise SandboxRaceError(
+                    f'{context}: "{path}" escaped sandbox during open '
+                    "(RESOLVE_BENEATH rejected symlink/traversal; no /proc "
+                    "fallback); blocked"
+                ) from error
+            if error.errno not in (errno.ENOSYS, errno.EINVAL):
+                raise  # genuine open error (ENOENT, EACCES, ...)
+        # openat2 unavailable on this kernel — verify before side effects.
+        return _open_verified_proc(root_fd, rel, path, flags, context)
     finally:
         os.close(root_fd)
-
-    # openat2 unavailable on this kernel — verify after open instead.
-    return _open_verified_proc(path, flags, context)
 
 
 def read_file_verified(path: str) -> str:
@@ -326,7 +424,7 @@ def read_file_verified(path: str) -> str:
     except SandboxRaceError:
         raise
     except Exception as error:
-        raise Exception(f"Error reading file '{path}': {error}")
+        raise Exception(f"Error reading file '{path}': {error}") from error
 
 
 def write_file_verified(path: str, content: str) -> str:
@@ -347,7 +445,7 @@ def write_file_verified(path: str, content: str) -> str:
             if _lexical_rel_under(dir_path, True) is None:
                 raise SandboxRaceError(
                     f'write: "{path}" is outside sandbox roots; blocked'
-                )
+                ) from None
             os.makedirs(dir_path, exist_ok=True)
             fd = _open_verified(path, flags, "write")
         with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
@@ -358,7 +456,7 @@ def write_file_verified(path: str, content: str) -> str:
     except SandboxRaceError:
         raise
     except Exception as error:
-        raise Exception(f"Error writing file '{path}': {error}")
+        raise Exception(f"Error writing file '{path}': {error}") from error
 
 
 def read_file(path: str) -> str:
@@ -369,7 +467,7 @@ def read_file(path: str) -> str:
         _read_files.add(path)
         return content
     except Exception as error:
-        raise Exception(f"Error reading file '{path}': {error}")
+        raise Exception(f"Error reading file '{path}': {error}") from error
 
 
 def read_file_with_sandbox(path: str) -> str:
@@ -398,7 +496,7 @@ def write_file(path: str, content: str) -> str:
         lines_count = len(content.split("\n"))
         return f"Successfully wrote {bytes_count} bytes ({lines_count} lines) to {path}"
     except Exception as error:
-        raise Exception(f"Error writing file '{path}': {error}")
+        raise Exception(f"Error writing file '{path}': {error}") from error
 
 
 def write_file_with_sandbox(path: str, content: str) -> str:
@@ -440,7 +538,7 @@ def list_directory(path: str) -> list:
 
         return valid_entries
     except Exception as error:
-        raise Exception(f"Error listing directory '{resolved_path}': {error}")
+        raise Exception(f"Error listing directory '{resolved_path}': {error}") from error
 
 
 def get_read_files() -> Set[str]:
