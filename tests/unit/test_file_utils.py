@@ -415,6 +415,58 @@ class TestVerifiedOpen:
         assert "Successfully wrote" in result
         assert (cwd / "a" / "b" / "new.txt").read_text() == "hi"
 
+    def _force_proc_fallback(self, monkeypatch):
+        """Make the /proc fallback reachable even where /proc is masked."""
+        real_exists = os.path.exists
+
+        def fake_exists(p):
+            return True if p == "/proc/self/fd" else real_exists(p)
+
+        monkeypatch.setattr(os.path, "exists", fake_exists)
+
+    def test_write_dir_symlink_component_no_stray_creation(
+        self, monkeypatch, tmp_path
+    ):
+        """R7 regression: rejected write through escaped dir-symlink component
+        must leave NO created file outside the sandbox."""
+        self._force_proc_fallback(monkeypatch)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        (cwd / "dlink").symlink_to(outside)  # absolute escaping component
+        monkeypatch.chdir(cwd)
+        stray_name = "r7probe-abs.txt"
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(Exception) as exc_info:
+                write_file_verified(f"dlink/{stray_name}", "pwned")
+        assert "escapes sandbox" in str(exc_info.value)
+        assert not (outside / stray_name).exists()
+
+    def test_write_relative_dir_symlink_component_no_stray_creation(
+        self, monkeypatch, tmp_path
+    ):
+        """Relative escaping dir-symlink component also leaves no stray."""
+        self._force_proc_fallback(monkeypatch)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        (cwd / "rlink").symlink_to("../outside")
+        monkeypatch.chdir(cwd)
+        stray_name = "r7probe-rel.txt"
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(Exception) as exc_info:
+                write_file_verified(f"rlink/{stray_name}", "pwned")
+        assert "sandbox" in str(exc_info.value)
+        assert not (outside / stray_name).exists()
+
+    # NOTE: no in-bounds-abs-symlink SUCCESS test here: the proc fallback
+    # needs /proc/self/fd for _fd_realpath, which is masked in this
+    # environment, so a legitimate symlinked dir cannot be proven in-bounds
+    # under the forced-fallback harness. Rejection paths above still verify
+    # the no-stray-creation guarantee.
+
     def test_list_directory_rejects_symlink_escape(self, monkeypatch, tmp_path):
         """Symlinked dir flipped to outside target must not leak names."""
         outside = tmp_path / "outside"
