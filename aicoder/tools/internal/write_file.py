@@ -8,7 +8,8 @@ import sys
 import tempfile
 from typing import Dict, Any
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, write_file as file_write, get_relative_path, check_sandbox
+from aicoder.utils.file_utils import file_exists, write_file_verified, get_relative_path, check_sandbox
+from aicoder.utils.file_utils import read_file_verified
 from aicoder.utils.diff_utils import generate_unified_diff_with_status, colorize_diff
 
 # Global reference to plugin system (will be set by aicoder)
@@ -78,7 +79,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             diff_content = diff_result.get("diff", "")
 
             # Write the actual file
-            file_write(path, content)
+            write_file_verified(path, content)
 
             # Mark file as read since user just created/updated it
             FileAccessTracker.record_read(path)
@@ -268,9 +269,8 @@ def validate_arguments(args):
 
 
 def file_read(path: str) -> str:
-    """Read file content"""
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    """Read file content (TOCTOU-safe: fd provenance verified in-bounds)"""
+    return read_file_verified(path)
 
 
 # Tool definition

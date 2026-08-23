@@ -7,7 +7,7 @@ import os
 from typing import Dict, Any
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, read_file as file_read, check_sandbox
+from aicoder.utils.file_utils import file_exists, read_file_verified as file_read, check_sandbox
 from aicoder.utils.log import LogUtils
 
 # Configuration
