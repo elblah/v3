@@ -467,6 +467,56 @@ class TestVerifiedOpen:
     # under the forced-fallback harness. Rejection paths above still verify
     # the no-stray-creation guarantee.
 
+    def _force_openat2_enoent(self, monkeypatch):
+        """Simulate openat2 surfacing a mid-race ENOENT (R8b: escaping dir
+        component transiently vanishing). Flow-only fakes: _fd_realpath is
+        stubbed because /proc is masked here."""
+        import errno as errno_mod
+        from aicoder.utils import file_utils as fu
+
+        def enoent(*args, **kwargs):
+            raise OSError(errno_mod.ENOENT, "No such file or directory")
+
+        monkeypatch.setattr(fu, "_openat2_beneath", enoent)
+
+    def test_write_enoent_reroute_honest_vanish_creates(
+        self, monkeypatch, tmp_path
+    ):
+        self._force_proc_fallback(monkeypatch)
+        self._force_openat2_enoent(monkeypatch)
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        monkeypatch.setattr(
+            'aicoder.utils.file_utils._fd_realpath',
+            lambda fd: os.getcwd(),
+        )
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            result = write_file_verified("fresh-r8b.txt", "ok")
+        assert "Successfully wrote" in result
+        assert (cwd / "fresh-r8b.txt").read_text() == "ok"
+
+    def test_write_enoent_reroute_escape_blocked_no_stray(
+        self, monkeypatch, tmp_path
+    ):
+        self._force_proc_fallback(monkeypatch)
+        self._force_openat2_enoent(monkeypatch)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        monkeypatch.setattr(
+            'aicoder.utils.file_utils._fd_realpath',
+            lambda fd: str(outside) + "/evade.txt",
+        )
+        stray_name = "r8probe-enoent.txt"
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(Exception) as exc_info:
+                write_file_verified(stray_name, "pwned")
+        assert "escaped sandbox" in str(exc_info.value)
+        assert not (outside / ("r8probe-enoent.txt")).exists()
+
     def test_list_directory_rejects_symlink_escape(self, monkeypatch, tmp_path):
         """Symlinked dir flipped to outside target must not leak names."""
         outside = tmp_path / "outside"
