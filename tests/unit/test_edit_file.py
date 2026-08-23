@@ -17,6 +17,13 @@ from aicoder.tools.internal.edit_file import (
 from aicoder.core.file_access_tracker import FileAccessTracker
 
 
+@pytest.fixture(autouse=True)
+def _sandbox_off():
+    """Unit tests use /tmp fixtures: legacy permissive opens for tool logic."""
+    with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+        yield
+
+
 @pytest.fixture
 def temp_file():
     """Create a temporary file for testing"""

@@ -15,6 +15,13 @@ from aicoder.tools.internal.write_file import (
 from aicoder.core.file_access_tracker import FileAccessTracker
 
 
+@pytest.fixture(autouse=True)
+def _sandbox_off():
+    """Unit tests use /tmp fixtures: legacy permissive opens for tool logic."""
+    with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+        yield
+
+
 @pytest.fixture
 def temp_file():
     """Create a temporary file for testing"""
@@ -78,7 +85,7 @@ class TestExecute:
         with tempfile.TemporaryDirectory() as tmpdir:
             new_file = os.path.join(tmpdir, "new_file.txt")
             with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
-                with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
+                with patch('aicoder.tools.internal.write_file.write_file_verified') as mock_write:
                     result = execute({
                         "path": new_file,
                         "content": "New content"
@@ -91,7 +98,7 @@ class TestExecute:
         """Test updating an existing file"""
         FileAccessTracker.record_read(temp_file)
         with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
-            with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
+            with patch('aicoder.tools.internal.write_file.write_file_verified') as mock_write:
                 result = execute({
                     "path": temp_file,
                     "content": "Updated content"
@@ -276,7 +283,7 @@ class TestExecuteWithPluginHooks:
             set_plugin_system(mock_plugin_system)
 
             with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
-                with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
+                with patch('aicoder.tools.internal.write_file.write_file_verified') as mock_write:
                     execute({
                         "path": new_file,
                         "content": "Original content"
@@ -296,7 +303,7 @@ class TestExecuteWithPluginHooks:
             set_plugin_system(mock_plugin_system)
 
             with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
-                with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
+                with patch('aicoder.tools.internal.write_file.write_file_verified') as mock_write:
                     execute({
                         "path": new_file,
                         "content": "Original content"

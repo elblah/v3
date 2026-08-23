@@ -5,16 +5,16 @@ import tempfile
 import pytest
 from unittest.mock import patch, MagicMock
 
-import sys
-
 from aicoder.utils.file_utils import (
     get_current_dir,
     get_relative_path,
     check_sandbox,
     file_exists,
     read_file,
+    read_file_verified,
     read_file_with_sandbox,
     write_file,
+    write_file_verified,
     write_file_with_sandbox,
     list_directory,
     get_read_files,
@@ -336,3 +336,140 @@ class TestGetReadFiles:
         _read_files.clear()
         result = get_read_files()
         assert result == set()
+
+
+class TestVerifiedOpen:
+    """TOCTOU-safe open: fd provenance verified after open (fail-closed)."""
+
+    def test_read_rejects_symlink_escape(self, monkeypatch, tmp_path):
+        """In-cwd symlink flipped to outside target must be rejected at open."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        secret = outside / "secret.txt"
+        secret.write_text("SECRET")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        link = cwd / "safe.txt"
+        link.symlink_to(secret)
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(Exception) as exc_info:
+                read_file_verified(str(link))
+        assert "escaped sandbox" in str(exc_info.value)
+
+    def test_read_allows_in_cwd_symlink(self, monkeypatch, tmp_path):
+        """Symlink resolving inside cwd still reads."""
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        target = cwd / "data.txt"
+        target.write_text("data")
+        link = cwd / "link.txt"
+        link.symlink_to("data.txt")  # relative target
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            assert read_file_verified(str(link)) == "data"
+
+    def test_read_whitelist_dir_allowed(self, monkeypatch, tmp_path):
+        """Plugin-whitelisted dirs stay readable through verified open."""
+        from aicoder.utils import file_utils
+        outside = tmp_path / "skills"
+        outside.mkdir()
+        skill = outside / "s.md"
+        skill.write_text("skill")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        mock_ps = MagicMock()
+        mock_ps.call_hooks.return_value = [str(outside)]
+        file_utils.set_plugin_system(mock_ps)
+        try:
+            with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+                assert read_file_verified(str(skill)) == "skill"
+        finally:
+            file_utils.set_plugin_system(None)
+
+    def test_write_rejects_symlink_escape_no_truncation(self, monkeypatch, tmp_path):
+        """Rejected write must NOT truncate the outside target."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        victim = outside / "victim.txt"
+        victim.write_text("PRECIOUS")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        link = cwd / "out.txt"
+        link.symlink_to(victim)
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(Exception) as exc_info:
+                write_file_verified(str(link), "pwned")
+        assert "escaped sandbox" in str(exc_info.value)
+        assert victim.read_text() == "PRECIOUS"
+
+    def test_write_creates_missing_subdir(self, monkeypatch, tmp_path):
+        """Missing parent dirs created only after verified-open ENOENT."""
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            result = write_file_verified(str(cwd / "a" / "b" / "new.txt"), "hi")
+        assert "Successfully wrote" in result
+        assert (cwd / "a" / "b" / "new.txt").read_text() == "hi"
+
+    def test_list_directory_rejects_symlink_escape(self, monkeypatch, tmp_path):
+        """Symlinked dir flipped to outside target must not leak names."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "secret.txt").write_text("SECRET")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        (cwd / "visible.txt").write_text("v")
+        link = cwd / "peek"
+        link.symlink_to(outside)
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(Exception) as exc_info:
+                list_directory(str(link))
+        # static symlink caught by pre-check, race-window by verified open
+        msg = str(exc_info.value)
+        assert "outside current directory" in msg or "escaped sandbox" in msg
+
+    def test_list_directory_fd_lists_cwd(self, monkeypatch, tmp_path):
+        """Normal listing works through the fd-bound path."""
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        (cwd / "one.txt").write_text("1")
+        (cwd / "two.txt").write_text("2")
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            entries = list_directory(".")
+        assert sorted(entries) == ["one.txt", "two.txt"]
+
+    def test_sandbox_disabled_legacy_permissive(self, monkeypatch, tmp_path):
+        """MINI_SANDBOX=0 keeps old any-path behavior."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        secret = outside / "secret.txt"
+        secret.write_text("SECRET")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        link = cwd / "safe.txt"
+        link.symlink_to(secret)
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert read_file_verified(str(link)) == "SECRET"
+
+    def test_fd_realpath_tolerates_deleted(self, monkeypatch, tmp_path):
+        """Unlinked in-cwd inode keeps its path minus '(deleted)' suffix."""
+        if not os.path.exists("/proc/self/fd/0"):
+            pytest.skip("/proc/self/fd unavailable in this environment")
+        from aicoder.utils.file_utils import _fd_realpath
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        f = cwd / "gone.txt"
+        f.write_text("x")
+        fd = os.open(str(f), os.O_RDONLY)
+        try:
+            os.unlink(str(f))
+            assert _fd_realpath(fd) == str(f)
+        finally:
+            os.close(fd)

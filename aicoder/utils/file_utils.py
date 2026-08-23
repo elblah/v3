@@ -3,6 +3,8 @@ Cross-platform file operations with sandbox enforcement
 Stateless module functions - no classes needed
 """
 
+import ctypes
+import errno
 import os
 import time
 from pathlib import Path
@@ -152,6 +154,213 @@ def file_exists(path: str) -> bool:
     return os.path.exists(path)
 
 
+class SandboxRaceError(Exception):
+    """Raised when an opened fd's real path escapes the sandbox."""
+
+
+# openat2 kernel UAPI constants. No glibc wrapper exists, so we call the
+# raw syscall via ctypes. __NR_openat2 comes from the unified syscall
+# table (asm-generic/unistd.h): 437 on arm64 and every other 64-bit arch.
+# RESOLVE_BENEATH is from linux/openat2.h and forbids path resolution
+# (including symlink targets) from leaving dirfd's subtree.
+_SYS_OPENAT2 = 437
+_RESOLVE_BENEATH = 0x08
+
+_libc = ctypes.CDLL(None, use_errno=True)
+
+
+def _openat2_beneath(dirfd: int, rel: str, flags: int, mode: int) -> int:
+    """openat2(dirfd, rel, {flags, mode, RESOLVE_BENEATH}, 24).
+
+    Kernel-atomic containment: symlink resolution can never escape dirfd.
+    Raises OSError(err=ENOSYS/EINVAL) when openat2 is unsupported so the
+    caller can fall back to post-open verification.
+    """
+    # struct open_how { __u64 flags; __u64 mode; __u64 resolve; }
+    how = (ctypes.c_uint64 * 3)(
+        ctypes.c_uint64(flags & 0xFFFFFFFFFFFFFFFF),
+        ctypes.c_uint64(mode),
+        ctypes.c_uint64(_RESOLVE_BENEATH),
+    )
+    ctypes.set_errno(0)
+    res = _libc.syscall(
+        ctypes.c_long(_SYS_OPENAT2),
+        ctypes.c_int(dirfd),
+        rel.encode("utf-8"),
+        how,
+        ctypes.c_size_t(ctypes.sizeof(how)),
+    )
+    if res < 0:
+        raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
+    return res
+
+
+def open_directory_verified(path: str, context: str) -> int:
+    """Open a directory fd proven in-bounds (TOCTOU-safe). Caller closes."""
+    return _open_verified(path, os.O_RDONLY | os.O_DIRECTORY, context)
+
+
+def _lexical_rel_under(path: str, write: bool):
+    """Pick (root, rel) with path lexically inside root; None if outside all.
+
+    Roots: cwd first, then plugin-whitelisted dirs (read-only, skipped for
+    writes). Deliberately NOT symlink-resolved — openat2 enforces that part.
+    """
+    candidates = [os.getcwd()]
+    if not write:
+        candidates.extend(_whitelisted_dirs())
+    for root in candidates:
+        rel = os.path.relpath(os.path.normpath(path), root)
+        if rel != ".." and not rel.startswith("../"):
+            return root, rel
+    return None
+
+
+def _fd_realpath(fd: int) -> Optional[str]:
+    """Real path of an open fd via /proc, tolerating '(deleted)' suffix."""
+    try:
+        real = os.readlink(f"/proc/self/fd/{fd}")
+    except OSError:
+        return None
+    if real.endswith(" (deleted)"):
+        real = real.removesuffix(" (deleted)")
+    return real
+
+
+def _real_path_allowed(real: str, write: bool) -> bool:
+    """Containment rule on a fully-resolved path (same set as check_sandbox)."""
+    current_dir = os.getcwd()
+    if real == current_dir or real.startswith(current_dir + "/"):
+        return True
+    if not write:
+        return any(
+            real == allowed or real.startswith(allowed + "/")
+            for allowed in _whitelisted_dirs()
+        )
+    return False
+
+
+def _open_verified_proc(path: str, flags: int, context: str):
+    """Fallback verification: open, then prove inode stayed in-bounds.
+
+    Closes the check/open TOCTOU: the fd is bound to whatever open()
+    actually followed; verifying its /proc realpath rejects escaped opens
+    (fail-closed) instead of returning foreign content.
+    """
+    fd = os.open(path, flags | os.O_CLOEXEC)
+    real = _fd_realpath(fd)
+    if real is None or not _real_path_allowed(real, write=bool(flags & (os.O_WRONLY | os.O_RDWR))):
+        os.close(fd)
+        raise SandboxRaceError(
+            f'{context}: "{path}" escaped sandbox during open '
+            f"(resolved to {real or 'unknown'}); blocked"
+        )
+    return fd
+
+
+def _open_verified(path: str, flags: int, context: str):
+    """Open path proven in-bounds: openat2(RESOLVE_BENEATH) primary.
+
+    RESOLVE_BENEATH makes containment a kernel guarantee during pathname
+    resolution — no TOCTOU window at all. Falls back to open+verify (/proc)
+    on kernels without openat2; fails closed when neither method works.
+    """
+    try:
+        from aicoder.core.config import Config
+        disabled = Config.sandbox_disabled()
+    except ImportError:
+        disabled = True
+    if disabled:
+        return os.open(path, flags)
+
+    write = bool(flags & (os.O_WRONLY | os.O_RDWR))
+    picked = _lexical_rel_under(
+        path if os.path.isabs(path) else os.path.join(os.getcwd(), path), write
+    )
+    if picked is None:
+        raise SandboxRaceError(
+            f'{context}: "{path}" is outside sandbox roots; blocked'
+        )
+    root, rel = picked
+
+    try:
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    except OSError as error:
+        raise SandboxRaceError(f"{context}: cannot open sandbox root '{root}': {error}")
+
+    try:
+        return _openat2_beneath(
+            root_fd, rel, flags, 0o666 if flags & os.O_CREAT else 0
+        )
+    except OSError as error:
+        if error.errno == errno.EXDEV:
+            # RESOLVE_BENEATH rejects absolute symlinks outright and
+            # relative ones that escape. Re-check via /proc provenance so
+            # legitimate absolute-but-in-bounds symlinks still work;
+            # without /proc this fails closed.
+            if os.path.exists("/proc/self/fd"):
+                return _open_verified_proc(path, flags, context)
+            raise SandboxRaceError(
+                f'{context}: "{path}" escaped sandbox during open '
+                "(RESOLVE_BENEATH rejected symlink/traversal; no /proc "
+                "fallback); blocked"
+            )
+        if error.errno not in (errno.ENOSYS, errno.EINVAL):
+            raise  # genuine open error (ENOENT, EACCES, ...)
+    finally:
+        os.close(root_fd)
+
+    # openat2 unavailable on this kernel — verify after open instead.
+    return _open_verified_proc(path, flags, context)
+
+
+def read_file_verified(path: str) -> str:
+    """TOCTOU-safe read for AI-facing callers. Same content contract as
+    read_file(), but the open itself is proven in-bounds."""
+    try:
+        fd = _open_verified(path, os.O_RDONLY, "read")
+        with os.fdopen(fd, "r", encoding="utf-8", closefd=True) as f:
+            content = f.read()
+        _read_files.add(path)
+        return content
+    except SandboxRaceError:
+        raise
+    except Exception as error:
+        raise Exception(f"Error reading file '{path}': {error}")
+
+
+def write_file_verified(path: str, content: str) -> str:
+    """TOCTOU-safe write for AI-facing callers. Same contract as
+    write_file(), but the create/truncate open is proven in-bounds.
+
+    Missing parent dirs are created only after a verified open proves
+    them absent. A race swapping an escaping symlink into place after
+    that creation can leave an empty directory outside (accepted), but
+    the retried verified open still blocks any content escape.
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    try:
+        try:
+            fd = _open_verified(path, flags, "write")
+        except FileNotFoundError:
+            dir_path = os.path.dirname(os.path.abspath(path))
+            if _lexical_rel_under(dir_path, True) is None:
+                raise SandboxRaceError(
+                    f'write: "{path}" is outside sandbox roots; blocked'
+                )
+            os.makedirs(dir_path, exist_ok=True)
+            fd = _open_verified(path, flags, "write")
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as f:
+            f.write(content)
+        bytes_count = len(content.encode("utf-8"))
+        lines_count = len(content.split("\n"))
+        return f"Successfully wrote {bytes_count} bytes ({lines_count} lines) to {path}"
+    except SandboxRaceError:
+        raise
+    except Exception as error:
+        raise Exception(f"Error writing file '{path}': {error}")
+
+
 def read_file(path: str) -> str:
     """Read a file (no sandbox) - default behavior for internal use"""
     try:
@@ -171,7 +380,7 @@ def read_file_with_sandbox(path: str) -> str:
             f'read_file: path "{path}" outside current directory not allowed'
         )
 
-    return read_file(path)
+    return read_file_verified(path)
 
 
 def write_file(path: str, content: str) -> str:
@@ -200,13 +409,13 @@ def write_file_with_sandbox(path: str, content: str) -> str:
             f'write_file: path "{path}" outside current directory not allowed'
         )
 
-    return write_file(path, content)
+    return write_file_verified(path, content)
 
 
 def list_directory(path: str) -> list:
     """List directory contents (with sandbox check)"""
     # Resolve path first
-    resolved_path = str(Path(path).resolve()) if path != "." else _current_dir
+    resolved_path = str(Path(path).resolve())
 
     # Check sandbox
     if not check_sandbox(resolved_path, "list_directory"):
@@ -215,7 +424,11 @@ def list_directory(path: str) -> list:
         )
 
     try:
-        entries = os.listdir(resolved_path)
+        fd = _open_verified(path or ".", os.O_RDONLY | os.O_DIRECTORY, "list_directory")
+        try:
+            entries = os.listdir(fd)  # fd-bound: kernel-proven directory
+        finally:
+            os.close(fd)
 
         # Filter only files/dirs (no special entries)
         excluded = ["node_modules", ".git", ".vscode", ".idea", "dist", "build"]
