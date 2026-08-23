@@ -13,6 +13,7 @@ Usage:
 import base64
 import os
 import re
+import secrets
 import shutil
 import struct
 import subprocess
@@ -64,12 +65,13 @@ def is_supported_image(file_path: str) -> bool:
 def _verified_image_temp(file_path: str, context: str = "read_image") -> str:
     """Return a path to a TOCTOU-safe verified copy of an in-bounds image.
 
-    Opens via the verified-open primitive (_open_verified, fail-closed),
-    reads the bytes from the resulting fd, and writes them to a hidden copy
-    in the PROJECT ROOT (cwd): ``.vision.<ext>``. The copy must live in cwd —
-    NOT /tmp — because the vision-gateway runs OUTSIDE the AI sandbox and
-    cannot see sandbox-isolated /tmp files (its only shared, writable view is
-    the project dir). The caller deletes the copy after use (see callers).
+    Opens the source via the verified-open primitive (_open_verified,
+    fail-closed), reads the bytes from the resulting fd, and writes them to
+    a hidden copy in the PROJECT ROOT (cwd): ``.vision.<random><ext>``. The
+    copy must live in cwd — NOT /tmp — because the vision-gateway runs
+    OUTSIDE the AI sandbox and cannot see sandbox-isolated /tmp files (its
+    only shared, writable view is the project dir). The caller deletes the
+    copy after use (see callers).
 
     The caller must NEVER use the original/resolved path for downstream
     consumers (vision-gateway subprocess, encode/resize): those run with
@@ -77,6 +79,15 @@ def _verified_image_temp(file_path: str, context: str = "read_image") -> str:
     This copy provenance is what kills the arbitrary-host-file read and the
     mime/permission oracle — the gateway only ever sees bytes already proven
     in-bounds.
+
+    The copy name is unpredictable (secrets) and created with
+    O_CREAT|O_EXCL|O_NOFOLLOW: a static bait symlink (proven live: a planted
+    ``.vision.jpg -> /mnt/shared/decoy.png`` made the plain ``open('w')``
+    follow it and overwrite the target with image bytes) cannot steer the
+    write, and an in-flight swap is rejected instead of followed. After the
+    write the copy is re-opened with the same verified primitive so a swap
+    before hand-off raises SandboxRaceError (fail-closed) rather than being
+    passed downstream.
 
     Raises FileNotFoundError if absent, ValueError on unsupported format,
     SandboxRaceError/OSError on escaped or blocked open.
@@ -87,17 +98,27 @@ def _verified_image_temp(file_path: str, context: str = "read_image") -> str:
     with os.fdopen(fd, "rb", closefd=True) as f:
         data = f.read()
     ext = os.path.splitext(file_path)[1].lower() or ".png"
-    tmp = os.path.join(os.getcwd(), f".vision{ext}")
-    try:
-        with open(tmp, "wb") as f:
-            f.write(data)
-    except Exception:
+    # Random suffix BEFORE the extension: downstream consumers re-check
+    # is_supported_image/ext and would reject ".vision.png.<hex>".
+    for _ in range(3):
+        tmp = os.path.join(os.getcwd(), f".vision.{secrets.token_hex(8)}{ext}")
         try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-    return tmp
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except FileExistsError:
+            continue
+        try:
+            with os.fdopen(fd, "wb", closefd=True) as f:
+                f.write(data)
+            vfd = _open_verified(tmp, os.O_RDONLY, context)
+            os.close(vfd)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return tmp
+    raise OSError(f"could not create verified temp copy for {file_path}")
 
 
 def encode_image(file_path: str) -> str:
@@ -555,13 +576,15 @@ def create_plugin(ctx) -> Dict[str, Any]:
             }
 
         # TOCTOU-safe: copy the verified in-bounds bytes to a hidden
-        # .vision.<ext> file in the PROJECT ROOT (cwd) — the gateway runs
-        # outside the sandbox and cannot see /tmp — and only ever hand that
-        # copy to downstream consumers. The original path is never passed to
-        # the gateway subprocess or encode/resize — those re-resolve with
-        # their own privileges and would honor a raced symlink to an
-        # arbitrary host file. A swap mid-open raises SandboxRaceError
-        # (fail-closed) instead of leaking. The copy is unlinked after use.
+        # .vision.<random><ext> file in the PROJECT ROOT (cwd) — the gateway
+        # runs outside the sandbox and cannot see /tmp — and only ever hand
+        # that copy to downstream consumers. The original path is never
+        # passed to the gateway subprocess or encode/resize — those
+        # re-resolve with their own privileges and would honor a raced
+        # symlink to an arbitrary host file. A swap mid-open raises
+        # SandboxRaceError (fail-closed) instead of leaking; the random
+        # O_EXCL|O_NOFOLLOW name defeats static symlink bait steering the
+        # write. The copy is unlinked after use.
         try:
             safe_path = _verified_image_temp(file_path)
         except SandboxRaceError as e:
