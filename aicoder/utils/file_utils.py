@@ -390,20 +390,24 @@ def _open_verified(path: str, flags: int, context: str):
                 root_fd, rel, flags, 0o666 if flags & os.O_CREAT else 0
             )
         except OSError as error:
-            if error.errno == errno.EXDEV:
-                # RESOLVE_BENEATH rejects absolute symlinks outright and
-                # relative ones that escape. Re-check via /proc provenance so
-                # legitimate absolute-but-in-bounds symlinks still work;
-                # without /proc this fails closed.
+            if error.errno in (errno.EXDEV, errno.ENOENT):
+                # EXDEV: RESOLVE_BENEATH rejects absolute symlinks outright
+                # and relative ones that escape. ENOENT is ambiguous: an
+                # escaping component can transiently vanish mid-race and
+                # surface as ENOENT instead of EXDEV. Re-check via /proc
+                # provenance so escapes are named and honest vanishes stay
+                # FileNotFoundError; without /proc this fails closed.
                 if os.path.exists("/proc/self/fd"):
                     return _open_verified_proc(
                         root_fd, rel, path, flags, context
                     )
-                raise SandboxRaceError(
-                    f'{context}: "{path}" escaped sandbox during open '
-                    "(RESOLVE_BENEATH rejected symlink/traversal; no /proc "
-                    "fallback); blocked"
-                ) from error
+                if error.errno == errno.EXDEV:
+                    raise SandboxRaceError(
+                        f'{context}: "{path}" escaped sandbox during open '
+                        "(RESOLVE_BENEATH rejected symlink/traversal; no "
+                        "/proc fallback); blocked"
+                    ) from error
+                raise  # honest ENOENT, no verifier available
             if error.errno not in (errno.ENOSYS, errno.EINVAL):
                 raise  # genuine open error (ENOENT, EACCES, ...)
         # openat2 unavailable on this kernel — verify before side effects.
