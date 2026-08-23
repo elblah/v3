@@ -63,6 +63,18 @@ _ADB_COVERS = tuple({
     if d and os.path.isdir(d)
 })
 
+# Extra files/sockets bound into the seal alongside dtx-server.sock
+# when the dtx recipe is allowed (comma-separated list, user-set in
+# the aicoder launcher env, e.g.
+# SEC_DTX_RECIPE_ENABLE=/run/user/1000/tmp/dbrowser.sock). Only paths
+# that exist when the recipe is lifted are bound. The sealed sandbox
+# cannot inject values here — os.environ is the parent aicoder env.
+_DTX_EXTRA = tuple(
+    p.strip()
+    for p in os.environ.get("SEC_DTX_RECIPE_ENABLE", "").split(",")
+    if p.strip()
+)
+
 _state = {
     "sealed": True,  # always start sealed
     "allowed": set(),  # recipe names lifted at runtime
@@ -161,6 +173,9 @@ def _build_argv(command: str) -> list[str]:
         sock = f"{RT}/tmp/dtx-server.sock"
         if os.path.exists(sock):
             argv += ["--ro-bind", sock, sock]
+        for path in _DTX_EXTRA:
+            if os.path.exists(path):
+                argv += ["--ro-bind", path, path]
 
     if "dbus" in allowed:
         bus = f"{RT}/bus"
@@ -249,6 +264,9 @@ def _handle_sec(args: str):
             elif name == "dtx":
                 note = f" (socket: {RT}/tmp/dtx-server.sock" + \
                     (", present)" if os.path.exists(f"{RT}/tmp/dtx-server.sock") else ", MISSING)")
+                if _DTX_EXTRA:
+                    bound = sum(1 for p in _DTX_EXTRA if os.path.exists(p))
+                    note += f" + {bound}/{len(_DTX_EXTRA)} extra bind(s)"
             elif name == "adb":
                 spec = _ORIG_ENV.get("ADB_SERVER_SOCKET")
                 note = f" (server: {spec})" if spec else \
