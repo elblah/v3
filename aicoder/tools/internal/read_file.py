@@ -7,7 +7,7 @@ import os
 from typing import Dict, Any
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, read_file as file_read
+from aicoder.utils.file_utils import file_exists, read_file as file_read, check_sandbox
 from aicoder.utils.log import LogUtils
 
 # Configuration
@@ -22,27 +22,6 @@ def set_plugin_system(plugin_system) -> None:
     """Set plugin system reference (for on_read_file intercept hooks)"""
     global _plugin_system
     _plugin_system = plugin_system
-
-
-def _check_sandbox(path: str, print_message: bool = True) -> bool:
-    """Check if path is within allowed directory"""
-    if Config.sandbox_disabled():
-        return True
-
-    if not path:
-        return True
-
-    # Resolve the path
-    resolved_path = os.path.abspath(path)
-    current_dir = os.getcwd()
-    
-    # Check if resolved path is within current directory
-    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        if print_message:
-            LogUtils.error(f'[x] Sandbox: read_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
-        return False
-    
-    return True
 
 
 def _get_virtual_content(path: str):
@@ -121,7 +100,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if virtual is not None:
         return _paginate(path, offset, limit, virtual)
 
-    if not _check_sandbox(path):
+    if not check_sandbox(path, "read_file"):
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
         raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
@@ -154,7 +133,7 @@ def generatePreview(args):
         return None
 
     # Check sandbox first - don't print message since preview will show it
-    if not _check_sandbox(path, print_message=False):
+    if not check_sandbox(path, "read_file", print_message=False):
         import os.path
 
         resolved_path = os.path.abspath(path)

@@ -9,6 +9,7 @@ import subprocess
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
 from aicoder.tools.internal.run_shell_command import resolve_command
+from aicoder.utils.file_utils import check_sandbox
 from aicoder.utils.log import LogUtils
 
 # Configuration
@@ -51,9 +52,8 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         raise Exception("Text is required")
 
     try:
-        # Check sandbox restrictions
         # Check sandbox restrictions, but don't print message (will show in result)
-        if not _check_sandbox(path, print_message=False):
+        if not check_sandbox(path, "grep", print_message=False):
             # Create sandbox message in result instead of printing
             resolved_path = os.path.abspath(path)
             current_dir = os.getcwd()
@@ -140,27 +140,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             "friendly": f"❌ Search error: {str(e)}",
             "detailed": f"Search for '{text}' failed with error: {str(e)}"
         }
-
-
-def _check_sandbox(path: str, print_message: bool = True) -> bool:
-    """Check if path is within allowed directory"""
-    if Config.sandbox_disabled():
-        return True
-
-    if not path:
-        return True
-
-    # Resolve the path
-    resolved_path = os.path.abspath(path)
-    current_dir = os.getcwd()
-    
-    # Check if resolved path is within current directory
-    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        if print_message:
-            LogUtils.error(f'[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
-        return False
-    
-    return True
 
 
 # Tool definition

@@ -7,11 +7,9 @@ import os
 import sys
 import tempfile
 from typing import Dict, Any
-from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, write_file as file_write, get_relative_path
+from aicoder.utils.file_utils import file_exists, write_file as file_write, get_relative_path, check_sandbox
 from aicoder.utils.diff_utils import generate_unified_diff_with_status, colorize_diff
-from aicoder.utils.log import LogUtils
 
 # Global reference to plugin system (will be set by aicoder)
 _plugin_system = None
@@ -21,27 +19,6 @@ def set_plugin_system(plugin_system):
     """Set plugin system reference"""
     global _plugin_system
     _plugin_system = plugin_system
-
-
-def _check_sandbox(path: str, print_message: bool = True) -> bool:
-    """Check if path is within allowed directory"""
-    if Config.sandbox_disabled():
-        return True
-
-    if not path:
-        return True
-
-    # Resolve the path
-    resolved_path = os.path.abspath(path)
-    current_dir = os.getcwd()
-    
-    # Check if resolved path is within current directory
-    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        if print_message:
-            LogUtils.error(f'[x] Sandbox: write_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
-        return False
-    
-    return True
 
 
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -62,7 +39,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(modified_content, str):
                 content = modified_content
 
-    if not _check_sandbox(path):
+    if not check_sandbox(path, "write_file"):
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
         raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
