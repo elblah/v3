@@ -22,9 +22,12 @@ RECIPES = ("proc", "tmux", "dtx", "dbus", "x11", "rt", "adb")
 
 # Env vars that leak host-service access: stripped in sealed mode,
 # restored by recipes from the values captured at plugin load.
+# TMUX_PANE is intentionally NOT stripped: it's just a pane ID string
+# (e.g. "%3") — no socket path, no host access — and the AI needs it
+# to call vet via dtx. The tmux recipe (socket) stays required for
+# actual tmux access.
 _STRIP_VARS = (
     "TMUX",
-    "TMUX_PANE",
     "AICODER_TMUX_PANE",
     "DISPLAY",
     "WAYLAND_DISPLAY",
@@ -150,7 +153,7 @@ def _build_argv(command: str) -> list[str]:
         sock = _tmux_socket()
         if sock and os.path.exists(sock):
             argv += ["--ro-bind", sock, sock]
-        for v in ("TMUX", "TMUX_PANE", "AICODER_TMUX_PANE"):
+        for v in ("TMUX", "AICODER_TMUX_PANE"):
             if v in _ORIG_ENV:
                 argv += ["--setenv", v, _ORIG_ENV[v]]
 
