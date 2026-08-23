@@ -19,6 +19,8 @@ import subprocess
 import tempfile
 from typing import Dict, Any, List, Optional
 
+from aicoder.utils.file_utils import SandboxRaceError, _open_verified
+
 _mime_types_init = False
 
 def _get_mime_types():
@@ -57,6 +59,45 @@ def is_supported_image(file_path: str) -> bool:
     """Check if file is a supported image format."""
     ext = os.path.splitext(file_path)[1].lower()
     return ext in SUPPORTED_FORMATS
+
+
+def _verified_image_temp(file_path: str, context: str = "read_image") -> str:
+    """Return a path to a TOCTOU-safe verified copy of an in-bounds image.
+
+    Opens via the verified-open primitive (_open_verified, fail-closed),
+    reads the bytes from the resulting fd, and writes them to a hidden copy
+    in the PROJECT ROOT (cwd): ``.vision.<ext>``. The copy must live in cwd —
+    NOT /tmp — because the vision-gateway runs OUTSIDE the AI sandbox and
+    cannot see sandbox-isolated /tmp files (its only shared, writable view is
+    the project dir). The caller deletes the copy after use (see callers).
+
+    The caller must NEVER use the original/resolved path for downstream
+    consumers (vision-gateway subprocess, encode/resize): those run with
+    their own unverified privileges and would re-resolve a raced symlink.
+    This copy provenance is what kills the arbitrary-host-file read and the
+    mime/permission oracle — the gateway only ever sees bytes already proven
+    in-bounds.
+
+    Raises FileNotFoundError if absent, ValueError on unsupported format,
+    SandboxRaceError/OSError on escaped or blocked open.
+    """
+    if not is_supported_image(file_path):
+        raise ValueError(f"Unsupported image format: {file_path}")
+    fd = _open_verified(file_path, os.O_RDONLY, context)
+    with os.fdopen(fd, "rb", closefd=True) as f:
+        data = f.read()
+    ext = os.path.splitext(file_path)[1].lower() or ".png"
+    tmp = os.path.join(os.getcwd(), f".vision{ext}")
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return tmp
 
 
 def encode_image(file_path: str) -> str:
@@ -499,13 +540,13 @@ def create_plugin(ctx) -> Dict[str, Any]:
                 "detailed": "Please provide a file path to the image."
             }
 
+        # Verify presence and supported format up front for friendly errors.
         if not os.path.exists(file_path):
             return {
                 "tool": "read_image",
                 "friendly": f"Error: File not found: {file_path}",
                 "detailed": f"The file '{file_path}' does not exist."
             }
-
         if not is_supported_image(file_path):
             return {
                 "tool": "read_image",
@@ -513,10 +554,33 @@ def create_plugin(ctx) -> Dict[str, Any]:
                 "detailed": f"Supported formats: {', '.join(SUPPORTED_FORMATS.keys())}"
             }
 
+        # TOCTOU-safe: copy the verified in-bounds bytes to a hidden
+        # .vision.<ext> file in the PROJECT ROOT (cwd) — the gateway runs
+        # outside the sandbox and cannot see /tmp — and only ever hand that
+        # copy to downstream consumers. The original path is never passed to
+        # the gateway subprocess or encode/resize — those re-resolve with
+        # their own privileges and would honor a raced symlink to an
+        # arbitrary host file. A swap mid-open raises SandboxRaceError
+        # (fail-closed) instead of leaking. The copy is unlinked after use.
+        try:
+            safe_path = _verified_image_temp(file_path)
+        except SandboxRaceError as e:
+            return {
+                "tool": "read_image",
+                "friendly": f"Error: image blocked by sandbox: {file_path}",
+                "detailed": str(e)
+            }
+        except OSError as e:
+            return {
+                "tool": "read_image",
+                "friendly": f"Error reading image: {file_path}",
+                "detailed": f"Could not open '{file_path}': {e}"
+            }
+
         script = _vision_script_path()
         if script:
             try:
-                cmd = [script, file_path]
+                cmd = [script, safe_path]
                 if query:
                     cmd.append(query)
                 result = subprocess.run(
@@ -562,10 +626,15 @@ def create_plugin(ctx) -> Dict[str, Any]:
                     "friendly": f"Error running vision gateway: {e}",
                     "detailed": str(e)
                 }
+            finally:
+                try:
+                    os.unlink(safe_path)
+                except OSError:
+                    pass
         else:
             # No gateway: inject raw image for native vision models.
             try:
-                image_part = create_image_content_part(file_path)
+                image_part = create_image_content_part(safe_path)
                 ask = f"\nYou asked to analyze this image; instruction: {query}" if query else ""
                 user_message = {
                     "role": "user",
@@ -587,6 +656,11 @@ def create_plugin(ctx) -> Dict[str, Any]:
                     "friendly": f"Error loading image: {e}",
                     "detailed": str(e)
                 }
+            finally:
+                try:
+                    os.unlink(safe_path)
+                except OSError:
+                    pass
 
     # NOTE: register/unregister manipulate tool_manager.tools DIRECTLY (same
     # pattern as python_runtime). ctx.register_tool writes to plugin_system.tools,
