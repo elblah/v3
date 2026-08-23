@@ -11,6 +11,38 @@ from typing import Optional, Set
 # Module-level state
 _current_dir = os.getcwd()
 _read_files: Set[str] = set()
+_plugin_system = None
+
+
+def set_plugin_system(plugin_system) -> None:
+    """Set the plugin system (wired by ToolManager at startup)."""
+    global _plugin_system
+    _plugin_system = plugin_system
+
+
+def _whitelisted_dirs() -> list:
+    """Dirs whitelisted by plugins via the on_file_sandbox_whitelist hook.
+
+    Each hook returns a dir path or an iterable of paths. Whitelisted dirs
+    grant READ-ONLY access; write tools never consult the whitelist.
+    """
+    if not _plugin_system:
+        return []
+    try:
+        results = _plugin_system.call_hooks("on_file_sandbox_whitelist")
+    except Exception:
+        return []
+    if not results:
+        return []
+    dirs = []
+    for result in results:
+        if result is None:
+            continue
+        entries = [result] if isinstance(result, str) else result
+        for entry in entries:
+            if isinstance(entry, str) and entry:
+                dirs.append(str(Path(os.path.expanduser(entry)).resolve()))
+    return dirs
 
 
 def get_current_dir() -> str:
@@ -59,12 +91,16 @@ def rotate_debug_log(path: str) -> Optional[str]:
     return new_path
 
 
-def check_sandbox(path: str, context: str = "file operation", print_message: bool = True) -> bool:
+def check_sandbox(path: str, context: str = "file operation", print_message: bool = True,
+                  write: bool = False) -> bool:
     """Check if a path is allowed by sandbox rules.
 
     Symlink-safe: resolves symlinks and parent traversal before the prefix
     check, so a link inside cwd pointing outside is rejected (non-existent
     tail is resolved via its parent, so writes to new files still work).
+
+    Paths outside cwd are allowed if inside a plugin-whitelisted dir
+    (on_file_sandbox_whitelist hook) — read-only, so write=True skips it.
     """
     # Import here to avoid circular imports
     try:
@@ -90,6 +126,11 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
         resolved_path == current_dir
         or resolved_path.startswith(current_dir + "/")
     ):
+        if not write and any(
+            resolved_path == allowed or resolved_path.startswith(allowed + "/")
+            for allowed in _whitelisted_dirs()
+        ):
+            return True
         if print_message:
             try:
                 from aicoder.utils.log import warn

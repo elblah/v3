@@ -46,7 +46,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if not path or old_string is None:
         raise Exception("Path and old_string are required")
 
-    if not check_sandbox(path, "edit_file"):
+    if not check_sandbox(path, "edit_file", write=True):
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
         raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
@@ -163,7 +163,7 @@ def generate_preview(args):
         from aicoder.utils.file_utils import get_relative_path
         relative_path = get_relative_path(path)
         
-        if not check_sandbox(path, "edit_file", print_message=False):
+        if not check_sandbox(path, "edit_file", print_message=False, write=True):
             # Don't print in check since preview will show message
             resolved_path = os.path.abspath(path)
             current_dir = os.getcwd()
