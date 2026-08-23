@@ -309,8 +309,21 @@ Any dir: skill_name/SKILL.md with YAML frontmatter."""
     def on_system_prompt_append():
         return manager.generate_skills_text(internal_registry())
 
+    def on_file_sandbox_whitelist():
+        """Whitelist global skills dirs for read-only sandbox access.
+
+        Lets read_file/grep/list_directory reach them from any cwd; write
+        tools never consult the whitelist, keeping them READ-ONLY.
+        """
+        cfg_dir = os.path.expanduser("~/.config/aicoder-v3")
+        return [
+            os.path.join(cfg_dir, "skills"),
+            os.path.join(cfg_dir, "skills-extra"),
+        ]
+
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
     ctx.register_hook("on_read_file", handle_internal_read)
+    ctx.register_hook("on_file_sandbox_whitelist", on_file_sandbox_whitelist)
     ctx.register_command("skills", handle_skills_command, description="List available skills")
 
     if Config.debug():

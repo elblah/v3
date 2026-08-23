@@ -39,7 +39,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(modified_content, str):
                 content = modified_content
 
-    if not check_sandbox(path, "write_file"):
+    if not check_sandbox(path, "write_file", write=True):
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
         raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')

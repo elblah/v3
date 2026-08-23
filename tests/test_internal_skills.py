@@ -197,6 +197,19 @@ def test_internal_registry_requires_plugin_system():
     assert "/internal/" not in out  # no app/plugin_system -> no internal lines, no crash
 
 
+def test_sandbox_whitelist_hook_registered():
+    ctx = StubCtx(plugin_system=None)
+    create_skills_plugin(ctx)
+    handlers = ctx.hooks.get("on_file_sandbox_whitelist")
+    assert handlers, "skills plugin must register on_file_sandbox_whitelist"
+
+    dirs = handlers[0]()
+    assert isinstance(dirs, list)
+    assert any(d.endswith("/skills") for d in dirs)
+    assert any(d.endswith("/skills-extra") for d in dirs)
+    assert all(d.startswith("/") for d in dirs)
+
+
 # ---------------------------------------------------------------------------
 # Integration with real PluginSystem (lazy registration order proof)
 # ---------------------------------------------------------------------------

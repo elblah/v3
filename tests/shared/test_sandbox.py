@@ -10,6 +10,7 @@ import os
 import pytest
 from unittest.mock import patch
 
+import aicoder.utils.file_utils as fu
 from aicoder.core.config import Config
 from aicoder.utils.file_utils import check_sandbox
 
@@ -102,3 +103,86 @@ class TestSandboxSymlinks:
         proj, outside = project
         os.symlink(str(outside), str(proj / "sub" / "link"))
         assert check_sandbox("sub/link/../../../etc/passwd", print_message=False) is False
+
+
+class FakeWhitelistSystem:
+    """Fake plugin system whose on_file_sandbox_whitelist hook returns dirs."""
+
+    def __init__(self, results):
+        self._results = results
+
+    def call_hooks(self, event, *args, **kwargs):
+        assert event == "on_file_sandbox_whitelist"
+        return list(self._results)
+
+
+class TestSandboxWhitelist:
+    """Plugin-whitelisted dirs grant read-only access outside cwd."""
+
+    @pytest.fixture
+    def project(self, tmp_path, monkeypatch):
+        proj = tmp_path / "project"
+        proj.mkdir()
+        (proj / "sub").mkdir()
+        outside = tmp_path / "skills"
+        (outside / "dtx").mkdir(parents=True)
+        (outside / "dtx" / "SKILL.md").write_text("skill")
+        monkeypatch.chdir(proj)
+        return proj, outside
+
+    @pytest.fixture
+    def whitelist(self, project, monkeypatch):
+        _, outside = project
+        ps = FakeWhitelistSystem([[str(outside)]])
+        monkeypatch.setattr(fu, "_plugin_system", ps)
+        return ps
+
+    def test_whitelisted_path_allowed(self, project, whitelist, sandbox_on):
+        _, outside = project
+        assert check_sandbox(str(outside / "dtx" / "SKILL.md"), print_message=False) is True
+
+    def test_whitelisted_dir_root_allowed(self, project, whitelist, sandbox_on):
+        _, outside = project
+        assert check_sandbox(str(outside), print_message=False) is True
+
+    def test_outside_whitelist_denied(self, project, whitelist, sandbox_on):
+        assert check_sandbox("/etc/passwd", print_message=False) is False
+
+    def test_lexical_prefix_of_whitelist_denied(self, project, whitelist, sandbox_on):
+        _, outside = project
+        sibling = outside.parent / (outside.name + "-evil")
+        assert check_sandbox(str(sibling / "SKILL.md"), print_message=False) is False
+
+    def test_whitelist_write_denied(self, project, whitelist, sandbox_on):
+        """Whitelist is read-only: write tools must never use it."""
+        _, outside = project
+        assert check_sandbox(str(outside / "dtx" / "SKILL.md"), print_message=False,
+                             write=True) is False
+
+    def test_symlink_inside_whitelist_to_outside_denied(self, project, whitelist, sandbox_on):
+        """Symlink-safe: link within whitelisted dir pointing elsewhere is denied."""
+        _, outside = project
+        secret = outside.parent / "secret"
+        secret.mkdir()
+        os.symlink(str(secret), str(outside / "leak"))
+        assert check_sandbox(str(outside / "leak" / "f"), print_message=False) is False
+
+    def test_no_plugin_system_denied(self, project, monkeypatch, sandbox_on):
+        monkeypatch.setattr(fu, "_plugin_system", None)
+        _, outside = project
+        assert check_sandbox(str(outside / "dtx" / "SKILL.md"), print_message=False) is False
+
+    def test_hook_returning_none_denied(self, project, monkeypatch, sandbox_on):
+        monkeypatch.setattr(fu, "_plugin_system", FakeWhitelistSystem([None]))
+        _, outside = project
+        assert check_sandbox(str(outside / "dtx" / "SKILL.md"), print_message=False) is False
+
+    def test_hook_string_result_allowed(self, project, monkeypatch, sandbox_on):
+        """A hook may return a single string instead of a list."""
+        _, outside = project
+        monkeypatch.setattr(fu, "_plugin_system", FakeWhitelistSystem([str(outside)]))
+        assert check_sandbox(str(outside / "dtx" / "SKILL.md"), print_message=False) is True
+
+    def test_write_inside_cwd_still_allowed(self, project, whitelist, sandbox_on):
+        proj, _ = project
+        assert check_sandbox("sub/new.txt", print_message=False, write=True) is True
