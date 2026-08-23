@@ -3,12 +3,18 @@ List directory tool
 
 """
 
+import fnmatch
 import os
-from pathlib import Path
 from typing import Dict, Any
 from aicoder.core.config import Config
-from aicoder.utils.file_utils import check_sandbox
-from aicoder.utils.log import LogUtils
+from aicoder.utils.file_utils import check_sandbox, open_directory_verified
+
+
+def _matches_pattern(filename: str, pattern: str) -> bool:
+    """True if filename matches the user glob. '**' is treated as zero+ dirs,
+    so '**/*.py' degrades to a plain '*\\.py' match."""
+    clean_pattern = pattern.replace("**/", "")
+    return fnmatch.fnmatch(filename, clean_pattern)
 
 
 def validateArguments(args: Dict[str, Any]) -> None:
@@ -42,11 +48,10 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         # Resolve path
-        import os
-
         resolved_path = os.path.abspath(path)
 
-        # Check sandbox restrictions
+        # Check sandbox restrictions (friendly static check; races are
+        # additionally blocked by the verified opens below)
         if not check_sandbox(resolved_path, "list_directory", print_message=False):
             sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
             return {
@@ -55,8 +60,11 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
                 "detailed": sandbox_msg
             }
 
-        # Check if path exists and is a directory
-        if not os.path.exists(resolved_path) or not os.path.isdir(resolved_path):
+        # Entry point: open the directory TOCTOU-safe; we list what this fd
+        # actually points at, so a raced symlink swap cannot escape.
+        try:
+            root_fd = open_directory_verified(resolved_path, "list_directory")
+        except (FileNotFoundError, NotADirectoryError):
             return {
                 "tool": "list_directory",
                 "friendly": f"Directory not found: '{resolved_path}'",
@@ -69,92 +77,65 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
         files = []
 
-        if pattern:
-            # Use os.scandir with depth limiting for pattern matching
-            base = Path(resolved_path)
-            base_depth = len(base.parts)
+        def _walk_with_depth(dir_fd, rel, depth):
+            # Scandir from an already-proven dirfd; subdirs are descended by
+            # reopening their *lexical* path through open_directory_verified, which is
+            # kernel-proven in-bounds (openat2 RESOLVE_BENEATH) and
+            # fail-closed on any raced symlink/traversal swap.
+            if depth >= max_depth:
+                return
+            try:
+                entries = list(os.scandir(dir_fd))
+            except OSError:
+                return
 
-            def _walk_with_depth(current_path, depth):
-                if depth >= max_depth:
-                    return
-                try:
-                    entries = list(os.scandir(current_path))
-                except OSError:
-                    return
-
-                for entry in entries:
-                    if entry.is_file():
-                        # Check pattern
-                        if not _matches_pattern(entry.name, pattern):
-                            continue
-                        # Check ignore patterns
-                        if any(entry.name.endswith(p) for p in ignore_patterns):
-                            continue
-                        # Check ignore dirs
-                        rel_parts = Path(entry.path).relative_to(base).parts
-                        if any(part in ignore_dirs for part in rel_parts):
-                            continue
-                        files.append(entry.path)
+            for entry in entries:
+                # Compute the verified descendant path (fd-relative + root)
+                child_rel = rel + [entry.name]
+                child_full = os.path.join(resolved_path, *child_rel)
+                if entry.is_file():
+                    # Check pattern (only when a filter was requested)
+                    if pattern is not None and not _matches_pattern(
+                        entry.name, pattern
+                    ):
+                        continue
+                    # Check ignore patterns
+                    if any(entry.name.endswith(p) for p in ignore_patterns):
+                        continue
+                    # Check ignore dirs
+                    if any(part in ignore_dirs for part in child_rel):
+                        continue
+                    files.append(child_full)
+                    if len(files) >= MAX_FILES + 1:
+                        return
+                elif entry.is_dir():
+                    # Check ignore dirs
+                    if entry.name in ignore_dirs:
+                        continue
+                    if entry.name.startswith("."):
+                        continue
+                    # Check pattern - list dir if it matches (only when a filter
+                    # was requested; without one, list every dir for recursion)
+                    if pattern is not None and _matches_pattern(entry.name, pattern):
+                        files.append(child_full)
                         if len(files) >= MAX_FILES + 1:
                             return
-                    elif entry.is_dir():
-                        # Check ignore dirs
-                        if entry.name in ignore_dirs:
-                            continue
-                        if not _show_hidden and entry.name.startswith("."):
-                            continue
-                        # Check pattern - list dir if it matches
-                        if _matches_pattern(entry.name, pattern):
-                            files.append(entry.path)
-                            if len(files) >= MAX_FILES + 1:
-                                return
-                        # Always recurse into dirs
-                        _walk_with_depth(entry.path, depth + 1)
+                    # Always recurse into dirs via a verified child fd
+                    try:
+                        sub_fd = open_directory_verified(child_full, "list_directory")
+                    except OSError:
+                        continue
+                    try:
+                        _walk_with_depth(sub_fd, child_rel, depth + 1)
                         if len(files) >= MAX_FILES + 1:
                             return
+                    finally:
+                        os.close(sub_fd)
 
-            def _matches_pattern(filename, pattern):
-                """Simple pattern matching for *.py, test_*.json etc."""
-                import fnmatch
-                # Convert **/ pattern to standard glob
-                clean_pattern = pattern.replace("**/", "")
-                return fnmatch.fnmatch(filename, clean_pattern)
-
-            _show_hidden = True  # Show hidden for now
-            _walk_with_depth(resolved_path, 0)
-        else:
-            # No pattern - use custom walk with depth limiting and ignore dir filtering
-            base_depth = len(os.path.abspath(resolved_path).split(os.sep))
-
-            def _walk_with_depth(current_path, depth):
-                if depth >= max_depth:
-                    return
-                try:
-                    entries = list(os.scandir(current_path))
-                except OSError:
-                    return
-
-                for entry in entries:
-                    if entry.is_file():
-                        # Skip files matching ignore patterns
-                        if any(entry.name.endswith(p) for p in ignore_patterns):
-                            continue
-                        files.append(entry.path)
-                        if len(files) >= MAX_FILES + 1:
-                            return
-                    elif entry.is_dir():
-                        # Skip ignore dirs
-                        if entry.name in ignore_dirs:
-                            continue
-                        # List directory name (even if contents are filtered)
-                        files.append(entry.path)
-                        if len(files) >= MAX_FILES + 1:
-                            return
-                        _walk_with_depth(entry.path, depth + 1)
-                        if len(files) >= MAX_FILES + 1:
-                            return
-
-            _walk_with_depth(resolved_path, 0)
+        try:
+            _walk_with_depth(root_fd, [], 0)
+        finally:
+            os.close(root_fd)
 
         actual_count = len(files)
         limited_files = files[:MAX_FILES]

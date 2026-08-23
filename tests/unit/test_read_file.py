@@ -21,7 +21,8 @@ from aicoder.core.file_access_tracker import FileAccessTracker
 def clear_file_access_tracker():
     """Clear FileAccessTracker state before each test"""
     FileAccessTracker.clear_state()
-    yield
+    with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+        yield
     FileAccessTracker.clear_state()
 
 
