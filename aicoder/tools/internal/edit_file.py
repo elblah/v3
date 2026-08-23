@@ -7,7 +7,7 @@ import os
 import tempfile
 from typing import Dict, Any, List, Tuple
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, read_file, write_file, check_sandbox
+from aicoder.utils.file_utils import file_exists, read_file_verified as read_file, write_file_verified as write_file, check_sandbox
 from aicoder.utils.diff_utils import generate_unified_diff_with_status
 
 # Global reference to plugin system (will be set by aicoder)
