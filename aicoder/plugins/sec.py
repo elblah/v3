@@ -281,16 +281,10 @@ def _handle_sec(args: str):
 
 
 def create_plugin(ctx):
-    if shutil.which("bwrap"):
-        ctx.register_hook("on_before_run_shell_command", _on_before_run_shell_command)
-    else:
-        # Fail-closed even when bwrap is missing: block everything.
-        ctx.register_hook(
-            "on_before_run_shell_command",
-            lambda command: _blocked(
-                "bwrap not found; command blocked (fail-closed). '/sec seal off' to disable sealing"
-            ),
-        )
+    if not shutil.which("bwrap"):
+        # No bwrap -> install nothing: no seal hook, no /sec command.
+        return
+    ctx.register_hook("on_before_run_shell_command", _on_before_run_shell_command)
 
     ctx.register_command(
         "sec",
