@@ -59,8 +59,13 @@ def rotate_debug_log(path: str) -> Optional[str]:
     return new_path
 
 
-def check_sandbox(path: str, context: str = "file operation") -> bool:
-    """Check if a path is allowed by sandbox rules"""
+def check_sandbox(path: str, context: str = "file operation", print_message: bool = True) -> bool:
+    """Check if a path is allowed by sandbox rules.
+
+    Symlink-safe: resolves symlinks and parent traversal before the prefix
+    check, so a link inside cwd pointing outside is rejected (non-existent
+    tail is resolved via its parent, so writes to new files still work).
+    """
     # Import here to avoid circular imports
     try:
         from aicoder.core.config import Config
@@ -74,30 +79,28 @@ def check_sandbox(path: str, context: str = "file operation") -> bool:
     if not path:
         return True
 
-    # Resolve relative paths using pathlib
-    resolved_path = str(Path(path).resolve())
-
-    # Ensure current directory has trailing slash for proper prefix matching
-    current_dir_with_slash = (
-        _current_dir if _current_dir.endswith("/") else _current_dir + "/"
-    )
+    # Resolve relative paths AND symlinks (os.path.abspath is NOT enough:
+    # a symlink in cwd pointing at / passes a lexical prefix check)
+    current_dir = os.getcwd()
+    resolved_path = str(Path(os.path.join(current_dir, path)).resolve())
 
     # Check if resolved path is within current directory
     # Must either be exactly current dir or start with current dir + '/'
     if not (
-        resolved_path == _current_dir
-        or resolved_path.startswith(current_dir_with_slash)
+        resolved_path == current_dir
+        or resolved_path.startswith(current_dir + "/")
     ):
-        try:
-            from aicoder.utils.log import warn
-            warn(f'Sandbox: {context} trying to access "{resolved_path}" outside current directory "{_current_dir}"')
-        except ImportError:
-            # Fallback if log utils not available
-            import sys
-            print(
-                f'[x] Sandbox: {context} trying to access "{path}" (contains parent traversal)',
-                file=sys.stderr
-            )
+        if print_message:
+            try:
+                from aicoder.utils.log import warn
+                warn(f'Sandbox: {context} trying to access "{resolved_path}" outside current directory "{current_dir}"')
+            except ImportError:
+                # Fallback if log utils not available
+                import sys
+                print(
+                    f'[x] Sandbox: {context} trying to access "{path}" (contains parent traversal)',
+                    file=sys.stderr
+                )
         return False
 
     return True

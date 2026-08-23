@@ -98,14 +98,14 @@ class TestExecute:
 
     def test_file_not_found(self, clean_file_access_tracker):
         """Test with non-existent file"""
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             with pytest.raises(Exception) as excinfo:
                 execute({"path": "/nonexistent/file.txt", "old_string": "test"})
             assert "File not found" in str(excinfo.value)
 
     def test_file_not_read_first(self, temp_file, clean_file_access_tracker):
         """Test that file must be read before editing"""
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file, "old_string": "Hello", "new_string": "Hi"})
             assert result["tool"] == "edit_file"
             assert "ERROR" in result["friendly"]
@@ -114,7 +114,7 @@ class TestExecute:
     def test_old_string_not_found(self, temp_file, clean_file_access_tracker):
         """Test when old_string is not in file"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file, "old_string": "NOTFOUND", "new_string": "Replaced"})
             assert result["tool"] == "edit_file"
             assert "ERROR" in result["friendly"] or "Text not found" in result["friendly"]
@@ -122,7 +122,7 @@ class TestExecute:
     def test_successful_edit(self, temp_file, clean_file_access_tracker):
         """Test successful edit operation"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             with patch('aicoder.tools.internal.edit_file.write_file') as mock_write:
                 result = execute({
                     "path": temp_file,
@@ -136,7 +136,7 @@ class TestExecute:
     def test_deletion_with_none_new_string(self, temp_file, clean_file_access_tracker):
         """Test deletion when new_string is None"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             with patch('aicoder.tools.internal.edit_file.write_file') as mock_write:
                 result = execute({
                     "path": temp_file,
@@ -149,7 +149,7 @@ class TestExecute:
     def test_deletion_with_empty_new_string(self, temp_file, clean_file_access_tracker):
         """Test deletion when new_string is empty string"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             with patch('aicoder.tools.internal.edit_file.write_file') as mock_write:
                 result = execute({
                     "path": temp_file,
@@ -188,7 +188,7 @@ class TestGeneratePreview:
     def test_file_not_found(self):
         """Test with non-existent file"""
         # Mock sandbox check to return True (file doesn't exist yet, so sandbox check passes)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = generate_preview({
                 "path": "/nonexistent/file.txt",
                 "old_string": "test"
@@ -200,7 +200,7 @@ class TestGeneratePreview:
 
     def test_old_string_not_found(self, temp_file):
         """Test when old_string is not in file"""
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = generate_preview({
                 "path": temp_file,
                 "old_string": "NOTFOUND"
@@ -212,7 +212,7 @@ class TestGeneratePreview:
 
     def test_file_not_read_first(self, temp_file):
         """Test when file was not read first"""
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = generate_preview({
                 "path": temp_file,
                 "old_string": "Hello"
@@ -225,7 +225,7 @@ class TestGeneratePreview:
     def test_no_changes_detected(self, temp_file):
         """Test when no changes are detected in diff"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = generate_preview({
                 "path": temp_file,
                 "old_string": "Hello",
@@ -237,7 +237,7 @@ class TestGeneratePreview:
     def test_successful_preview(self, temp_file):
         """Test successful preview generation"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.edit_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.edit_file.check_sandbox', return_value=True):
             result = generate_preview({
                 "path": temp_file,
                 "old_string": "Hello",

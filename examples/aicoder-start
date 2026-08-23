@@ -18,7 +18,7 @@ echo "CPUMAX: ${CPUMAX}% - MEMMAX: ${MEMMAX}"
 [[ -t 1 ]] && stty echo
 
 export MAX_BACKOFF_SECONDS=${MAX_BACKOFF_SECONDS:-30}
-export MINI_SANDBOX=${MINI_SANDBOX:-0}
+export MINI_SANDBOX=${MINI_SANDBOX:-1}
 
 WORKTREE_STORAGE="$EXT_DIR/ai-worktree-storage"
 AI_TMP_DIR=/mnt/cacho/storage/ai-tmp

@@ -77,7 +77,7 @@ class TestExecute:
         """Test creating a new file"""
         with tempfile.TemporaryDirectory() as tmpdir:
             new_file = os.path.join(tmpdir, "new_file.txt")
-            with patch('aicoder.tools.internal.write_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
                 with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
                     result = execute({
                         "path": new_file,
@@ -90,7 +90,7 @@ class TestExecute:
     def test_existing_file_update(self, temp_file, clean_file_access_tracker):
         """Test updating an existing file"""
         FileAccessTracker.record_read(temp_file)
-        with patch('aicoder.tools.internal.write_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
             with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
                 result = execute({
                     "path": temp_file,
@@ -102,7 +102,7 @@ class TestExecute:
 
     def test_sandbox_violation(self, clean_file_access_tracker):
         """Test sandbox violation is caught"""
-        with patch('aicoder.tools.internal.write_file._check_sandbox', return_value=False):
+        with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=False):
             with patch('os.getcwd', return_value='/home/user/project'):
                 with pytest.raises(Exception) as excinfo:
                     execute({
@@ -275,7 +275,7 @@ class TestExecuteWithPluginHooks:
             mock_plugin_system.call_hooks.return_value = None
             set_plugin_system(mock_plugin_system)
 
-            with patch('aicoder.tools.internal.write_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
                 with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
                     execute({
                         "path": new_file,
@@ -295,7 +295,7 @@ class TestExecuteWithPluginHooks:
             mock_plugin_system.call_hooks.return_value = ["Modified by plugin"]
             set_plugin_system(mock_plugin_system)
 
-            with patch('aicoder.tools.internal.write_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
                 with patch('aicoder.tools.internal.write_file.file_write') as mock_write:
                     execute({
                         "path": new_file,
@@ -325,7 +325,7 @@ class TestExecuteErrorHandling:
             dir_path = os.path.join(tmpdir, "test_dir")
             os.makedirs(dir_path)
 
-            with patch('aicoder.tools.internal.write_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.write_file.check_sandbox', return_value=True):
                 result = execute({
                     "path": dir_path,
                     "content": "Cannot write to directory"

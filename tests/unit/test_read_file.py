@@ -82,14 +82,14 @@ class TestExecute:
 
     def test_file_not_found(self):
         """Test with non-existent file"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             with pytest.raises(Exception) as excinfo:
                 execute({"path": "/nonexistent/file.txt"})
             assert "File not found" in str(excinfo.value)
 
     def test_successful_read(self, temp_file):
         """Test successful file read"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file})
             assert result["tool"] == "read_file"
             assert "Line 0" in result["detailed"]
@@ -97,7 +97,7 @@ class TestExecute:
 
     def test_read_with_offset(self, temp_file):
         """Test reading with offset"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file, "offset": 2, "limit": 2})
             assert result["tool"] == "read_file"
             assert "Line 2" in result["detailed"]
@@ -106,7 +106,7 @@ class TestExecute:
 
     def test_read_with_limit(self, temp_file):
         """Test reading with custom limit"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file, "limit": 2})
             assert result["tool"] == "read_file"
             assert "Line 0" in result["detailed"]
@@ -114,7 +114,7 @@ class TestExecute:
 
     def test_offset_beyond_eof(self, temp_file):
         """Test offset beyond end of file"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file, "offset": 100})
             assert result["tool"] == "read_file"
             assert "beyond end of file" in result["friendly"] or "offset" in result["friendly"].lower()
@@ -124,7 +124,7 @@ class TestExecute:
         # Clear tracker first
         FileAccessTracker.clear_state()
         try:
-            with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
                 execute({"path": temp_file})
             assert FileAccessTracker.was_file_read(temp_file) is True
         finally:
@@ -132,7 +132,7 @@ class TestExecute:
 
     def test_truncates_long_lines(self, long_line_file):
         """Test that long lines are truncated"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = execute({"path": long_line_file})
             assert result["tool"] == "read_file"
             # Long line should be truncated - check for truncation
@@ -146,7 +146,7 @@ class TestExecute:
 
     def test_default_values(self, temp_file):
         """Test default offset and limit values"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = execute({"path": temp_file})
             assert result["tool"] == "read_file"
             # Should read all lines with default limit
@@ -159,14 +159,14 @@ class TestGeneratePreview:
 
     def test_none_when_sandbox_passes(self, temp_file):
         """Test that None is returned when sandbox passes"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             result = generatePreview({"path": temp_file})
             # When sandbox passes and no issues, returns None
             assert result is None
 
     def test_sandbox_violation(self):
         """Test sandbox violation in preview"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=False):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=False):
             result = generatePreview({"path": "/etc/passwd"})
             assert result["tool"] == "read_file"
             assert "can_approve" in result
@@ -263,7 +263,7 @@ class TestIntegration:
 
     def test_large_file_pagination(self, large_file):
         """Test reading large file with pagination"""
-        with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+        with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
             # Read first 10 lines
             result1 = execute({"path": large_file, "limit": 10})
             assert result1["tool"] == "read_file"
@@ -282,7 +282,7 @@ class TestIntegration:
             path = f.name
 
         try:
-            with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
                 result = execute({"path": path})
                 assert result["tool"] == "read_file"
                 # Empty file still shows lines (may be 0 or 1 depending on implementation)
@@ -297,7 +297,7 @@ class TestIntegration:
             path = f.name
 
         try:
-            with patch('aicoder.tools.internal.read_file._check_sandbox', return_value=True):
+            with patch('aicoder.tools.internal.read_file.check_sandbox', return_value=True):
                 result = execute({"path": path})
                 assert result["tool"] == "read_file"
                 assert "1 line" in result["friendly"] or "1" in result["friendly"]

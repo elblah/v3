@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 from aicoder.core.config import Config
+from aicoder.utils.file_utils import check_sandbox
 from aicoder.utils.log import LogUtils
 
 
@@ -46,7 +47,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         resolved_path = os.path.abspath(path)
 
         # Check sandbox restrictions
-        if not _check_sandbox(resolved_path, print_message=False):
+        if not check_sandbox(resolved_path, "list_directory", print_message=False):
             sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
             return {
                 "tool": "list_directory",
@@ -249,27 +250,6 @@ def _list_recursive(path: str, max_depth: int, show_hidden: bool) -> list:
 
     _walk(path, 0)
     return result
-
-
-def _check_sandbox(path: str, print_message: bool = True) -> bool:
-    """Check if path is within allowed directory"""
-    if Config.sandbox_disabled():
-        return True
-
-    if not path:
-        return True
-
-    # Resolve the path
-    resolved_path = os.path.abspath(path)
-    current_dir = os.getcwd()
-    
-    # Check if resolved path is within current directory
-    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        if print_message:
-            LogUtils.error(f'[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
-        return False
-    
-    return True
 
 
 # Tool definition

@@ -6,11 +6,9 @@ Edit file tool
 import os
 import tempfile
 from typing import Dict, Any, List, Tuple
-from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, read_file, write_file
+from aicoder.utils.file_utils import file_exists, read_file, write_file, check_sandbox
 from aicoder.utils.diff_utils import generate_unified_diff_with_status
-from aicoder.utils.log import LogUtils
 
 # Global reference to plugin system (will be set by aicoder)
 _plugin_system = None
@@ -20,27 +18,6 @@ def set_plugin_system(plugin_system):
     """Set plugin system reference"""
     global _plugin_system
     _plugin_system = plugin_system
-
-
-def _check_sandbox(path: str, print_message: bool = True) -> bool:
-    """Check if path is within allowed directory"""
-    if Config.sandbox_disabled():
-        return True
-
-    if not path:
-        return True
-
-    # Resolve the path
-    resolved_path = os.path.abspath(path)
-    current_dir = os.getcwd()
-    
-    # Check if resolved path is within current directory
-    if not (resolved_path == current_dir or resolved_path.startswith(current_dir + "/")):
-        if print_message:
-            LogUtils.error(f'[x] Sandbox: edit_file trying to access "{resolved_path}" outside current directory "{current_dir}"')
-        return False
-    
-    return True
 
 
 def _find_occurrences(content: str, old_string: str) -> List[int]:
@@ -69,7 +46,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if not path or old_string is None:
         raise Exception("Path and old_string are required")
 
-    if not _check_sandbox(path):
+    if not check_sandbox(path, "edit_file"):
         resolved_path = os.path.abspath(path)
         current_dir = os.getcwd()
         raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
@@ -186,7 +163,7 @@ def generate_preview(args):
         from aicoder.utils.file_utils import get_relative_path
         relative_path = get_relative_path(path)
         
-        if not _check_sandbox(path, print_message=False):
+        if not check_sandbox(path, "edit_file", print_message=False):
             # Don't print in check since preview will show message
             resolved_path = os.path.abspath(path)
             current_dir = os.getcwd()
