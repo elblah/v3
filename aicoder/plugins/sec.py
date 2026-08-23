@@ -6,9 +6,8 @@ Wraps every run_shell_command payload in a nested bwrap sandbox
 (tmux socket, dbus, X11, dtx, pulse) or /proc — only recipes the
 user lifts at runtime restore specific access.
 
-State is runtime-only: every session starts sealed with no recipes.
-/seal off is the explicit escape hatch. Fail-closed: if the wrapper
-cannot be built, the command is blocked, never run unsealed.
+State is runtime-only: every session starts sealed with no recipes
+and no network. /sec net on and /sec off are the escape hatches.
 """
 
 import os
@@ -78,7 +77,7 @@ _DTX_EXTRA = tuple(
 _state = {
     "sealed": True,  # always start sealed
     "allowed": set(),  # recipe names lifted at runtime
-    "net": True,  # network enabled by default; /sec net off -> bwrap --unshare-net
+    "net": False,  # net off by default; /sec net on lifts it (isolated netns otherwise)
 }
 
 
