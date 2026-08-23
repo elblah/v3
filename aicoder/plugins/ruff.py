@@ -62,11 +62,10 @@ def create_plugin(ctx):
             return None
 
         args = get_effective_args()
-        cmd = f'ruff check {args} "{filepath}"'
+        cmd = ["ruff", "check"] + args.split() + [filepath]
 
         result = subprocess.run(
             cmd,
-            shell=True,
             capture_output=True,
             text=True,
             timeout=10

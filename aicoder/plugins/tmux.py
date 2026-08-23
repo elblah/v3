@@ -13,6 +13,13 @@ MARKER_PREFIX = "[tmux]"
 MARKER_TEXT = "session-start"
 WINTITLE_FILE = ".aicoder/tmux-wintitle"
 WINTITLE_FILE_DISABLED = ".aicoder/_tmux-wintitle"
+# Title is interpolated into a bash script (see _apply_title) — whitelist only
+WINTITLE_SAFE_CHARS = set(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    " _-./:+()"
+)
 
 _MARKER_LOADED = False
 
@@ -44,8 +51,13 @@ def create_plugin(ctx):
     def _wintitle_filepath_disabled():
         return os.path.join(os.getcwd(), WINTITLE_FILE_DISABLED)
 
+    def _safe_title(name):
+        """Strip chars outside WINTITLE_SAFE_CHARS — title reaches a shell script"""
+        return "".join(c for c in name if c in WINTITLE_SAFE_CHARS)
+
     def _apply_title(name):
         """Rename window if single pane and name differs. Fully async."""
+        name = _safe_title(name)
         # Explicit bash — /bin/sh may be dash (no <<< support)
         script = (
             f'read cur_name cur_count <<< $(tmux display-message -p '
@@ -124,8 +136,8 @@ def create_plugin(ctx):
             return "Wintitle off (name saved)."
 
         else:
-            # Custom name
-            name = " ".join(parts)
+            # Custom name (safe chars only)
+            name = _safe_title(" ".join(parts))
             _write_title_file(active, name)
             # Ensure it's active (rename disabled -> active if exists)
             if os.path.isfile(disabled):
