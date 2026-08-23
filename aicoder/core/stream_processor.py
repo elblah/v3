@@ -4,10 +4,16 @@ Extracted from AICoder class for better separation of concerns
 """
 
 import builtins
+import sys
+import time
 from typing import Dict, Any, List
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+
+# Liveness spinner: one ASCII char rotated per silent-phase chunk (hidden
+# reasoning, tool-call args). 1-cell wide -> erase is exactly "\b \b".
+_SPINNER = "\\|/-"
 
 
 class StreamProcessor:
@@ -18,6 +24,35 @@ class StreamProcessor:
         # Maps tool_calls[] index -> call id for this stream. Some proxies
         # (opencode zen) send index=0 on every chunk; id is the reliable key.
         self._index_to_tool_id: Dict[Any, str] = {}
+        self._spin_active = False
+        self._spin_idx = 0
+        self._spin_ts = 0.0  # last redraw time (200ms throttle)
+
+    def _spin_tick(self) -> None:
+        """Advance spinner one frame, throttled to 200ms. Chunk-driven (no
+        timer): rotation proves data is flowing, and a frozen spinner means a
+        frozen stream."""
+        now = time.monotonic()
+        if now - self._spin_ts < 0.2:
+            return  # dropped frame — redraws only every ~200ms max
+        self._spin_ts = now
+        if self._spin_active:
+            sys.stdout.write("\b" + _SPINNER[self._spin_idx % len(_SPINNER)])
+        else:
+            if not sys.stdout.isatty():
+                return
+            sys.stdout.write(_SPINNER[self._spin_idx % len(_SPINNER)])
+            self._spin_active = True
+        self._spin_idx += 1
+        sys.stdout.flush()
+
+    def _spin_stop(self) -> None:
+        """Erase the spinner char, restoring cursor to where text ended."""
+        if not self._spin_active:
+            return
+        sys.stdout.write("\b \b")
+        sys.stdout.flush()
+        self._spin_active = False
 
     def process_stream(
         self,
@@ -57,6 +92,7 @@ class StreamProcessor:
                     LogUtils.debug(f"*** Response model: {detected_model}")
                 # Check if user interrupted
                 if not is_processing_callback():
+                    self._spin_stop()
                     LogUtils.print("\n[AI response interrupted]")
                     return {
                         "should_continue": False,
@@ -100,6 +136,7 @@ class StreamProcessor:
                                 accumulated_reasoning += reasoning
                                 if reasoning_field_name is None:
                                     reasoning_field_name = field
+                                self._spin_tick()
                                 break
 
                     # Capture thinking signature for Anthropic-style APIs
@@ -120,6 +157,9 @@ class StreamProcessor:
                             )
                         if not content:
                             continue
+                        # Spinner owns the cursor cell during silent phases —
+                        # erase before real output takes over.
+                        self._spin_stop()
                         # On first content chunk, print accumulated reasoning (if any)
                         # Use flag instead of checking full_response to handle
                         # whitespace-only chunks that get lstripped to nothing
@@ -136,11 +176,14 @@ class StreamProcessor:
                 # Tool calls
                 if "delta" in choice and choice["delta"].get("tool_calls"):
                     for tool_call in choice["delta"]["tool_calls"]:
+                        self._spin_tick()
                         process_chunk_callback(tool_call, accumulated_tool_calls)
 
                 # Finish reason
                 if choice.get("finish_reason") == "tool_calls":
                     pass
+
+            self._spin_stop()
 
             # Reasoning not yet printed (e.g. tool-call-only turn, reasoning after
             # last content chunk) — print it now before the stream ends.
@@ -156,6 +199,7 @@ class StreamProcessor:
                 LogUtils.print(f"Reasoning: {'ON' if reasoning_detected else 'OFF'}{effort_text}{field_text}")
 
         except Exception as e:
+            self._spin_stop()
             LogUtils.error(f"[Streaming error: {e}]")
             return {
                 "should_continue": False,
