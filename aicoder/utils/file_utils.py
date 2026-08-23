@@ -169,6 +169,41 @@ _RESOLVE_BENEATH = 0x08
 
 _libc = ctypes.CDLL(None, use_errno=True)
 
+# None = unprobed. Android's zygote seccomp filter sends SIGSYS ("Bad
+# system call", instant death) for syscalls missing from its allowlist,
+# instead of the ENOSYS a bare old kernel returns — so openat2 support
+# must be probed in a throwaway child, never in-process.
+_openat2_state: Optional[bool] = None
+
+
+def _openat2_supported() -> bool:
+    """One-shot forked probe; result cached for process lifetime."""
+    global _openat2_state
+    if _openat2_state is None:
+        try:
+            pid = os.fork()
+            if pid == 0:
+                code = 1
+                try:
+                    fd = os.open(".", os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        _openat2_beneath(fd, ".", os.O_RDONLY, 0)
+                        code = 0
+                    finally:
+                        os.close(fd)
+                except OSError as error:
+                    if error.errno in (errno.ENOSYS, errno.EINVAL):
+                        # Bare old kernel: errno path, safe to attempt
+                        # (call sites fall back on these errnos anyway).
+                        code = 0
+                finally:
+                    os._exit(code)
+            _, status = os.waitpid(pid, 0)
+            _openat2_state = os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+        except OSError:
+            _openat2_state = False  # fork/wait failed: fail closed
+    return _openat2_state
+
 
 def _openat2_beneath(dirfd: int, rel: str, flags: int, mode: int) -> int:
     """openat2(dirfd, rel, {flags, mode, RESOLVE_BENEATH}, 24).
@@ -386,6 +421,8 @@ def _open_verified(path: str, flags: int, context: str):
 
     try:
         try:
+            if not _openat2_supported():
+                raise OSError(errno.ENOSYS, "openat2 unavailable (seccomp/old kernel)")
             return _openat2_beneath(
                 root_fd, rel, flags, 0o666 if flags & os.O_CREAT else 0
             )
