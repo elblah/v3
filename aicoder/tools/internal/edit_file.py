@@ -7,7 +7,7 @@ import os
 import tempfile
 from typing import Dict, Any, List, Tuple
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, read_file_verified as read_file, write_file_verified as write_file, check_sandbox
+from aicoder.utils.file_utils import file_exists, read_file_verified as read_file, write_file_verified as write_file, check_sandbox, sandbox_denial_message
 from aicoder.utils.diff_utils import generate_unified_diff_with_status
 
 # Global reference to plugin system (will be set by aicoder)
@@ -47,9 +47,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         raise Exception("Path and old_string are required")
 
     if not check_sandbox(path, "edit_file", write=True):
-        resolved_path = os.path.abspath(path)
-        current_dir = os.getcwd()
-        raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        raise Exception(f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(path)}')
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
@@ -165,11 +163,9 @@ def generate_preview(args):
         
         if not check_sandbox(path, "edit_file", print_message=False, write=True):
             # Don't print in check since preview will show message
-            resolved_path = os.path.abspath(path)
-            current_dir = os.getcwd()
             return {
                 "tool": "edit_file",
-                "content": f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"',
+                "content": f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(path)}',
                 "can_approve": False,
             }
 

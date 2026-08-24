@@ -9,7 +9,7 @@ import subprocess
 from typing import Dict, Any, Optional
 from aicoder.core.config import Config
 from aicoder.tools.internal.run_shell_command import resolve_command
-from aicoder.utils.file_utils import check_sandbox
+from aicoder.utils.file_utils import check_sandbox, sandbox_denial_message
 from aicoder.utils.log import LogUtils
 
 # Configuration
@@ -55,9 +55,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         # Check sandbox restrictions, but don't print message (will show in result)
         if not check_sandbox(path, "grep", print_message=False):
             # Create sandbox message in result instead of printing
-            resolved_path = os.path.abspath(path)
-            current_dir = os.getcwd()
-            sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"'
+            sandbox_msg = f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(path)}'
             return {
                 "tool": "grep",
                 "friendly": sandbox_msg,

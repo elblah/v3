@@ -7,7 +7,7 @@ import fnmatch
 import os
 from typing import Dict, Any
 from aicoder.core.config import Config
-from aicoder.utils.file_utils import check_sandbox, open_directory_verified
+from aicoder.utils.file_utils import check_sandbox, open_directory_verified, sandbox_denial_message
 
 
 def _matches_pattern(filename: str, pattern: str) -> bool:
@@ -53,7 +53,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         # Check sandbox restrictions (friendly static check; races are
         # additionally blocked by the verified opens below)
         if not check_sandbox(resolved_path, "list_directory", print_message=False):
-            sandbox_msg = f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{os.getcwd()}"'
+            sandbox_msg = f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(resolved_path)}'
             return {
                 "tool": "list_directory",
                 "friendly": sandbox_msg,
