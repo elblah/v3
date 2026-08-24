@@ -8,7 +8,7 @@ import sys
 import tempfile
 from typing import Dict, Any
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, write_file_verified, get_relative_path, check_sandbox
+from aicoder.utils.file_utils import file_exists, write_file_verified, get_relative_path, check_sandbox, sandbox_denial_message
 from aicoder.utils.file_utils import read_file_verified
 from aicoder.utils.diff_utils import generate_unified_diff_with_status, colorize_diff
 
@@ -41,9 +41,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
                 content = modified_content
 
     if not check_sandbox(path, "write_file", write=True):
-        resolved_path = os.path.abspath(path)
-        current_dir = os.getcwd()
-        raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        raise Exception(f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(path)}')
 
     
 

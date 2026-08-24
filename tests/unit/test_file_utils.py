@@ -615,6 +615,27 @@ class TestSandboxDenylist:
             assert check_sandbox("/var/secret/foo") is False
             assert check_sandbox("/var/lib") is True
 
+    def test_env_extra_deny_normalizes_entries(self, monkeypatch, tmp_path):
+        """Round-2 fix: raw relative/trailing-slash entries must still match."""
+        secret = tmp_path / "secrets"
+        secret.mkdir()
+        monkeypatch.chdir(tmp_path)
+        # relative entry with trailing slash; check_sandbox sees resolved abs
+        monkeypatch.setenv("SANDBOX_DENY_EXTRA", "secrets/")
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox(str(secret / "key")) is False
+            assert check_sandbox(str(tmp_path / "notes.txt")) is True
+
+    def test_deny_enforced_when_config_import_fails(self, monkeypatch, tmp_path):
+        """Round-2 fix: denylist runs before the Config import, so an
+        ImportError only skips cwd-containment — hard-denied paths stay
+        blocked."""
+        import sys
+        monkeypatch.setitem(sys.modules, "aicoder.core.config", None)
+        monkeypatch.chdir(tmp_path)
+        assert check_sandbox("/etc/passwd") is False
+        assert check_sandbox(str(tmp_path / "notes.txt")) is True
+
     def test_open_verified_disabled_denies_symlink_to_etc(
         self, monkeypatch, tmp_path
     ):

@@ -7,7 +7,7 @@ import os
 from typing import Dict, Any
 from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
-from aicoder.utils.file_utils import file_exists, read_file_verified as file_read, check_sandbox
+from aicoder.utils.file_utils import file_exists, read_file_verified as file_read, check_sandbox, sandbox_denial_message
 from aicoder.utils.log import LogUtils
 
 # Configuration
@@ -101,9 +101,7 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         return _paginate(path, offset, limit, virtual)
 
     if not check_sandbox(path, "read_file"):
-        resolved_path = os.path.abspath(path)
-        current_dir = os.getcwd()
-        raise Exception(f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"')
+        raise Exception(f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(path)}')
 
     if not file_exists(path):
         raise Exception(f"File not found: {path}")
@@ -134,14 +132,9 @@ def generatePreview(args):
 
     # Check sandbox first - don't print message since preview will show it
     if not check_sandbox(path, "read_file", print_message=False):
-        import os.path
-
-        resolved_path = os.path.abspath(path)
-        current_dir = os.getcwd()
-
         return {
             "tool": "read_file",
-            "content": f'Path: {path}\n[x] Sandbox: trying to access "{resolved_path}" outside current directory "{current_dir}"',
+            "content": f'Path: {path}\n[x] Sandbox: {sandbox_denial_message(path)}',
             "can_approve": False,
         }
 

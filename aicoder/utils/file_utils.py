@@ -103,26 +103,36 @@ def _deny_base_prefixes() -> tuple:
     Internal read/write tools are for code and text files, not system dirs.
     Tier 1 (always, regardless of sandbox flag or bwrap): /proc /sys /dev
     /etc /run and root itself. Tier 2 (personal secrets) derived here via
-    HOME. Enforcement is independent of sandbox_disabled() and of /sec/bwrap
+    HOME, realpath'd so a symlinked $HOME still matches resolved paths.
+    Enforcement is independent of sandbox_disabled() and of /sec/bwrap
     existence — this is the only guarantee that holds on every host.
     """
     base = list(_DENY_PREFIXES)
-    home = os.path.expanduser("~")
+    real_home = os.path.realpath(os.path.expanduser("~"))
     for sub in (".ssh", ".gnupg", ".aws", ".netrc"):
-        base.append(os.path.join(home, sub))
+        base.append(os.path.join(real_home, sub))
     return tuple(base)
 
 
 def _deny_extra_prefixes() -> tuple:
-    """Appended via SANDBOX_DENY_EXTRA (':' or os.pathsep separated). No un-deny."""
+    """Appended via SANDBOX_DENY_EXTRA (':' or os.pathsep separated). No un-deny.
+
+    Entries are normalized (expanduser, cwd-relative made absolute, realpath,
+    trailing slash stripped) so they match the resolved paths _denied_path
+    is fed; a raw relative or symlinked entry would never match.
+    """
     raw = os.environ.get("SANDBOX_DENY_EXTRA", "")
     if not raw:
         return ()
-    return tuple(
-        p.rstrip("/") if p and p != "/" else p
-        for p in raw.split(":")
-        if p
-    )
+    out = []
+    for p in raw.split(os.pathsep):
+        if not p:
+            continue
+        p = os.path.expanduser(p)
+        if not os.path.isabs(p):
+            p = os.path.join(os.getcwd(), p)
+        out.append(os.path.realpath(p).rstrip("/") or "/")
+    return tuple(out)
 
 
 def _denied_path(resolved: str) -> bool:
@@ -144,19 +154,13 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
     Paths outside cwd are allowed if inside a plugin-whitelisted dir
     (on_file_sandbox_whitelist hook) — read-only, so write=True skips it.
 
-    Hard-denied first, BEFORE the sandbox-disabled early-return: system and
-    personal-secret directories (/proc /sys /dev /etc /run / and SSH/GPG/AWS
-    secrets under $HOME) are unreachable by internal read/write tools even when
-    the sandbox is turned off or bwrap is absent. System access is intended
+    Hard-denied first, BEFORE the Config import and the sandbox-disabled
+    early-return (the denylist needs no Config): system and personal-secret
+    directories (/proc /sys /dev /etc /run / and SSH/GPG/AWS secrets under
+    $HOME) are unreachable by internal read/write tools even when the
+    sandbox is turned off or bwrap is absent. System access is intended
     to go through run_shell_command (sealed) instead.
     """
-    # Import here to avoid circular imports
-    try:
-        from aicoder.core.config import Config
-    except ImportError:
-        # Config not available - allow everything
-        return True
-
     if not path:
         return True
 
@@ -175,6 +179,14 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
                     file=sys.stderr,
                 )
         return False
+
+    # Import here to avoid circular imports
+    try:
+        from aicoder.core.config import Config
+    except ImportError:
+        # Config unavailable: the denylist above still ran; only the
+        # cwd-containment check is skipped (same effect as sandbox-disabled).
+        return True
 
     if Config.sandbox_disabled():
         return True
@@ -209,6 +221,20 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
         return False
 
     return True
+
+
+def sandbox_denial_message(path: str) -> str:
+    """Accurate reason text for a path check_sandbox rejects.
+
+    check_sandbox returns only a bool; callers that build their own denial
+    message default to the containment wording, which is wrong (and
+    misleading) when the path is hard-denied. Resolves exactly like
+    check_sandbox (cwd-relative, symlinks followed).
+    """
+    resolved = str(Path(os.path.join(os.getcwd(), path)).resolve())
+    if _denied_path(resolved):
+        return f'"{resolved}" is a denied system/sensitive path'
+    return f'trying to access "{resolved}" outside current directory "{os.getcwd()}"'
 
 
 def file_exists(path: str) -> bool:
@@ -607,7 +633,7 @@ def read_file_with_sandbox(path: str) -> str:
     # Check sandbox first
     if not check_sandbox(path, "read_file"):
         raise Exception(
-            f'read_file: path "{path}" outside current directory not allowed'
+            f'read_file: path "{path}" not allowed ({sandbox_denial_message(path)})'
         )
 
     return read_file_verified(path)
@@ -633,10 +659,10 @@ def write_file(path: str, content: str) -> str:
 
 def write_file_with_sandbox(path: str, content: str) -> str:
     """Write to a file with sandbox check - for AI requests only"""
-    # Check sandbox first
-    if not check_sandbox(path, "write_file"):
+    # Check sandbox first (write=True: whitelist hook is read-only)
+    if not check_sandbox(path, "write_file", write=True):
         raise Exception(
-            f'write_file: path "{path}" outside current directory not allowed'
+            f'write_file: path "{path}" not allowed ({sandbox_denial_message(path)})'
         )
 
     return write_file_verified(path, content)
@@ -650,7 +676,7 @@ def list_directory(path: str) -> list:
     # Check sandbox
     if not check_sandbox(resolved_path, "list_directory"):
         raise Exception(
-            f'list_directory: path "{path}" (resolves to "{resolved_path}") outside current directory not allowed'
+            f'list_directory: path "{path}" not allowed ({sandbox_denial_message(resolved_path)})'
         )
 
     try:
