@@ -292,6 +292,17 @@ def create_plugin(ctx):
         # Check for prompt tag
         prompt = _extract_prompt_tag(response)
 
+        # Injection guard: a slash command extracted from model output would
+        # dispatch through handle_command() with no origin check (e.g.
+        # "/sec seal off"). The tag contract is next-action text only —
+        # reject slash commands outright.
+        if prompt and prompt.startswith("/"):
+            LogUtils.print(
+                f"{c['brightMagenta']}[auto-next-prompt]{c['reset']} "
+                f"{c['yellow']}rejected slash command in <prompt> tag (injection guard){c['reset']}"
+            )
+            prompt = None
+
         if prompt:
             _awaiting_tag = False
             _attempts = 0
