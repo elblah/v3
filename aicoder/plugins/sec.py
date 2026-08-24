@@ -17,7 +17,7 @@ import shutil
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
 
-RECIPES = ("proc", "tmux", "dtx", "dbus", "x11", "rt", "adb")
+RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb")
 
 # Env vars that leak host-service access: stripped in sealed mode,
 # restored by recipes from the values captured at plugin load.
@@ -176,6 +176,11 @@ def _build_argv(command: str) -> list[str]:
             if os.path.exists(path):
                 argv += ["--ro-bind", path, path]
 
+    if "dbrowser" in allowed:
+        sock = f"{RT}/tmp/dbrowser.sock"
+        if os.path.exists(sock):
+            argv += ["--ro-bind", sock, sock]
+
     if "dbus" in allowed:
         bus = f"{RT}/bus"
         if os.path.exists(bus):
@@ -266,6 +271,9 @@ def _handle_sec(args: str):
                 if _DTX_EXTRA:
                     bound = sum(1 for p in _DTX_EXTRA if os.path.exists(p))
                     note += f" + {bound}/{len(_DTX_EXTRA)} extra bind(s)"
+            elif name == "dbrowser":
+                note = f" (socket: {RT}/tmp/dbrowser.sock" + \
+                    (", present)" if os.path.exists(f"{RT}/tmp/dbrowser.sock") else ", MISSING)")
             elif name == "adb":
                 spec = _ORIG_ENV.get("ADB_SERVER_SOCKET")
                 note = f" (server: {spec})" if spec else \
