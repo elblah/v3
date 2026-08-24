@@ -575,3 +575,113 @@ class TestVerifiedOpen:
             assert _fd_realpath(fd) == str(f)
         finally:
             os.close(fd)
+
+
+class TestSandboxDenylist:
+    """Hard deny of system/sensitive dirs regardless of sandbox flag/bwrap."""
+
+    @pytest.mark.parametrize("path", [
+        "/proc/self/environ",
+        "/proc/1/environ",
+        "/sys/kernel",
+        "/dev/null",
+        "/etc/passwd",
+        "/run/user",
+        "/",
+    ])
+    def test_denied_system_prefixes_even_when_sandbox_disabled(self, path):
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox(path) is False
+
+    def test_denied_personal_secrets_even_when_sandbox_disabled(self):
+        home_ssh = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox(home_ssh) is False
+
+    def test_denied_relative_proc_bypass(self, monkeypatch):
+        monkeypatch.chdir("/")
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox("proc/self/environ") is False
+
+    def test_cwd_and_nonsystem_paths_still_allowed(self, tmp_path):
+        f = tmp_path / "ok.txt"
+        f.write_text("x")
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox(str(f)) is True
+
+    def test_env_extra_deny_appends(self, monkeypatch):
+        monkeypatch.setenv("SANDBOX_DENY_EXTRA", "/var/secret")
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox("/var/secret/foo") is False
+            assert check_sandbox("/var/lib") is True
+
+    def test_open_verified_disabled_denies_symlink_to_etc(
+        self, monkeypatch, tmp_path
+    ):
+        """Hole 1: disabled branch must verify the opened fd, not the path.
+
+        check_sandbox passed on the link path itself (link lives in cwd);
+        the fd it opens must still be refused when it lands on /etc.
+        """
+        from aicoder.utils.file_utils import _open_verified, SandboxRaceError
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        (cwd / "leak").symlink_to("/etc/passwd")
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            with pytest.raises(SandboxRaceError):
+                _open_verified("leak", os.O_RDONLY, "read")
+
+    def test_open_verified_denies_link_beneath_root(
+        self, monkeypatch, tmp_path
+    ):
+        """Hole 2: cwd=$HOME shape — link target stays BENEATH the sandbox
+        root so openat2 RESOLVE_BENEATH succeeds, but the real path is
+        hard-denied (simulated via SANDBOX_DENY_EXTRA marking a subdir).
+        """
+        from aicoder.utils.file_utils import _open_verified, SandboxRaceError
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        secret_dir = cwd / "secrets"
+        secret_dir.mkdir()
+        (secret_dir / "key").write_text("SECRET")
+        (cwd / "keylink").symlink_to("secrets/key")  # relative, beneath root
+        monkeypatch.chdir(cwd)
+        monkeypatch.setenv("SANDBOX_DENY_EXTRA", str(secret_dir))
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(SandboxRaceError):
+                _open_verified("keylink", os.O_RDONLY, "read")
+
+    def test_write_verified_denied_dir_blocked(self, monkeypatch, tmp_path):
+        """Hole 3: writes into a denied dir never land content. Creation
+        itself may leave an empty file behind (same accepted risk as the
+        other create races); the payload must not be written.
+        """
+        from aicoder.utils.file_utils import write_file_verified, SandboxRaceError
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        secret_dir = cwd / "secrets"
+        secret_dir.mkdir()
+        monkeypatch.chdir(cwd)
+        monkeypatch.setenv("SANDBOX_DENY_EXTRA", str(secret_dir))
+        target = secret_dir / "new.txt"
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=False):
+            with pytest.raises(SandboxRaceError):
+                write_file_verified("secrets/new.txt", "pwned")
+        assert not target.exists() or target.read_text() == ""
+
+    def test_open_verified_disabled_allows_normal_file(
+        self, monkeypatch, tmp_path
+    ):
+        """Disabled mode still opens ordinary in-cwd files (no overblock)."""
+        from aicoder.utils.file_utils import _open_verified
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        (cwd / "ok.txt").write_text("fine")
+        monkeypatch.chdir(cwd)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            fd = _open_verified("ok.txt", os.O_RDONLY, "read")
+            try:
+                assert os.read(fd, 4) == b"fine"
+            finally:
+                os.close(fd)

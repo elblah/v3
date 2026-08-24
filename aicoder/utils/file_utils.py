@@ -94,6 +94,45 @@ def rotate_debug_log(path: str) -> Optional[str]:
     return new_path
 
 
+_DENY_PREFIXES = ("/proc", "/sys", "/dev", "/etc", "/run", "/")
+
+
+def _deny_base_prefixes() -> tuple:
+    """Hardcoded system/sensitive prefixes never touchable by internal tools.
+
+    Internal read/write tools are for code and text files, not system dirs.
+    Tier 1 (always, regardless of sandbox flag or bwrap): /proc /sys /dev
+    /etc /run and root itself. Tier 2 (personal secrets) derived here via
+    HOME. Enforcement is independent of sandbox_disabled() and of /sec/bwrap
+    existence — this is the only guarantee that holds on every host.
+    """
+    base = list(_DENY_PREFIXES)
+    home = os.path.expanduser("~")
+    for sub in (".ssh", ".gnupg", ".aws", ".netrc"):
+        base.append(os.path.join(home, sub))
+    return tuple(base)
+
+
+def _deny_extra_prefixes() -> tuple:
+    """Appended via SANDBOX_DENY_EXTRA (':' or os.pathsep separated). No un-deny."""
+    raw = os.environ.get("SANDBOX_DENY_EXTRA", "")
+    if not raw:
+        return ()
+    return tuple(
+        p.rstrip("/") if p and p != "/" else p
+        for p in raw.split(":")
+        if p
+    )
+
+
+def _denied_path(resolved: str) -> bool:
+    """True if resolved path sits under a denied system/sensitive prefix."""
+    for denied in (*_deny_base_prefixes(), *_deny_extra_prefixes()):
+        if resolved == denied or resolved.startswith(denied + "/"):
+            return True
+    return False
+
+
 def check_sandbox(path: str, context: str = "file operation", print_message: bool = True,
                   write: bool = False) -> bool:
     """Check if a path is allowed by sandbox rules.
@@ -104,6 +143,12 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
 
     Paths outside cwd are allowed if inside a plugin-whitelisted dir
     (on_file_sandbox_whitelist hook) — read-only, so write=True skips it.
+
+    Hard-denied first, BEFORE the sandbox-disabled early-return: system and
+    personal-secret directories (/proc /sys /dev /etc /run / and SSH/GPG/AWS
+    secrets under $HOME) are unreachable by internal read/write tools even when
+    the sandbox is turned off or bwrap is absent. System access is intended
+    to go through run_shell_command (sealed) instead.
     """
     # Import here to avoid circular imports
     try:
@@ -112,10 +157,26 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
         # Config not available - allow everything
         return True
 
-    if Config.sandbox_disabled():
+    if not path:
         return True
 
-    if not path:
+    # Deny first (independent of sandbox flag / bwrap). Relative paths are
+    # resolved against cwd so 'proc/self' isn't a bypass.
+    resolved_path = str(Path(os.path.join(os.getcwd(), path)).resolve())
+    if _denied_path(resolved_path):
+        if print_message:
+            try:
+                from aicoder.utils.log import warn
+                warn(f'Sandbox: {context} blocked from denied system directory "{resolved_path}"')
+            except ImportError:
+                import sys
+                print(
+                    f'[x] Sandbox: {context} blocked from denied system directory "{path}"',
+                    file=sys.stderr,
+                )
+        return False
+
+    if Config.sandbox_disabled():
         return True
 
     # Resolve relative paths AND symlinks (os.path.abspath is NOT enough:
@@ -263,8 +324,30 @@ def _fd_realpath(fd: int) -> Optional[str]:
     return real
 
 
+def _fd_denied(fd: int, path: str, context: str) -> None:
+    """Post-open denylist check; closes fd and raises SandboxRaceError.
+
+    Companion to check_sandbox's path-based deny: closes the TOCTOU window
+    (link swapped in after the pre-check) and covers sandbox-disabled mode,
+    where no other verification runs. Without /proc (fd provenance
+    unreadable, e.g. inside some sandboxes) falls back to a pre-open
+    realpath resolve — static symlinks still denied, swap race not.
+    """
+    real = _fd_realpath(fd)
+    if real is None:
+        real = os.path.realpath(path)
+    if _denied_path(real):
+        os.close(fd)
+        raise SandboxRaceError(
+            f'{context}: "{path}" resolved to denied path "{real}"; blocked'
+        )
+
+
 def _real_path_allowed(real: str, write: bool) -> bool:
-    """Containment rule on a fully-resolved path (same set as check_sandbox)."""
+    """Allow rule on a fully-resolved path (same set as check_sandbox):
+    hard-denied prefixes first, then containment."""
+    if _denied_path(real):
+        return False
     current_dir = os.getcwd()
     if real == current_dir or real.startswith(current_dir + "/"):
         return True
@@ -395,6 +478,10 @@ def _open_verified(path: str, flags: int, context: str):
     RESOLVE_BENEATH makes containment a kernel guarantee during pathname
     resolution — no TOCTOU window at all. Falls back to open+verify (/proc)
     on kernels without openat2; fails closed when neither method works.
+    The denylist is re-checked on the opened fd in every branch: containment
+    beneath the sandbox root does NOT imply a safe target (cwd=$HOME case —
+    a link to ~/.ssh stays beneath root but is hard-denied), and the
+    disabled branch has no other check at all.
     """
     try:
         from aicoder.core.config import Config
@@ -402,7 +489,9 @@ def _open_verified(path: str, flags: int, context: str):
     except ImportError:
         disabled = True
     if disabled:
-        return os.open(path, flags)
+        fd = os.open(path, flags)
+        _fd_denied(fd, path, context)
+        return fd
 
     write = bool(flags & (os.O_WRONLY | os.O_RDWR))
     picked = _lexical_rel_under(
@@ -423,9 +512,11 @@ def _open_verified(path: str, flags: int, context: str):
         try:
             if not _openat2_supported():
                 raise OSError(errno.ENOSYS, "openat2 unavailable (seccomp/old kernel)")
-            return _openat2_beneath(
+            fd = _openat2_beneath(
                 root_fd, rel, flags, 0o666 if flags & os.O_CREAT else 0
             )
+            _fd_denied(fd, path, context)
+            return fd
         except OSError as error:
             if error.errno in (errno.EXDEV, errno.ENOENT):
                 # EXDEV: RESOLVE_BENEATH rejects absolute symlinks outright
