@@ -33,6 +33,7 @@ Safety:
 
 from typing import Dict, Any
 from aicoder.utils.log import LogUtils, LogOptions, warn, error, info, success
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 from aicoder.core.config import Config
 
 
@@ -234,12 +235,12 @@ Examples:
 """
             return help_text
 
-        if args_str == "on":
+        if args_str in TRUTHY:
             _register_tool()
             warn("Runtime Python ENABLED")
             info("AI can now use run_inline_python tool (each execution requires approval)")
             return ""
-        elif args_str == "off":
+        elif args_str in FALSY:
             _unregister_tool()
             error("Runtime Python DISABLED")
             return ""

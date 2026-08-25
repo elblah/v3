@@ -246,10 +246,11 @@ class TestStreamingConfiguration:
             assert Config.streaming_enabled() is False
 
     def test_streaming_disabled_with_other_values(self):
-        """Test that any non-"0" value enables streaming"""
-        with patch.dict('os.environ', {"AICODER_STREAM": "false"}, clear=True):
-            Config.reset()
-            assert Config.streaming_enabled() is True
+        """Test that boolean-falsy values (false/no/off) disable streaming"""
+        for val in ("false", "no", "off"):
+            with patch.dict('os.environ', {"AICODER_STREAM": val}, clear=True):
+                Config.reset()
+                assert Config.streaming_enabled() is False, f"AICODER_STREAM={val}"
 
     def test_stream_request_uses_config_default(self):
         """Test that stream_request respects AICODER_STREAM config"""

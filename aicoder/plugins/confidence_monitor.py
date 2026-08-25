@@ -9,11 +9,11 @@ Vet/tmux capture-pane scrapes for auditing.
 """
 
 import copy
-import os
 
 from typing import Optional
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils
 
 # Tools that modify state — approval/prompt gating still scoped to these
@@ -41,7 +41,7 @@ _ROLLING_WINDOW = 5
 
 
 def create_plugin(ctx):
-    if os.environ.get("MONITOR_CONFIDENCE_LEVEL") != "1":
+    if not env_bool("MONITOR_CONFIDENCE_LEVEL"):
         return
 
     colors = Config.colors
@@ -79,7 +79,7 @@ def create_plugin(ctx):
     def before_approval(tool_name, arguments):
         if tool_name not in _MUTATION_TOOLS:
             return None
-        if os.environ.get("MONITOR_CONFIDENCE_BEFORE_APPROVAL") != "1":
+        if not env_bool("MONITOR_CONFIDENCE_BEFORE_APPROVAL"):
             return None
         confidence = arguments.get("confidence")
         if confidence is not None:

@@ -6,6 +6,7 @@ from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 class YoloCommand(BaseCommand):
@@ -68,7 +69,7 @@ class YoloCommand(BaseCommand):
             return CommandResult(should_quit=False, run_api_call=False)
 
         action = args[0].lower()
-        if action in ["on", "1"]:
+        if action in TRUTHY:
             if Config.yolo_mode():
                 LogUtils.print(
                     f"{Config.colors['yellow']}YOLO mode is already enabled{Config.colors['reset']}"
@@ -81,7 +82,7 @@ class YoloCommand(BaseCommand):
                 LogUtils.print(
                     f"{Config.colors['yellow']}{Config.colors['bold']}[!] This includes potentially dangerous shell commands{Config.colors['reset']}"
                 )
-        elif action in ["off", "0"]:
+        elif action in FALSY:
             if Config.yolo_mode():
                 Config.set_yolo_mode(False)
                 LogUtils.print(

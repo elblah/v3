@@ -20,6 +20,7 @@ import subprocess
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 def create_plugin(ctx):
@@ -113,15 +114,15 @@ Commands:
         if not parts:
             return "Usage: /ruff [on|off|check-serious [on|off]]"
 
-        if parts[0] == "on":
+        if parts[0] in TRUTHY:
             state["enabled"] = True
             return "Ruff checking enabled"
-        elif parts[0] == "off":
+        elif parts[0] in FALSY:
             state["enabled"] = False
             return "Ruff checking disabled"
         elif parts[0] == "check-serious":
-            if len(parts) >= 2 and parts[1] in ("on", "off"):
-                state["serious_only"] = parts[1] == "on"
+            if len(parts) >= 2 and (parts[1] in TRUTHY or parts[1] in FALSY):
+                state["serious_only"] = parts[1] in TRUTHY
                 mode = "serious-only" if state["serious_only"] else "full"
                 return f"Ruff set to {mode} mode"
             else:

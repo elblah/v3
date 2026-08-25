@@ -24,6 +24,7 @@ import os
 import sys
 from datetime import datetime
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 
 SOCKET_PATH = os.path.join(os.environ.get("TMP", "/tmp"), "stats_server.sock")
 
@@ -81,7 +82,7 @@ def _write_to_central(line):
         else:
             err_msg = f"central server responded: {response}"
             print(f"\n[stats_logger] {err_msg}\n  line: {line.strip()}", file=sys.stderr)
-            if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
+            if env_bool("STATS_ERROR_DUNSTIFY"):
                 os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
             return False
     except FileNotFoundError:
@@ -90,7 +91,7 @@ def _write_to_central(line):
     except (socket.timeout, ConnectionRefusedError, OSError) as e:
         err_msg = f"central write failed: {e}"
         print(f"\n[stats_logger] {err_msg}\n  line: {line.strip()}", file=sys.stderr)
-        if os.environ.get("STATS_ERROR_DUNSTIFY") == "1":
+        if env_bool("STATS_ERROR_DUNSTIFY"):
             os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
         return False
 

@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Optional, Set
 
+from aicoder.utils.bool_utils import env_bool
+
 # Module-level state
 _current_dir = os.getcwd()
 _read_files: Set[str] = set()
@@ -78,7 +80,7 @@ def rotate_debug_log(path: str) -> Optional[str]:
     before the new log overwrites it. Returns the new path, or None if nothing
     was moved.
     """
-    if os.environ.get("KEEP_LAST_RESPONSE_LOG", "").lower() in ("", "0", "false", "no", "off"):
+    if not env_bool("KEEP_LAST_RESPONSE_LOG"):
         return None
     if not os.path.exists(path):
         return None

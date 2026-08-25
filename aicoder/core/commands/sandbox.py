@@ -7,6 +7,7 @@ from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import info, dim, LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 class SandboxCommand(BaseCommand):
@@ -54,13 +55,13 @@ class SandboxCommand(BaseCommand):
             return CommandResult(should_quit=False, run_api_call=False)
 
         action = args[0].lower()
-        if action in ["on", "1"]:
+        if action in TRUTHY:
             if Config.sandbox_disabled():
                 Config.set_sandbox_disabled(False)
                 LogUtils.success("Sandbox-fs is now enabled")
             else:
                 LogUtils.warn("Sandbox-fs is already enabled")
-        elif action in ["off", "0"]:
+        elif action in FALSY:
             if Config.sandbox_disabled():
                 LogUtils.error("Sandbox-fs is already disabled")
             else:

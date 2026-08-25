@@ -24,6 +24,7 @@ import json
 import os
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import parse_bool, TRUTHY, FALSY
 from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
 
@@ -63,7 +64,7 @@ def _load_state():
 
     env_on = os.environ.get("REMINDER_ON")
     if env_on is not None:
-        _enabled = env_on.lower() in ("1", "true", "yes", "on")
+        _enabled = parse_bool(env_on)
 
     if any(k in os.environ for k in ("REMINDER_INTERVAL", "REMINDER_MSG", "REMINDER_ON")):
         _save_state()
@@ -144,13 +145,13 @@ def create_plugin(ctx):
 
         args = args_str.strip()
 
-        if args.lower() == "on":
+        if args.lower() in TRUTHY:
             _enabled = True
             _counter = 0
             _save_state()
             return _status()
 
-        if args.lower() == "off":
+        if args.lower() in FALSY:
             _enabled = False
             _counter = 0
             _save_state()

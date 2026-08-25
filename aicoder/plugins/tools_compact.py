@@ -48,6 +48,7 @@ import re
 from aicoder.core.config import Config
 from aicoder.core.nudges import add_nudge
 from aicoder.core.token_estimator import _message_cache
+from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
 from aicoder.utils.log import LogUtils
 
 TAG = "[COMPACT_SUMMARY:TOOLS]"
@@ -259,15 +260,15 @@ def _scan_pairs(msgs, tag_idx):
 
 
 def create_plugin(ctx):
-    if os.environ.get("TOOLS_COMPACT_ENABLED", "0") != "1":
+    if not env_bool("TOOLS_COMPACT_ENABLED"):
         return  # disabled by default — opt-in, no hooks/commands registered
     app = ctx.app
 
     cfg = {
         "enabled": True,
         "loop_pct": int(os.environ.get("TOOLS_COMPACT_LOOP_PCT", "25")),
-        "continuation": os.environ.get("TOOLS_COMPACT_CONTINUE", "1") != "0",
-        "show_budget": os.environ.get("TOOLS_COMPACT_SHOW_BUDGET", "0") == "1",
+        "continuation": env_bool("TOOLS_COMPACT_CONTINUE", default=True),
+        "show_budget": env_bool("TOOLS_COMPACT_SHOW_BUDGET"),
     }
 
     state = {
@@ -575,10 +576,10 @@ def create_plugin(ctx):
         if not parts:
             return _loop_status()
         cmd = parts[0].lower()
-        if cmd == "on":
+        if cmd in TRUTHY:
             state["enabled"] = True
             return "[tools_compact] loop nudge ENABLED"
-        if cmd == "off":
+        if cmd in FALSY:
             state["enabled"] = False
             state["pending_nudge"] = False  # don't deliver a stale nudge later
             return "[tools_compact] loop nudge DISABLED"

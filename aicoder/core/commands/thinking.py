@@ -6,6 +6,7 @@ from typing import List, Optional
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import parse_bool
 
 
 class ThinkingCommand(BaseCommand):
@@ -198,16 +199,18 @@ class ThinkingCommand(BaseCommand):
 
     def _set_clear_thinking(self, value: str) -> None:
         """Set reasoning strip (true=strip from non-tool-call msgs, false=preserve)"""
-        if value.lower() in ("true", "1", "yes", "on"):
-            Config.set_clear_thinking(True)
+        try:
+            clear = parse_bool(value)
+        except ValueError:
+            LogUtils.error("Invalid value. Use: /thinking clear <true|false>")
+            return
+        Config.set_clear_thinking(clear)
+        if clear:
             LogUtils.warn("[*] Reasoning strip enabled")
             LogUtils.info("Reasoning stripped from non-tool-call messages (saves bandwidth)")
-        elif value.lower() in ("false", "0", "no", "off"):
-            Config.set_clear_thinking(False)
+        else:
             LogUtils.success("[*] Reasoning strip disabled")
             LogUtils.info("All reasoning preserved across turns (recommended for coding)")
-        else:
-            LogUtils.error("Invalid value. Use: /thinking clear <true|false>")
 
     def _show_help(self) -> None:
         """Show help for thinking command"""

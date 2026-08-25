@@ -10,11 +10,11 @@ Env:
     ASIAN_NUDGE_DEBUG=1 verbose logging
 """
 
-import os
 import re
 import time
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils
 
 # Unicode ranges covering CJK, Arabic, Indic, Thai, etc.
@@ -90,9 +90,8 @@ def _extract_text(msg: dict) -> str:
 def create_plugin(ctx):
     app = ctx.app
 
-    enabled = os.environ.get("ASIAN_NUDGE", "").lower()
-    enabled = enabled in ("1", "true", "yes", "on")
-    debug = os.environ.get("ASIAN_NUDGE_DEBUG", "").lower() in ("1", "true", "yes")
+    enabled = env_bool("ASIAN_NUDGE")
+    debug = env_bool("ASIAN_NUDGE_DEBUG")
 
     if not enabled:
         return

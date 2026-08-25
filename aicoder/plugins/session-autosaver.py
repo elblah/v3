@@ -16,6 +16,7 @@ import os
 import fcntl
 from pathlib import Path
 
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils
 
 def _orphan_tool_result_count(messages):
@@ -201,7 +202,7 @@ def create_plugin(ctx):
         # On TTY, optionally confirm before loading (opt-in via env var)
         should_confirm = (
             sys.stdin.isatty()
-            and os.environ.get("SESSION_FILE_CONFIRM_AUTOLOAD", "").lower() in ("1", "true", "yes")
+            and env_bool("SESSION_FILE_CONFIRM_AUTOLOAD")
         )
         if should_confirm:
             msg_count = _count_messages()

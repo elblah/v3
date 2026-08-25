@@ -29,6 +29,7 @@ import re
 import time
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
 from aicoder.utils.log import LogUtils
 from aicoder.utils.temp_file_utils import create_temp_file
 
@@ -89,8 +90,8 @@ _awaiting_tag = False
 _attempts = 0
 _goal = ""
 _prompt_history = []  # list of {"prompt": str, "started_at": float, "ended_at": float|None}
-_clean_slate = os.environ.get("AUTO_NEXT_CLEAN_SLATE", "1") == "1"
-_task_complete = os.environ.get("AUTO_NEXT_TASK_COMPLETE", "1") == "1"
+_clean_slate = env_bool("AUTO_NEXT_CLEAN_SLATE", default=True)
+_task_complete = env_bool("AUTO_NEXT_TASK_COMPLETE", default=True)
 _max_attempts = int(os.environ.get("AUTO_NEXT_MAX_ATTEMPTS", "2"))
 
 _STATE_FILE = os.path.join(os.getcwd(), ".aicoder", "auto-next-prompt.json")
@@ -166,13 +167,13 @@ def create_plugin(ctx):
 
         args = args_str.strip()
 
-        if args.lower() == "on":
+        if args.lower() in TRUTHY:
             _enabled = True
             _awaiting_tag = False
             _attempts = 0
             return _status()
 
-        if args.lower() == "off":
+        if args.lower() in FALSY:
             _enabled = False
             _awaiting_tag = False
             _attempts = 0
@@ -231,11 +232,11 @@ def create_plugin(ctx):
 
         if args.lower().startswith("clean-slate"):
             rest = args[11:].strip().lower()
-            if rest == "on":
+            if rest in TRUTHY:
                 _clean_slate = True
                 _save_state()
                 return "Clean-slate: ON (history wiped before each prompt)"
-            if rest == "off":
+            if rest in FALSY:
                 _clean_slate = False
                 _save_state()
                 return "Clean-slate: OFF"
@@ -243,11 +244,11 @@ def create_plugin(ctx):
 
         if args.lower().startswith("task-complete"):
             rest = args[13:].strip().lower()
-            if rest == "on":
+            if rest in TRUTHY:
                 _task_complete = True
                 _save_state()
                 return "Task-complete: ON (auto-disable on TASK_COMPLETE)"
-            if rest == "off":
+            if rest in FALSY:
                 _task_complete = False
                 _save_state()
                 return "Task-complete: OFF (ignore TASK_COMPLETE, keep looping)"

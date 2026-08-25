@@ -6,6 +6,7 @@ from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 class DebugCommand(BaseCommand):
@@ -59,9 +60,9 @@ class DebugCommand(BaseCommand):
             return self._show_help()
 
         # Handle on/off/toggle
-        if action in ["on", "1", "enable", "true"]:
+        if action in TRUTHY:
             return self._enable_debug()
-        elif action in ["off", "0", "disable", "false"]:
+        elif action in FALSY:
             return self._disable_debug()
         elif action in ["toggle", "t"]:
             if Config.debug():

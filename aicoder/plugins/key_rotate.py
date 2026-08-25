@@ -16,11 +16,12 @@ import sys
 from typing import Optional
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils
 
 
 _SEPARATOR = os.environ.get("KEY_ROTATE_SEPARATOR", "___")
-_DEBUG = os.environ.get("KEY_ROTATE_DEBUG", "").lower() in ("1", "true", "yes")
+_DEBUG = env_bool("KEY_ROTATE_DEBUG")
 
 _keys: list[str] = []
 _key_index: int = 0
