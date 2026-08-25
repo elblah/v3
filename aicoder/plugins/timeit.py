@@ -102,7 +102,7 @@ def create_plugin(ctx):
         nonlocal display_enabled, session_display_enabled, task_api_time_sum
 
         args = args_raw.strip().split() if args_raw else []
-        action = args[0] if args else ""
+        action = args[0].lower() if args else ""
         rest = " ".join(args[1:]).strip()
 
         if action == "" or action == "status":
@@ -220,10 +220,10 @@ def create_plugin(ctx):
 
         else:
             # Toggle display on/off if no args
-            if action in ("on", "enable"):
+            if action in TRUTHY:
                 display_enabled = True
                 LogUtils.print(f"{Config.colors['green']}[+] Timing display: ON{Config.colors['reset']}")
-            elif action in ("off", "disable"):
+            elif action in FALSY:
                 display_enabled = False
                 LogUtils.print(f"{Config.colors['dim']}[-] Timing display: OFF{Config.colors['reset']}")
             elif action == "help" or action not in ("start", "stop", "stats", "history", "reset"):

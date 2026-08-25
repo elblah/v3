@@ -16,7 +16,7 @@ import os
 import fcntl
 from pathlib import Path
 
-from aicoder.utils.bool_utils import env_bool
+from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
 from aicoder.utils.log import LogUtils
 
 def _orphan_tool_result_count(messages):
@@ -211,10 +211,10 @@ def create_plugin(ctx):
             prompt = f"\n  {c['bold']}{c['brightYellow']}Load previous session from {session_file}{extra}? [Y/n]{c['reset']} "
             while True:
                 answer = input(prompt).strip().lower()
-                if answer in ("", "y", "yes", "n", "no"):
+                if not answer or answer in TRUTHY or answer in FALSY:
                     break
             print()
-            if answer in ("n", "no"):
+            if answer in FALSY:
                 LogUtils.print("[*] Skipping session load, starting fresh")
                 save_current_state()
                 return

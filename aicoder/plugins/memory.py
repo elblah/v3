@@ -20,6 +20,8 @@ import time
 import math
 from typing import List
 
+from aicoder.utils.bool_utils import env_bool
+
 # Resolve to an absolute path at load time so the prompt can show the exact
 # location. The relative default resolves against aicoder's working directory
 # (NOT the OS home dir) — surfacing the absolute path stops the AI from guessing
@@ -61,14 +63,14 @@ if _project_limit is not None:
     MAX_AUTOLOAD_BYTES = _project_limit
 
 # Nudge config
-NUDGE_ENABLED = os.environ.get("AICODER_MEMORY_NUDGE", "1").lower() not in ("0", "false", "no")
+NUDGE_ENABLED = env_bool("AICODER_MEMORY_NUDGE", default=True)
 NUDGE_CHARS = int(os.environ.get("AICODER_MEMORY_NUDGE_CHARS", "1000"))
 NUDGE_SECONDS = int(os.environ.get("AICODER_MEMORY_NUDGE_SECONDS", "300"))
 
 # Auto-approve write_file/edit_file targeting the memory dir (skip approval prompt)
-AUTO_APPROVE_MEMORY = os.environ.get("AICODER_MEMORY_AUTO_APPROVE", "1").lower() not in ("0", "false", "no")
+AUTO_APPROVE_MEMORY = env_bool("AICODER_MEMORY_AUTO_APPROVE", default=True)
 # Hide memory-dir write previews entirely (default: show one-line summary instead of diff)
-PREVIEW_HIDE = os.environ.get("AICODER_MEMORY_PREVIEW_HIDE", "0").lower() not in ("0", "false", "no")
+PREVIEW_HIDE = env_bool("AICODER_MEMORY_PREVIEW_HIDE", default=False)
 
 # Transient band: 99-*.md files auto-archive to archive/ after TTL days without edits (promotion = rename below 99)
 TRANSIENT_BAND = 99

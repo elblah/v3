@@ -6,7 +6,7 @@ from typing import List, Optional
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
-from aicoder.utils.bool_utils import parse_bool
+from aicoder.utils.bool_utils import parse_bool, TRUTHY, FALSY
 
 
 class ThinkingCommand(BaseCommand):
@@ -58,14 +58,14 @@ class ThinkingCommand(BaseCommand):
                 Config.set_thinking("default")
                 LogUtils.success("[*] Thinking set to default")
                 LogUtils.info("Model will use its default thinking behavior")
-        elif action in ("on", "1", "enable", "true"):
+        elif action in TRUTHY:
             if current_mode == "on":
                 LogUtils.warn("[*] Thinking is already enabled")
             else:
                 Config.set_thinking("on")
                 LogUtils.success("[*] Thinking ENABLED")
                 LogUtils.info("Sending thinking enabled in API requests")
-        elif action in ("off", "0", "disable", "false"):
+        elif action in FALSY:
             if current_mode == "off":
                 LogUtils.warn("[*] Thinking is already disabled")
             else:
