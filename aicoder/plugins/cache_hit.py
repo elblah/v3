@@ -19,8 +19,8 @@ Env:
     CACHE_HIT_BAR=1  (show "hit NN%" in context bar, default: off)
 """
 
-import os
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 
 _session_hit = 0
 _session_total = 0
@@ -115,7 +115,7 @@ def _on_stats(stats):
 
 def _on_context_bar():
     """Context bar line — only when CACHE_HIT_BAR=1."""
-    if os.environ.get("CACHE_HIT_BAR") != "1" or _session_total <= 0:
+    if not env_bool("CACHE_HIT_BAR") or _session_total <= 0:
         return None
     pct = _session_hit / _session_total * 100
     return f"{Config.colors['dim']}hit {pct:.0f}%{Config.colors['reset']}"

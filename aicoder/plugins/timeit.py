@@ -19,6 +19,7 @@ from typing import Optional
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 from aicoder.utils.shell_utils import execute_command_sync
 
 
@@ -125,10 +126,10 @@ def create_plugin(ctx):
 
         elif action == "session":
             sub = rest.lower()
-            if sub == "on":
+            if sub in TRUTHY:
                 session_display_enabled = True
                 LogUtils.print(f"{Config.colors['green']}[+] Session time in context bar: ON{Config.colors['reset']}")
-            elif sub == "off":
+            elif sub in FALSY:
                 session_display_enabled = False
                 LogUtils.print(f"{Config.colors['dim']}[-] Session time in context bar: OFF{Config.colors['reset']}")
             else:

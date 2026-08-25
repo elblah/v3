@@ -6,6 +6,7 @@ from typing import List
 from .base import BaseCommand, CommandResult
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 class DetailCommand(BaseCommand):
@@ -65,14 +66,14 @@ class DetailCommand(BaseCommand):
                 return CommandResult(should_quit=False, run_api_call=False)
 
             tty_action = args[1].lower()
-            if tty_action in ("on", "1", "enable", "true"):
+            if tty_action in TRUTHY:
                 if Config.detail_tty():
                     LogUtils.warn("[*] TTY passthrough is already ON")
                 else:
                     Config.set_detail_tty(True)
                     LogUtils.success("[*] TTY passthrough ENABLED")
                     LogUtils.info("Command output will also be shown live in terminal")
-            elif tty_action in ("off", "0", "disable", "false"):
+            elif tty_action in FALSY:
                 if Config.detail_tty():
                     Config.set_detail_tty(False)
                     LogUtils.warn("[*] TTY passthrough DISABLED")
@@ -98,14 +99,14 @@ class DetailCommand(BaseCommand):
             LogUtils.info("progress without waiting for the AI's turn to finish.")
             return CommandResult(should_quit=False, run_api_call=False)
 
-        if action in ("on", "1", "enable", "true"):
+        if action in TRUTHY:
             if Config.detail_mode():
                 LogUtils.warn("[*] Detail mode is already enabled")
             else:
                 Config.set_detail_mode(True)
                 LogUtils.success("[*] Detail mode ENABLED")
                 LogUtils.info("All tool parameters and results will now be shown")
-        elif action in ("off", "0", "disable", "false"):
+        elif action in FALSY:
             if Config.detail_mode():
                 Config.set_detail_mode(False)
                 LogUtils.warn("[*] Detail mode DISABLED")

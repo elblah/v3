@@ -12,6 +12,7 @@ import signal
 from typing import Dict, Any
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import parse_bool
 from aicoder.core.stats import Stats
 from aicoder.core.message_history import MessageHistory
 from aicoder.core.tool_manager import ToolManager
@@ -91,7 +92,7 @@ class AICoder:
         # state. An explicit AICODER_AUTO_SAVE always wins.
         auto_save_env = os.environ.get("AICODER_AUTO_SAVE")
         if auto_save_env is not None:
-            self._auto_save_enabled = auto_save_env.lower() in ("1", "true", "yes")
+            self._auto_save_enabled = parse_bool(auto_save_env)
         else:
             session_file_env = os.environ.get("SESSION_FILE")
             self._auto_save_enabled = not (

@@ -16,6 +16,7 @@ import subprocess
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 GATE_FILE = os.path.join(".aicoder", ".notify-prompt")
 
@@ -76,8 +77,8 @@ def create_plugin(ctx):
     def handle_notify_prompt(args_str: str) -> str:
         """Handle /notify-prompt command"""
         args = (args_str or "").strip().split()
-        if args and args[0] in ("on", "off"):
-            if args[0] == "on":
+        if args and (args[0] in TRUTHY or args[0] in FALSY):
+            if args[0] in TRUTHY:
                 os.makedirs(".aicoder", exist_ok=True)
                 with open(GATE_FILE, "w"):
                     pass

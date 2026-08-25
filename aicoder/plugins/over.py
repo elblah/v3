@@ -11,10 +11,10 @@ Usage:
   /over status  Show current state
 """
 
-import os
 from typing import Optional
 
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
 from aicoder.core.config import Config
 
 
@@ -73,14 +73,14 @@ class OverCommand:
             count = OverService.get_retry_count()
             return (
                 f"[OVER] protocol: {status}, retries: {count}\n\n"
-                "Commands: /over on | /over off | /over status"
+                "Commands: /over 1|true|on | /over 0|false|off | /over status"
             )
 
-        if args[0] == "on":
+        if args[0] in TRUTHY:
             OverService.set_enabled(True)
             return "[OVER] protocol enabled. AI will be instructed to end responses with [OVER]."
 
-        if args[0] == "off":
+        if args[0] in FALSY:
             OverService.set_enabled(False)
             return "[OVER] protocol disabled."
 
@@ -150,7 +150,7 @@ def create_plugin(ctx):
     cmd = OverCommand(ctx.app)
 
     # Check env var
-    if os.environ.get("OVER") == "1":
+    if env_bool("OVER"):
         OverService.set_enabled(True)
 
     # Register command

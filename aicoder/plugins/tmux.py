@@ -9,6 +9,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+from aicoder.utils.bool_utils import TRUTHY, FALSY
+
 MARKER_PREFIX = "[tmux]"
 MARKER_TEXT = "session-start"
 WINTITLE_FILE = ".aicoder/tmux-wintitle"
@@ -113,7 +115,7 @@ def create_plugin(ctx):
 
         cmd = parts[0]
 
-        if cmd == "on":
+        if cmd in TRUTHY:
             # Restore disabled file if exists, otherwise create
             if os.path.isfile(disabled):
                 os.rename(disabled, active)
@@ -129,7 +131,7 @@ def create_plugin(ctx):
             _apply_title(name)
             return f"Wintitle reset to: {name}"
 
-        elif cmd == "off":
+        elif cmd in FALSY:
             if os.path.isfile(active):
                 os.rename(active, disabled)
             _apply_title(os.path.basename(os.path.abspath(os.getcwd())))

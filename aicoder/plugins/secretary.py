@@ -5,6 +5,8 @@ import os
 import subprocess
 from typing import Any
 
+from aicoder.utils.bool_utils import env_bool
+
 SECRETARY_INSTRUCTIONS = """
 You are operating as the user's secretary for coordinating AICoder workers.
 
@@ -72,7 +74,7 @@ def _encoded(value: Any, field: str) -> str:
 
 
 def create_plugin(ctx):
-    if os.environ.get("SECRETARY") != "1":
+    if not env_bool("SECRETARY"):
         return
 
     tmpdir = os.environ.get("TMP")
@@ -198,7 +200,7 @@ def create_plugin(ctx):
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
     ctx.register_hook("on_internal_skills", on_internal_skills)
 
-    if os.environ.get("DEBUG") == "1":
+    if env_bool("DEBUG"):
         print("  - workplace tool")
         print("  - secretary system instructions")
         print("  - secretary internal skill")

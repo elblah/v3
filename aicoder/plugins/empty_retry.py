@@ -10,6 +10,7 @@ import time
 from typing import Optional
 
 from aicoder.utils.log import LogUtils
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 from aicoder.core.config import Config
 
 
@@ -135,11 +136,11 @@ How it works:
         if not args or args[0] == "help":
             return self.show_help()
 
-        if args[0] == "on":
+        if args[0] in TRUTHY:
             EmptyRetryService.set_enabled(True)
             return "Empty retry enabled."
 
-        if args[0] == "off":
+        if args[0] in FALSY:
             EmptyRetryService.set_enabled(False)
             return "Empty retry disabled."
 

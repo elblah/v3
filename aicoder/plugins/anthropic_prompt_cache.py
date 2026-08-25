@@ -12,15 +12,15 @@ Activated by AICODER_ANTHROPIC_CACHE=1 env var.
 """
 
 import copy
-import os
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 
 
 def create_plugin(ctx):
     """Request transform plugin for Anthropic prompt caching"""
 
-    enabled = os.environ.get("AICODER_ANTHROPIC_CACHE", "").lower() in ("1", "true", "yes")
+    enabled = env_bool("AICODER_ANTHROPIC_CACHE")
 
     if enabled and Config.debug():
         print(f"{Config.colors['dim']}[+] anthropic_prompt_cache plugin enabled{Config.colors['reset']}")

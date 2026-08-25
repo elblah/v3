@@ -19,6 +19,7 @@ from typing import Optional, Dict, Any, List
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils, LogOptions
 from aicoder.utils.temp_file_utils import create_temp_file
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 def _gen_token_hex(n):
@@ -343,11 +344,11 @@ class SocketServer:
             new_state = not current
             return response({"enabled": new_state, "message": f"YOLO {'enabled' if new_state else 'disabled'}"})
 
-        if args == "on":
+        if args in TRUTHY:
             Config.set_yolo_mode(True)
             return response({"enabled": True, "message": "YOLO enabled"})
 
-        if args == "off":
+        if args in FALSY:
             Config.set_yolo_mode(False)
             return response({"enabled": False, "message": "YOLO disabled"})
 
@@ -368,11 +369,11 @@ class SocketServer:
             new_state = not current
             return response({"enabled": new_state, "message": f"Detail mode {'enabled' if new_state else 'disabled'}"})
 
-        if args == "on":
+        if args in TRUTHY:
             Config.set_detail_mode(True)
             return response({"enabled": True, "message": "Detail mode enabled"})
 
-        if args == "off":
+        if args in FALSY:
             Config.set_detail_mode(False)
             return response({"enabled": False, "message": "Detail mode disabled"})
 
@@ -394,11 +395,11 @@ class SocketServer:
             Config.set_sandbox_disabled(new_disabled)
             return response({"enabled": not new_disabled, "message": f"Sandbox {'enabled' if not new_disabled else 'disabled'}"})
 
-        if args == "on":
+        if args in TRUTHY:
             Config.set_sandbox_disabled(False)
             return response({"enabled": True, "message": "Sandbox enabled"})
 
-        if args == "off":
+        if args in FALSY:
             Config.set_sandbox_disabled(True)
             return response({"enabled": False, "message": "Sandbox disabled"})
 
@@ -418,11 +419,11 @@ class SocketServer:
             Config.set_debug(not current)
             return response({"enabled": not current, "message": f"Debug {'enabled' if not current else 'disabled'}"})
 
-        if args == "on":
+        if args in TRUTHY:
             Config.set_debug(True)
             return response({"enabled": True, "message": "Debug enabled"})
 
-        if args == "off":
+        if args in FALSY:
             Config.set_debug(False)
             return response({"enabled": False, "message": "Debug disabled"})
 

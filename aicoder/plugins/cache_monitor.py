@@ -32,6 +32,7 @@ import json
 import os
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
 from aicoder.utils.log import LogUtils
 
 # --- State ---
@@ -210,12 +211,12 @@ def _handle_command(args: str) -> None:
         print("  /cm status   - Show state")
         return
 
-    if parts[0] == "on":
+    if parts[0] in TRUTHY:
         _enabled = True
         LogUtils.printc("[cache-monitor] Enabled", color="cyan")
         return
 
-    if parts[0] == "off":
+    if parts[0] in FALSY:
         _enabled = False
         LogUtils.printc("[cache-monitor] Disabled", color="cyan")
         return
@@ -240,7 +241,7 @@ def create_plugin(ctx):
     global _enabled, _cache_alerts, _app, _message_hashes, _last_cached_tokens
 
     # Only load when explicitly enabled
-    if os.environ.get("CACHE_MONITOR") != "1":
+    if not env_bool("CACHE_MONITOR"):
         return {}
 
     _app = ctx.app

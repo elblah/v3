@@ -16,6 +16,7 @@ Commands:
 
 import os
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import TRUTHY, FALSY
 
 
 def create_plugin(ctx):
@@ -138,10 +139,10 @@ def create_plugin(ctx):
         if cmd == "default":
             _mode = "default"
             return f"Pinned mode: default (auto)"
-        elif cmd == "on":
+        elif cmd in TRUTHY:
             _mode = "on"
             return f"Pinned mode: on (always)"
-        elif cmd == "off":
+        elif cmd in FALSY:
             _mode = "off"
             return f"Pinned mode: off (never)"
         elif cmd == "len":
@@ -163,10 +164,10 @@ def create_plugin(ctx):
             if len(parts) < 2:
                 return f"PWD display: {'on' if _pwd_enabled else 'off'}"
             sub = parts[1].lower()
-            if sub == "on":
+            if sub in TRUTHY:
                 _pwd_enabled = True
                 return "PWD display: on"
-            elif sub == "off":
+            elif sub in FALSY:
                 _pwd_enabled = False
                 return "PWD display: off"
             return "Usage: /pinned pwd on|off"
