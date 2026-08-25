@@ -6,6 +6,7 @@ Configuration module for AI Coder
 import os
 import sys
 from typing import Any, Dict, List, Optional, Set
+from aicoder.utils.bool_utils import parse_bool, env_bool
 from aicoder.utils.log import LogUtils
 
 
@@ -39,7 +40,7 @@ class Config:
 
     # YOLO mode state - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
-    _yolo_mode = os.environ.get("YOLO_MODE") == "1"
+    _yolo_mode = env_bool("YOLO_MODE")
 
     @staticmethod
     def yolo_mode() -> bool:
@@ -71,20 +72,18 @@ class Config:
 
     # Sandbox and detail mode state - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
-    _sandbox_disabled = os.environ.get("MINI_SANDBOX") == "0"
-    _detail_mode = os.environ.get("DETAIL") == "1"
-    _detail_tty = os.environ.get("DETAIL_TTY") == "1"
+    _sandbox_disabled = not env_bool("MINI_SANDBOX", default=True)
+    _detail_mode = env_bool("DETAIL")
+    _detail_tty = env_bool("DETAIL_TTY")
 
     # Thinking mode - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # Supported values: "default", "on" (1/yes/true), "off" (0/no/false)
     def _init_thinking_from_env() -> str:
-        env_val = os.environ.get("THINKING", "").lower()
-        if env_val in ("on", "1", "yes", "true"):
-            return "on"
-        elif env_val in ("off", "0", "no", "false"):
-            return "off"
-        return "default"
+        try:
+            return "on" if parse_bool(os.environ.get("THINKING", "")) else "off"
+        except ValueError:
+            return "default"
 
     _thinking = _init_thinking_from_env()
 
@@ -93,12 +92,7 @@ class Config:
     # false = preserve reasoning across turns (recommended for coding)
     # true = strip reasoning from non-tool-call messages before sending (saves bandwidth)
     def _init_clear_thinking_from_env() -> Optional[bool]:
-        env_val = os.environ.get("CLEAR_THINKING", "").lower()
-        if env_val in ("1", "true", "yes", "on"):
-            return True
-        elif env_val in ("0", "false", "no", "off"):
-            return False
-        return None
+        return parse_bool(os.environ.get("CLEAR_THINKING", ""), default=None)
 
     _clear_thinking = _init_clear_thinking_from_env()
 
@@ -118,8 +112,8 @@ class Config:
 
     # Show reasoning - initialize from env var ONCE at module load time
     # AICODER_SHOW_REASONING=0 disables printing reasoning on first content
-    # Default (unset or any other value): enabled
-    _show_reasoning = os.environ.get("AICODER_SHOW_REASONING", "1").lower() not in ("0", "false", "no", "off")
+    # Default (unset): enabled; invalid values raise ValueError
+    _show_reasoning = env_bool("AICODER_SHOW_REASONING", default=True)
 
     @staticmethod
     def show_reasoning() -> bool:
@@ -133,8 +127,8 @@ class Config:
 
     # Show context bar - initialize from env var ONCE at module load time
     # AICODER_SHOW_CONTEXT_BAR=0 disables printing the "Context: ..." bar
-    # Default (unset or any other value): enabled
-    _show_context_bar = os.environ.get("AICODER_SHOW_CONTEXT_BAR", "1").lower() not in ("0", "false", "no", "off")
+    # Default (unset): enabled; invalid values raise ValueError
+    _show_context_bar = env_bool("AICODER_SHOW_CONTEXT_BAR", default=True)
 
     @staticmethod
     def show_context_bar() -> bool:
@@ -148,8 +142,8 @@ class Config:
 
     # Show AI prefix - initialize from env var ONCE at module load time
     # AICODER_SHOW_AI_PREFIX=0 disables printing the "AI: " marker before responses
-    # Default (unset or any other value): enabled
-    _show_ai_prefix = os.environ.get("AICODER_SHOW_AI_PREFIX", "1").lower() not in ("0", "false", "no", "off")
+    # Default (unset): enabled; invalid values raise ValueError
+    _show_ai_prefix = env_bool("AICODER_SHOW_AI_PREFIX", default=True)
 
     @staticmethod
     def show_ai_prefix() -> bool:
@@ -165,7 +159,7 @@ class Config:
     # After this, only runtime state is used (env var ignored)
     # false = include error body in HTTP error messages (default)
     # true = suppress error body from HTTP error messages
-    _suppress_error_body = os.environ.get("AICODER_SUPPRESS_ERROR_BODY", "").lower() in ("1", "true", "yes", "on")
+    _suppress_error_body = env_bool("AICODER_SUPPRESS_ERROR_BODY")
 
     @staticmethod
     def suppress_error_body() -> bool:
@@ -575,11 +569,14 @@ class Config:
         - list_directory: List files and directories
 
         Example: TOOLS_ALLOW="read_file,grep,list_directory" (read-only access)
+        TOOLS_ALLOW="none" (case-insensitive) means zero tools allowed.
 
         Returns:
             Set of allowed tool names, or None if not set (all tools allowed)
         """
         env_val = os.environ.get("TOOLS_ALLOW", "").strip()
+        if env_val.lower() == "none":
+            return set()
         if env_val:
             return set(name.strip() for name in env_val.split(",") if name.strip())
         return None
@@ -609,7 +606,7 @@ class Config:
         Default: enabled (some models repeatedly call nonexistent tools).
         Set TOOLS_NOT_FOUND_RELIST=0 to disable.
         """
-        return os.environ.get("TOOLS_NOT_FOUND_RELIST", "1") != "0"
+        return env_bool("TOOLS_NOT_FOUND_RELIST", default=True)
 
     @staticmethod
     def plugins_allow() -> Optional[Set[str]]:
@@ -683,7 +680,7 @@ class Config:
         Returns:
             bool: True if gzip is enabled, False if disabled
         """
-        return os.environ.get("AICODER_GZIP", "1") != "0"
+        return env_bool("AICODER_GZIP", default=True)
 
     @staticmethod
     def streaming_enabled() -> bool:
@@ -694,7 +691,7 @@ class Config:
         Returns:
             bool: True if streaming is enabled, False if disabled
         """
-        return os.environ.get("AICODER_STREAM", "1") != "0"
+        return env_bool("AICODER_STREAM", default=True)
 
     @staticmethod
     def temperature() -> float:
@@ -981,7 +978,7 @@ class Config:
         return Config.DEFAULT_IGNORE_PATTERNS + user_patterns
 
     # Debug and Development - initialize from env var ONCE at module load time
-    _debug_enabled = os.environ.get("DEBUG") == "1"
+    _debug_enabled = env_bool("DEBUG")
 
     @staticmethod
     def debug() -> bool:
@@ -1116,10 +1113,10 @@ class Config:
         Reset all runtime state to defaults (for testing)
 
         """
-        Config._yolo_mode = os.environ.get("YOLO_MODE") == "1"
-        Config._sandbox_disabled = os.environ.get("MINI_SANDBOX") == "0"
-        Config._detail_mode = os.environ.get("DETAIL") == "1"
-        Config._debug_enabled = os.environ.get("DEBUG") == "1"
+        Config._yolo_mode = env_bool("YOLO_MODE")
+        Config._sandbox_disabled = not env_bool("MINI_SANDBOX", default=True)
+        Config._detail_mode = env_bool("DETAIL")
+        Config._debug_enabled = env_bool("DEBUG")
 
     @staticmethod
     def in_tmux() -> bool:
@@ -1135,4 +1132,4 @@ class Config:
         Check if running in socket-only mode (no readline input)
         When true, AI Coder only responds to socket commands
         """
-        return os.environ.get("AICODER_SOCKET_ONLY") == "1"
+        return env_bool("AICODER_SOCKET_ONLY")

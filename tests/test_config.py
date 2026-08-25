@@ -500,6 +500,16 @@ class TestConfigToolsAllow:
         result = config.Config.tools_allow()
         assert result is None
 
+    def test_tools_allow_none_means_no_tools(self, monkeypatch):
+        """Test tools_allow with 'none' returns empty set (zero tools)"""
+        monkeypatch.setenv("TOOLS_ALLOW", "none")
+        assert config.Config.tools_allow() == set()
+
+    def test_tools_allow_none_case_insensitive(self, monkeypatch):
+        """Test tools_allow with 'NONE' also means zero tools"""
+        monkeypatch.setenv("TOOLS_ALLOW", "NONE")
+        assert config.Config.tools_allow() == set()
+
 
 class TestConfigPluginsAllow:
     """Tests for PLUGINS_ALLOW configuration"""

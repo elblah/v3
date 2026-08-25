@@ -7,10 +7,16 @@
 # Contract (consumed by aicoder/plugins/vision.py via $VISION_SCRIPT):
 #   - Reads one image file (relative paths are resolved from $PWD).
 #   - If VISION_MAX_SIZE is set (default 768), downscales the longest side to
-#     a temp copy (ImageMagick/ffmpeg/GraphicsMagick, best effort) and sends
-#     THAT to dtx — the original file is never modified. VISION_MAX_SIZE=0
-#     disables. Images that already fit are sent byte-for-byte unchanged
-#     (cheap dims check via `file`; chain skipped). Temp copy removed on exit.
+#     "<project root>/.vision.jpg", ALWAYS JPEG-encoded (ImageMagick/ffmpeg/
+#     GraphicsMagick, best effort), and sends THAT to dtx — the original file
+#     is never modified. VISION_MAX_SIZE=0 disables. Images that already fit
+#     are sent byte-for-byte unchanged (cheap dims check via `file`; chain
+#     skipped). Temp copy removed on exit.
+#   - The temp copy MUST live in the project root: this script runs inside
+#     the AI sandbox whose /tmp is isolated — dtx (host-side) cannot see it,
+#     but cwd is the one shared writable view.
+#   - A pre-existing ".vision.jpg" (regular file OR symlink) is never
+#     clobbered or followed: the original image is sent unchanged instead.
 #   - Prints the vision description text to stdout.
 #   - Exit non-zero on any failure (image missing, dtx down, parse error).
 #
@@ -103,15 +109,16 @@ resize_image() {  # $1=input $2=max $3=output; shrink-only, aspect preserved
 }
 
 if [ "$RESIZE_MAX" != off ]; then
-    ext="$(printf '%s' "$IMG" | sed 's/.*\.//' | tr 'A-Z' 'a-z')"
-    case "$ext" in png|jpg|jpeg|webp|gif|bmp) : ;; *) ext=png ;; esac
-    RESIZED_TMP="$(mktemp --suffix=".$ext")" || RESIZED_TMP=""
-    if [ -n "$RESIZED_TMP" ]; then
-        if resize_image "$IMG" "$RESIZE_MAX" "$RESIZED_TMP"; then
-            IMG="$RESIZED_TMP"          # send the resized copy to dtx
+    # Fixed name, project root (see header). Always JPEG: most compact,
+    # universally accepted. Refuse an existing entry — never clobber a real
+    # file and never follow a planted symlink pointing outside the project.
+    OUT="$PWD/.vision.jpg"
+    if [ ! -e "$OUT" ] && [ ! -L "$OUT" ]; then
+        if resize_image "$IMG" "$RESIZE_MAX" "$OUT"; then
+            RESIZED_TMP="$OUT"          # send the resized jpg copy to dtx
+            IMG="$RESIZED_TMP"
         else
-            rm -f "$RESIZED_TMP"
-            RESIZED_TMP=""
+            rm -f "$OUT"
         fi
     fi
 fi
