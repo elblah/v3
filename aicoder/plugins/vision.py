@@ -20,6 +20,8 @@ import subprocess
 import tempfile
 from typing import Dict, Any, List, Optional
 
+from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
 from aicoder.utils.file_utils import SandboxRaceError, _open_verified
 
 _mime_types_init = False
@@ -713,7 +715,20 @@ def create_plugin(ctx) -> Dict[str, Any]:
     }
 
     def _register_read_image():
-        """Make read_image available to the AI (idempotent)."""
+        """Make read_image available to the AI (idempotent).
+
+        The direct tool_manager poke bypasses plugin_system._register_tool,
+        so the TOOLS_ALLOW/TOOLS_DENY gates are enforced here explicitly.
+        Without this, TOOLS_ALLOW/TOOLS_DENY cannot block read_image — which
+        matters for sandboxed inner aicoder instances (e.g. a vision backend
+        AI that must have zero tools).
+        """
+        denied = Config.tools_deny()
+        if "read_image" in denied:
+            return
+        allowed = Config.tools_allow()
+        if allowed is not None and "read_image" not in allowed:
+            return
         if ctx.app and ctx.app.tool_manager and "read_image" not in ctx.app.tool_manager.tools:
             ctx.app.tool_manager.tools["read_image"] = _read_image_tool_def
 
@@ -741,10 +756,10 @@ def create_plugin(ctx) -> Dict[str, Any]:
                 "base64 injection (external tools first, best effort). Default 768;\n"
                 "use VISION_MAX_SIZE=0 to disable. Example: VISION_MAX_SIZE=1024."
             )
-        if sub == "on":
+        if sub in TRUTHY:
             _register_read_image()
             return "Vision ENABLED — read_image tool is now available."
-        if sub == "off":
+        if sub in FALSY:
             _unregister_read_image()
             return "Vision DISABLED — read_image tool removed."
         if sub == "status":
@@ -772,7 +787,7 @@ def create_plugin(ctx) -> Dict[str, Any]:
     ctx.register_command("vision", _handle_vision_command, "Control the read_image vision tool (on|off|status)")
 
     # Auto-enable read_image only when a gateway is configured or explicitly requested.
-    if _vision_script_path() or os.environ.get("VISION_ENABLE_TOOL", "0") == "1":
+    if _vision_script_path() or env_bool("VISION_ENABLE_TOOL"):
         _register_read_image()
 
     # Screenshot command

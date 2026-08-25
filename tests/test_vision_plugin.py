@@ -444,6 +444,37 @@ def test_vision_script_missing_no_autoregister():
             os.environ["VISION_ENABLE_TOOL"] = old_en
 
 
+def test_vision_respects_tools_deny():
+    """TOOLS_DENY=read_image must block registration even with VISION_SCRIPT set."""
+    os.environ["VISION_SCRIPT"] = "/bin/true"
+    old_deny = os.environ.pop("TOOLS_DENY", None)
+    old_allow = os.environ.pop("TOOLS_ALLOW", None)
+    try:
+        from aicoder.plugins.vision import create_plugin
+        ctx = _make_vision_ctx()
+        create_plugin(ctx)
+        assert "read_image" in ctx.app.tool_manager.tools, "registers when unfiltered"
+
+        ctx2 = _make_vision_ctx()
+        os.environ["TOOLS_DENY"] = "read_image"
+        create_plugin(ctx2)
+        assert "read_image" not in ctx2.app.tool_manager.tools, "TOOLS_DENY wins"
+
+        ctx3 = _make_vision_ctx()
+        os.environ.pop("TOOLS_DENY")
+        os.environ["TOOLS_ALLOW"] = "grep,read_file"
+        create_plugin(ctx3)
+        assert "read_image" not in ctx3.app.tool_manager.tools, "not in TOOLS_ALLOW -> blocked"
+    finally:
+        os.environ.pop("VISION_SCRIPT", None)
+        os.environ.pop("TOOLS_DENY", None)
+        os.environ.pop("TOOLS_ALLOW", None)
+        if old_deny is not None:
+            os.environ["TOOLS_DENY"] = old_deny
+        if old_allow is not None:
+            os.environ["TOOLS_ALLOW"] = old_allow
+
+
 def test_vision_max_size_env_parsing():
     """VISION_MAX_SIZE parsing: 0/negative=off, unset/invalid=built-in default."""
     from aicoder.plugins.vision import _DEFAULT_MAX_SIZE, _get_max_size
