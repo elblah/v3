@@ -99,7 +99,7 @@ def _write_to_central(line):
 def _write_central_fallback(line):
     """Append to ~/.aicoder/central_stats.log if writable. Silently skip if not.
     Disable with STATS_FALLBACK_FILE=0."""
-    if os.environ.get("STATS_FALLBACK_FILE", "1") == "0":
+    if not env_bool("STATS_FALLBACK_FILE", default=True):
         return
     try:
         path = os.path.join(os.path.expanduser("~"), ".aicoder", "central_stats.log")
@@ -175,7 +175,7 @@ def create_plugin(ctx):
         # PRODUCTION WRITE: lands in ~/.aicoder/central_stats.log via the
         # stats_server daemon. Tests with synthetic usage MUST set
         # STATS_CENTRAL=0 + STATS_FALLBACK_FILE=0 — this corrupts real reports.
-        if os.environ.get("STATS_CENTRAL", "1") != "0":
+        if env_bool("STATS_CENTRAL", default=True):
             if not _write_to_central(json_line + "\n"):
                 _write_central_fallback(json_line + "\n")
 

@@ -249,13 +249,8 @@ def create_plugin(ctx):
     _last_cached_tokens = None
 
     # Env overrides
-    env_enabled = os.environ.get("CACHE_MONITOR_ENABLE", "").lower()
-    if env_enabled in ("0", "false", "off", "no"):
-        _enabled = False
-
-    env_cache = os.environ.get("CACHE_MONITOR_CACHE_ALERTS", "").lower()
-    if env_cache in ("0", "false", "off", "no"):
-        _cache_alerts = False
+    _enabled = env_bool("CACHE_MONITOR_ENABLE", default=True)
+    _cache_alerts = env_bool("CACHE_MONITOR_CACHE_ALERTS", default=True)
 
     ctx.register_hook("on_session_change", _on_session_change)
     ctx.register_hook("before_ai_processing", _on_before_ai)

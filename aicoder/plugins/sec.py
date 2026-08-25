@@ -14,6 +14,8 @@ import os
 import shlex
 import shutil
 
+from aicoder.utils.bool_utils import parse_bool
+
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
 
@@ -239,18 +241,30 @@ def _handle_sec(args: str):
 
     cmd = parts[0]
 
-    if cmd == "seal":
-        if len(parts) < 2 or parts[1] not in ("on", "off"):
-            return "usage: /sec seal on|off"
-        _state["sealed"] = parts[1] == "on"
-        return "sealed: nested bwrap active" if _state["sealed"] else \
-            "UNSEALED: shell commands run without bwrap"
+    # Glued on/off form: "/sec net1" == "/sec net 1"
+    if cmd.startswith(("seal", "net")):
+        word = "seal" if cmd.startswith("seal") else "net"
+        if len(cmd) > len(word):
+            parts = [word, cmd[len(word):]] + parts[1:]
+            cmd = word
+            args = " ".join(parts)
 
-    if cmd == "net":
-        if len(parts) < 2 or parts[1] not in ("on", "off"):
-            return "usage: /sec net on|off"
-        _state["net"] = parts[1] == "on"
-        return "net: ON (network available)" if _state["net"] else \
+    if cmd in ("seal", "net"):
+        # Accept "/sec net 1" and glued "/sec net1"; parse_bool validates.
+        stripped = args.strip()
+        rest = stripped[len(cmd):].strip() if stripped.startswith(cmd) else ""
+        try:
+            val = parse_bool(rest)
+        except ValueError:
+            val = None
+        if val is None:
+            return f"usage: /sec {cmd} on|off|1|0|true|false|yes|no"
+        if cmd == "seal":
+            _state["sealed"] = val
+            return "sealed: nested bwrap active" if val else \
+                "UNSEALED: shell commands run without bwrap"
+        _state["net"] = val
+        return "net: ON (network available)" if val else \
             "net: OFF (isolated netns - no egress, no localhost services)"
 
     if cmd in ("allow", "deny"):
