@@ -6,15 +6,18 @@ Wraps every run_shell_command payload in a nested bwrap sandbox
 (tmux socket, dbus, X11, dtx, pulse) or /proc — only recipes the
 user lifts at runtime restore specific access.
 
-State is runtime-only: every session starts sealed with no recipes
-and no network. /sec net on and /sec off are the escape hatches.
+State is runtime-only: sessions start sealed, no recipes, no network.
+Launcher-env overrides (read once at plugin load, parent env only):
+SEC_SEAL=0 starts unsealed, SEC_NET_ALLOW=1 starts with network.
+/sec seal|net on|off and /sec allow are the runtime escape hatches.
 """
 
 import os
 import shlex
 import shutil
+import sys
 
-from aicoder.utils.bool_utils import parse_bool
+from aicoder.utils.bool_utils import env_bool, parse_bool
 
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
@@ -76,10 +79,21 @@ _DTX_EXTRA = tuple(
     if p.strip()
 )
 
+def _env_flag(name: str, default: bool) -> bool:
+    """Launcher-env override; bad value warns and falls back to the safe default."""
+    try:
+        return env_bool(name, default)
+    except ValueError as e:
+        print(f"sec: {e}; ignoring, using default", file=sys.stderr)
+        return default
+
+
+# Read from the parent aicoder env at load — a sealed command cannot
+# inject these (same property as _DTX_EXTRA).
 _state = {
-    "sealed": True,  # always start sealed
+    "sealed": _env_flag("SEC_SEAL", True),  # always start sealed unless SEC_SEAL=0
     "allowed": set(),  # recipe names lifted at runtime
-    "net": False,  # net off by default; /sec net on lifts it (isolated netns otherwise)
+    "net": _env_flag("SEC_NET_ALLOW", False),  # net off by default
 }
 
 
