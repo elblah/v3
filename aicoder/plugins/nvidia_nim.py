@@ -190,6 +190,7 @@ def create_plugin(ctx):
         ctx.register_command("nvidia", _cmd, "NVIDIA NIM model management")
         if len(_keys) > 1:
             ctx.register_hook("on_api_error", _on_manual_error)
+            ctx.register_hook("on_context_bar", _on_context_bar_manual)
         if Config.debug():
             _nv_log(f"\n[nvidia] manual mode — {model}", "printc", color="dim")
         return
@@ -966,6 +967,13 @@ def _after_usage(usage: dict):
 
     # Sticky set: only set new sticky on genuinely good responses (via _gain_sticky — never renews)
     _gain_sticky(mid, completion, tok_sec)
+
+
+def _on_context_bar_manual() -> Optional[str]:
+    """Manual mode: key rotation position only."""
+    if len(_keys) <= 1:
+        return None
+    return f"k={_key_index+1}/{len(_keys)}"
 
 
 def _on_context_bar() -> Optional[str]:
