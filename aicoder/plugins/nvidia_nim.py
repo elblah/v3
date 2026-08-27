@@ -695,6 +695,19 @@ _BAN_DURATION_429_COOLDOWN = _env_int("429_COOLDOWN_SEC", 900)  # cooldown after
 _TRUST_THRESHOLD = _env_int("TRUST_THRESHOLD", 8)     # successes to be considered trusted
 _TRUST_LEVEL_CAP = _env_int("TRUST_LEVEL_CAP", 5)      # max trust level
 _TRUST_LEVEL_MINUTES = _env_int("TRUST_LEVEL_MINUTES", 1)  # minutes per trust level
+# Always-trusted models: comma/semicolon substrings matched case-insensitively
+# against model ID. Matching models get max trust level (timeout = CAP x MINUTES)
+# regardless of success_count decay.
+TRUST_MODELS_RAW = os.environ.get("NVIDIA_NIM_TRUST_MODELS", "")
+_trust_patterns = [x.strip().lower() for x in TRUST_MODELS_RAW.replace(";", ",").split(",") if x.strip()]
+
+
+def _is_always_trusted(mid: str) -> bool:
+    """True if model ID matches a NVIDIA_NIM_TRUST_MODELS pattern."""
+    if not _trust_patterns:
+        return False
+    low = (mid or "").lower()
+    return any(p in low for p in _trust_patterns)
 
 
 def _strike(mid: str):
@@ -728,7 +741,10 @@ def _before_request(endpoint: str, data: dict):
     # Level = successful responses + 1 (starts at 1 minute)
     mid = _req_model
     if mid:
-        level = _success_count.get(mid, 0)
+        if _is_always_trusted(mid):
+            level = _TRUST_LEVEL_CAP - 1
+        else:
+            level = _success_count.get(mid, 0)
         timeout_min = min(level, _TRUST_LEVEL_CAP - 1) + 1
         timeout_sec = timeout_min * _TRUST_LEVEL_MINUTES * 60
         if _saved_total_timeout is None:
