@@ -5,6 +5,7 @@ Wraps every run_shell_command payload in a nested bwrap sandbox
 ("sealed" mode). Sealed = the shell cannot reach host services
 (tmux socket, dbus, X11, dtx, pulse) or /proc — only recipes the
 user lifts at runtime restore specific access.
+SEC_PRINT_STATUS=0 silences the [sec] status line (default on).
 
 State is runtime-only: sessions start sealed, no recipes, no network.
 Launcher-env overrides (read once at plugin load, parent env only):
@@ -98,6 +99,9 @@ _state = {
     "net": _env_flag("SEC_NET_ALLOW", False),  # net off by default
     "binds": {},  # abs path -> "ro" | "rw" (generic dir binds: /sec allow ro|rw <path>)
 }
+
+# [sec] Net/Seal/Allowed status line before each command; SEC_PRINT_STATUS=0 silences.
+_PRINT_STATUS = _env_flag("SEC_PRINT_STATUS", True)
 
 
 def _blocked(msg: str) -> list[str]:
@@ -235,7 +239,8 @@ def _state_log() -> str:
 
 
 def _on_before_run_shell_command(command):
-    print(_state_log(), file=sys.stderr)
+    if _PRINT_STATUS:
+        print(_state_log(), file=sys.stderr)
     if not _state["sealed"]:
         return None
     try:
