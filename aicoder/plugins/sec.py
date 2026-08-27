@@ -18,6 +18,7 @@ import shlex
 import shutil
 import sys
 
+from aicoder.core.config import Config
 from aicoder.utils.bool_utils import env_bool, parse_bool
 
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
@@ -224,7 +225,17 @@ def _build_argv(command: str) -> list[str]:
     return argv
 
 
+def _state_log() -> str:
+    parts = [r for r in RECIPES if r in _state["allowed"]]
+    parts += [f"{_state['binds'][p]} {p}" for p in sorted(_state["binds"])]
+    allowed = ", ".join(parts) or "(none)"
+    c = Config.colors
+    return (f"{c['bold']}{c['yellow']}[sec]{c['reset']} Net: {'on' if _state['net'] else 'off'} - "
+            f"Seal: {'on' if _state['sealed'] else 'off'} - Allowed: {allowed}")
+
+
 def _on_before_run_shell_command(command):
+    print(_state_log(), file=sys.stderr)
     if not _state["sealed"]:
         return None
     try:
