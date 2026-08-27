@@ -9,7 +9,8 @@ user lifts at runtime restore specific access.
 State is runtime-only: sessions start sealed, no recipes, no network.
 Launcher-env overrides (read once at plugin load, parent env only):
 SEC_SEAL=0 starts unsealed, SEC_NET_ALLOW=1 starts with network.
-/sec seal|net on|off and /sec allow are the runtime escape hatches.
+/sec seal|net on|off, /sec allow (named recipes), and
+/sec allow ro|rw <path> (generic dir binds) are the runtime escape hatches.
 """
 
 import os
@@ -22,7 +23,7 @@ from aicoder.utils.bool_utils import env_bool, parse_bool
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
 
-RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb", "shared", "shared-rw")
+RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb")
 
 # Env vars that leak host-service access: stripped in sealed mode,
 # restored by recipes from the values captured at plugin load.
@@ -94,6 +95,7 @@ _state = {
     "sealed": _env_flag("SEC_SEAL", True),  # always start sealed unless SEC_SEAL=0
     "allowed": set(),  # recipe names lifted at runtime
     "net": _env_flag("SEC_NET_ALLOW", False),  # net off by default
+    "binds": {},  # abs path -> "ro" | "rw" (generic dir binds: /sec allow ro|rw <path>)
 }
 
 
@@ -141,12 +143,13 @@ def _build_argv(command: str) -> list[str]:
         # Cover the X11 sockets inherited with /tmp.
         argv += ["--tmpfs", "/tmp/.X11-unix"]
 
-    # /mnt/shared is gated by recipes: shared = read-only, shared-rw = read-write.
-    # No recipe -> /mnt/shared stays invisible inside the seal.
-    if "shared-rw" in allowed and os.path.isdir("/mnt/shared"):
-        argv += ["--bind", "/mnt/shared", "/mnt/shared"]
-    elif "shared" in allowed and os.path.isdir("/mnt/shared"):
-        argv += ["--ro-bind", "/mnt/shared", "/mnt/shared"]
+    # Generic directory binds (/sec allow ro|rw <path>). Nothing bound
+    # here stays invisible inside the seal. rw implies read.
+    for path in sorted(_state["binds"]):
+        if not os.path.isdir(path):
+            continue
+        argv += ["--bind", path, path] if _state["binds"][path] == "rw" \
+            else ["--ro-bind", path, path]
 
     # Strip host-service env vars (recipes restore the ones they lift).
     for v in _STRIP_VARS:
@@ -246,6 +249,10 @@ def _status() -> str:
         (r + "*") if r in _state["allowed"] else r for r in RECIPES
     ) or "(none)"
     lines.append(f"  recipes: {rec}   (* = allowed)")
+    binds = " ".join(
+        f"{p}({_state['binds'][p]})" for p in sorted(_state["binds"])
+    ) or "(none)"
+    lines.append(f"  binds: {binds}")
     if not bwrap_ok:
         lines.append("  WARNING: bwrap not found - commands are BLOCKED (fail-closed)")
     return "\n".join(lines)
@@ -287,8 +294,30 @@ def _handle_sec(args: str):
 
     if cmd in ("allow", "deny"):
         if len(parts) < 2:
-            return f"usage: /sec {cmd} <recipe>  (recipes: {', '.join(RECIPES)})"
-        name = parts[1]
+            return f"usage: /sec {cmd} <recipe> | /sec allow ro|rw <path>  (recipes: {', '.join(RECIPES)})"
+        arg = parts[1]
+
+        # Generic directory bind: /sec allow ro <path> | /sec allow rw <path>
+        if cmd == "allow" and arg in ("ro", "rw"):
+            if len(parts) < 3:
+                return "usage: /sec allow ro|rw <abs-path>"
+            path = parts[2]
+            if not path.startswith("/"):
+                return f"not an absolute path: '{path}'"
+            if not os.path.isdir(path):
+                return f"not a directory: '{path}'"
+            _state["binds"][path] = arg
+            mode = "read-only" if arg == "ro" else "read-write"
+            return f"allowed {mode} bind '{path}'"
+
+        # Generic unbind by path: /sec deny <abs-path>
+        if cmd == "deny" and arg.startswith("/"):
+            if arg not in _state["binds"]:
+                return f"no bind for '{arg}'"
+            del _state["binds"][arg]
+            return f"denied bind '{arg}'"
+
+        name = arg
         if name not in RECIPES:
             return f"unknown recipe '{name}'. recipes: {', '.join(RECIPES)}"
         if cmd == "allow":
@@ -313,15 +342,11 @@ def _handle_sec(args: str):
             elif name == "dbus":
                 note = f" (bus: {RT}/bus" + \
                     (", present)" if os.path.exists(f"{RT}/bus") else ", MISSING)")
-            elif name == "shared":
-                note = " (read-only)" if os.path.isdir("/mnt/shared") else " (/mnt/shared MISSING)"
-            elif name == "shared-rw":
-                note = " (read-write)" if os.path.isdir("/mnt/shared") else " (/mnt/shared MISSING)"
             return f"allowed recipe '{name}'{note}"
         _state["allowed"].discard(name)
         return f"denied recipe '{name}'"
 
-    return "usage: /sec seal on|off | /sec net on|off | /sec allow|deny <recipe> | /sec status"
+    return "usage: /sec seal on|off | /sec net on|off | /sec allow|deny <recipe> | /sec allow ro|rw <path> | /sec deny <path> | /sec status"
 
 
 def create_plugin(ctx):
@@ -333,5 +358,5 @@ def create_plugin(ctx):
     ctx.register_command(
         "sec",
         _handle_sec,
-        "Sandbox sealing control (seal on|off, net on|off, allow|deny <recipe>, status)",
+        "Sandbox sealing control (seal on|off, net on|off, allow|deny <recipe>, allow ro|rw <path>, status)",
     )
