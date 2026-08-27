@@ -22,7 +22,7 @@ from aicoder.utils.bool_utils import env_bool, parse_bool
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
 
-RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb")
+RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb", "shared", "shared-rw")
 
 # Env vars that leak host-service access: stripped in sealed mode,
 # restored by recipes from the values captured at plugin load.
@@ -141,8 +141,12 @@ def _build_argv(command: str) -> list[str]:
         # Cover the X11 sockets inherited with /tmp.
         argv += ["--tmpfs", "/tmp/.X11-unix"]
 
-    if os.path.isdir("/mnt/shared"):
+    # /mnt/shared is gated by recipes: shared = read-only, shared-rw = read-write.
+    # No recipe -> /mnt/shared stays invisible inside the seal.
+    if "shared-rw" in allowed and os.path.isdir("/mnt/shared"):
         argv += ["--bind", "/mnt/shared", "/mnt/shared"]
+    elif "shared" in allowed and os.path.isdir("/mnt/shared"):
+        argv += ["--ro-bind", "/mnt/shared", "/mnt/shared"]
 
     # Strip host-service env vars (recipes restore the ones they lift).
     for v in _STRIP_VARS:
@@ -309,6 +313,10 @@ def _handle_sec(args: str):
             elif name == "dbus":
                 note = f" (bus: {RT}/bus" + \
                     (", present)" if os.path.exists(f"{RT}/bus") else ", MISSING)")
+            elif name == "shared":
+                note = " (read-only)" if os.path.isdir("/mnt/shared") else " (/mnt/shared MISSING)"
+            elif name == "shared-rw":
+                note = " (read-write)" if os.path.isdir("/mnt/shared") else " (/mnt/shared MISSING)"
             return f"allowed recipe '{name}'{note}"
         _state["allowed"].discard(name)
         return f"denied recipe '{name}'"
