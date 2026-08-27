@@ -180,6 +180,7 @@ def create_plugin(ctx):
     _load_rep()
     _load_preference()
     _load_bans()
+    _load_trust()
     _load_keys()
 
     model = Config.model()
@@ -486,6 +487,7 @@ def _set_active(mid: str):
 # Preference order is always the attractor — forgiveness is automatic over time.
 _REP_PATH = os.path.join(os.getcwd(), ".aicoder", "nvidia-rep.json")
 _BANS_PATH = os.path.join(os.getcwd(), ".aicoder", "nvidia-bans.json")
+_TRUST_PATH = os.path.join(os.getcwd(), ".aicoder", "nvidia-trust.json")
 
 
 def _base(mid: str) -> float:
@@ -566,6 +568,29 @@ def _save_bans():
             }, f, indent=2)
     except IOError as e:
         _nv_log(f"\n[nvidia] failed to save bans: {e}")
+
+
+def _load_trust():
+    """Merge command-persisted trust patterns into the env-sourced list."""
+    try:
+        if os.path.exists(_TRUST_PATH):
+            with open(_TRUST_PATH) as f:
+                for p in json.load(f).get("patterns", []):
+                    if p and p not in _trust_patterns:
+                        _trust_patterns.append(p)
+    except (json.JSONDecodeError, IOError):
+        pass
+
+
+def _save_trust():
+    """Save only command-added patterns — env var stays source of truth for its own."""
+    try:
+        os.makedirs(os.path.dirname(_TRUST_PATH), exist_ok=True)
+        env_set = {x.strip().lower() for x in TRUST_MODELS_RAW.replace(";", ",").split(",") if x.strip()}
+        with open(_TRUST_PATH, "w") as f:
+            json.dump({"patterns": [p for p in _trust_patterns if p not in env_set]}, f, indent=2)
+    except IOError as e:
+        _nv_log(f"\n[nvidia] failed to save trust: {e}")
 
 
 def _rep(mid: str) -> float:
@@ -698,6 +723,8 @@ _TRUST_LEVEL_MINUTES = _env_int("TRUST_LEVEL_MINUTES", 1)  # minutes per trust l
 # Always-trusted models: comma/semicolon substrings matched case-insensitively
 # against model ID. Matching models get max trust level (timeout = CAP x MINUTES)
 # regardless of success_count decay.
+# Env var is authoritative for its own patterns; /nvidia trust M adds persistent
+# extras via nvidia-trust.json (union of both is active).
 TRUST_MODELS_RAW = os.environ.get("NVIDIA_NIM_TRUST_MODELS", "")
 _trust_patterns = [x.strip().lower() for x in TRUST_MODELS_RAW.replace(";", ",").split(",") if x.strip()]
 
@@ -974,6 +1001,10 @@ def _cmd(args: str) -> Optional[str]:
         return _forgive()
     if parts[0] == "unstick":
         return _unstick()
+    if parts[0] == "trust":
+        return _trust_cmd(parts[1:])
+    if parts[0] == "untrust" and len(parts) >= 2:
+        return _untrust(parts[1])
     if parts[0] == "avoid":
         return _avoid(parts[1] if len(parts) > 1 else "")
     if parts[0] == "unban":
@@ -990,7 +1021,9 @@ def _cmd(args: str) -> Optional[str]:
         "  /nvidia unstick  - clear sticky (keep reps/bans)\n"
         "  /nvidia avoid [M]- 24h ban for model (current if omitted)\n"
         "  /nvidia unban M  - remove ban + strikes for model\n"
-        "  /nvidia bans     - show banned/striked models"
+        "  /nvidia bans     - show banned/striked models\n"
+        "  /nvidia trust [M] - always-trust model, max timeout (list if omitted)\n"
+        "  /nvidia untrust M - remove always-trust pattern"
     )
 
 
@@ -1004,6 +1037,8 @@ def _status() -> str:
     if _current_sticky_model and time.time() < _sticky_until:
         rem = _sticky_until - time.time()
         lines.append(f"  Sticky:  {_current_sticky_model} (remaining: {rem:.0f}s)")
+    if _trust_patterns:
+        lines.append(f"  Trusted: {', '.join(_trust_patterns)}")
     lines.append(f"  Pref:    {len(_preference)} models")
     if _YOLO_FLOOR:
         yolo_forced_off = " (force-off)" if not Config.yolo_mode() else ""
@@ -1080,6 +1115,34 @@ def _unstick() -> str:
     _current_sticky_model = ""
     _nv_log(f"\n[nvidia] unstick — {_last_sticky_model} released")
     return f"[nvidia] unstick — {_last_sticky_model} released, rotation enabled"
+
+
+def _trust_cmd(args: list) -> str:
+    """Add always-trust pattern (persisted) or list current patterns."""
+    if not args:
+        if not _trust_patterns:
+            return "[nvidia] none always-trusted (env NVIDIA_NIM_TRUST_MODELS or /nvidia trust M)"
+        return "[nvidia] always-trusted: " + ", ".join(_trust_patterns)
+    pat = args[0].lower()
+    if pat in _trust_patterns:
+        return f"[nvidia] '{pat}' already always-trusted"
+    _trust_patterns.append(pat)
+    _save_trust()
+    _nv_log(f"\n[nvidia] always-trust added: {pat}", "success")
+    return f"[nvidia] '{pat}' always-trusted (max timeout level, persists across sessions)"
+
+
+def _untrust(pat: str) -> str:
+    """Remove always-trust pattern. Env-sourced patterns return next session."""
+    low = pat.lower()
+    if low not in _trust_patterns:
+        return f"[nvidia] '{low}' not always-trusted"
+    _trust_patterns.remove(low)
+    _save_trust()
+    _nv_log(f"\n[nvidia] always-trust removed: {low}")
+    env_set = {x.strip().lower() for x in TRUST_MODELS_RAW.replace(";", ",").split(",") if x.strip()}
+    src = " (env-sourced — returns next session)" if low in env_set else ""
+    return f"[nvidia] '{low}' no longer always-trusted{src}"
 
 
 def _avoid(mid: str) -> str:
