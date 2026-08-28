@@ -458,16 +458,17 @@ def _client_connect(host, port):
     _st.dialer = True
     _st.active = True
     if mode == "controlled":
-        _st.role = "controlled"
-        _force_yolo()
-        LogUtils.printc(f"[Remote] connected - {host} is driving. Mirroring output. Ctrl+C releases.",
+        # ready.mode is the SERVER's role; we take the complement.
+        _st.role = "controller"
+        LogUtils.printc(f"[Remote] driving {host}:{port} - lines run there. /remote off or Ctrl+C releases.",
                         color="green")
-        threading.Thread(target=_controlled_reader, args=(conn, f), daemon=True).start()
+        threading.Thread(target=_controller_event_reader, args=(conn, f), daemon=True).start()
         return
-    _st.role = "controller"
-    LogUtils.printc(f"[Remote] driving {host}:{port} - lines run there. /remote off or Ctrl+C releases.",
+    _st.role = "controlled"
+    _force_yolo()
+    LogUtils.printc(f"[Remote] connected - {host} is driving. Mirroring output. Ctrl+C releases.",
                     color="green")
-    threading.Thread(target=_controller_event_reader, args=(conn, f), daemon=True).start()
+    threading.Thread(target=_controlled_reader, args=(conn, f), daemon=True).start()
 
 
 # ---------------------------------------------------------------- hooks
