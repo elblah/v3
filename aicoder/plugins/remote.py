@@ -32,6 +32,7 @@ import hmac
 import json
 import os
 import secrets
+import signal
 import socket
 import ssl
 import subprocess
@@ -250,6 +251,7 @@ def _accept_client(sock, addr):
         LogUtils.printc(f"[Remote] {addr[0]} connected - your prompts now run there. /remote off releases.",
                         color="green")
         threading.Thread(target=_controller_event_reader, args=(tls, f_handshake), daemon=True).start()
+        _nudge_main()
 
 
 def _send_raw(sock, obj):
@@ -286,6 +288,24 @@ def _server_handshake(tls):
 
 
 # ---------------------------------------------------------------- controlled side
+
+def _nudge_main():
+    """SIGINT the main thread out of a blocking input() so controller takeover
+    applies immediately. Without it, a line typed while the peer dials in runs
+    on the local LLM (prompt-cycle hooks already fired for that iteration)."""
+    if _st.role != "controller":
+        return
+    sm = getattr(_app, "session_manager", None)
+    if bool(getattr(sm, "is_processing", False)) or bool(getattr(_app, "is_processing", False)):
+        return
+    tid = threading.main_thread().ident
+    if not tid or tid == threading.get_ident():
+        return
+    try:
+        signal.pthread_kill(tid, signal.SIGINT)
+    except Exception:
+        pass
+
 
 def _controlled_reader(conn, f):
     """Inbound pump while controlled: prompts/stop/ping from the controller."""
