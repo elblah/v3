@@ -234,7 +234,12 @@ class AICoder:
                 self._skip_hooks_once = False
 
                 # Use next_prompt if set (auto-council trigger)
-                user_input = self.get_next_prompt() if self.has_next_prompt() else self.input_handler.get_user_input()
+                if self.has_next_prompt():
+                    user_input = self.get_next_prompt()
+                else:
+                    # Prompt genuinely available - about to block on real user input
+                    self.plugin_system.call_hooks("on_prompt_available")
+                    user_input = self.input_handler.get_user_input()
 
                 if not user_input.strip():
                     continue

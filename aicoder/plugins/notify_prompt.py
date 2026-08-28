@@ -2,7 +2,7 @@
 Notify Prompt Plugin - Audio notifications for prompts and approvals
 
 Design:
-- NOTIFY_PROMPT_CMD env var: shell command run before user prompt
+- NOTIFY_PROMPT_CMD env var: shell command run when the user prompt becomes available
 - NOTIFY_APPROVAL_CMD env var: shell command run before tool approval prompt
 - /notify-prompt on|off: creates/deletes .aicoder/.notify-prompt gate file
 - Commands run fire-and-forget (non-blocking), output discarded
@@ -68,7 +68,7 @@ def create_plugin(ctx):
             f'espeak not found. Set it, e.g.: export {env_name}="say {message}"'
         )
 
-    def on_before_user_prompt():
+    def on_prompt_available():
         fire("NOTIFY_PROMPT_CMD", "prompt available")
 
     def on_before_approval_prompt(tool_name: str = None, arguments: dict = None):
@@ -103,7 +103,7 @@ Otherwise set them, e.g.: export NOTIFY_PROMPT_CMD="say prompt available"
 """
 
     # Register hooks and command
-    ctx.register_hook("before_user_prompt", on_before_user_prompt)
+    ctx.register_hook("on_prompt_available", on_prompt_available)
     ctx.register_hook("before_approval_prompt", on_before_approval_prompt)
     ctx.register_command(
         "/notify-prompt", handle_notify_prompt,
@@ -111,6 +111,6 @@ Otherwise set them, e.g.: export NOTIFY_PROMPT_CMD="say prompt available"
     )
 
     if Config.debug():
-        LogUtils.print("  - before_user_prompt hook")
+        LogUtils.print("  - on_prompt_available hook")
         LogUtils.print("  - before_approval_prompt hook")
         LogUtils.print("  - /notify-prompt command")

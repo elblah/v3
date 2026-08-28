@@ -179,7 +179,8 @@ def my_tool(args):
 
 ## Available Hooks
 
-- `before_user_prompt` - Before showing user input prompt
+- `before_user_prompt` - Every loop turn before obtaining a prompt (fires even when a plugin feeds the prompt itself via `next_prompt`)
+- `on_prompt_available` - Only when the prompt is genuinely available: right before blocking on real user input (skipped when a plugin set `next_prompt`)
 - `before_approval_prompt` - Before showing tool approval (can return `True`=auto-approve, `False`=auto-deny, `None`=ask user)
 - `on_tool_preview(tool_name, arguments, preview_result)` - Before displaying a tool preview diff (can return a dict to replace the preview, `False` to suppress it entirely, `None` to keep it)
 - `before_file_write(path, content)` - Before writing file (can return modified content)
@@ -253,7 +254,7 @@ See `auto_approve.py` plugin for a regex-based implementation.
   - Uses: DuckDuckGo Lite with correct URL and user agent
 
 - `notify_prompt.py` - Audio notifications for prompts/approvals
-  - Hooks: `before_user_prompt`, `before_approval_prompt`
+  - Hooks: `on_prompt_available`, `before_approval_prompt`
   - Commands: `/notify-prompt on/off` (creates/deletes `.aicoder/.notify-prompt`)
   - Env: `NOTIFY_PROMPT_CMD`, `NOTIFY_APPROVAL_CMD` (shell commands, run non-blocking)
   - Fallback: espeak if installed when env vars unset; otherwise on-screen hint
