@@ -1,21 +1,25 @@
 """
-Remote control plugin - control/view one aicoder instance from another.
+Remote control plugin - drive one aicoder instance from another.
 
-/remote serve [port]   - accept one client (default: the client controls you)
-/remote connect <host> [port] [--controlled]
-                       - dial a server (default: you control the peer;
-                         --controlled: the peer controls you)
-/remote off            - stop serving / disconnect
+/remote serve [port] [--control]
+                       - listen for one peer. Default: you are CONTROLLED
+                         (the peer drives you, your prompt vanishes).
+                         --control: you stay the CONTROLLER (prompt stays
+                         local; once the peer dials in, your prompts run there).
+/remote connect <host> [port]
+                       - dial a server. The server's mode decides your role:
+                         it is the complement of what the server chose.
+/remote off            - stop serving / disconnect / release control.
 
-Transport role (listen/dial) is decoupled from control role
-(controlled/controller): whoever dials declares its control role and the
-listener adopts the complement. A dial-only device (e.g. phone behind a
-restricting VPN) can therefore be the controlled side. YOLO is forced on
-the CONTROLLED side while a peer is connected.
+The server fixes the control role at serve time and proof-binds it into the
+handshake; the client cannot choose (a dial-only device can still be the
+controlled side). YOLO is forced on the CONTROLLED side while a peer is
+connected. One rule while connected: only the controller has a prompt; the
+controlled side is a pure mirror and Ctrl+C releases.
 
 Transport: raw TCP JSON-lines over TLS (ephemeral self-signed cert).
-Auth: passkey (never sent); scrypt-derived key; mutual HMAC proof bound
-to the server cert fingerprint AND the declared control role (MITM-safe).
+Auth: passkey (never sent); scrypt-derived key; mutual HMAC proof bound to
+the server cert fingerprint AND the negotiated mode (MITM-safe).
 
 Events controlled->controller: user_msg, assistant_msg, tool_result, status.
 Controller->controlled: prompt, stop, ping.
@@ -39,7 +43,7 @@ from collections import deque
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 8000
 SALT = b"aicoder-remote-v1"
 MAX_LINE = 1024 * 1024
 CERT_DIR = "/tmp/aicoder-remote"
@@ -50,6 +54,7 @@ _app = None
 
 class _State:
     active = False           # engaged: serving or connected
+    want = None              # server-side control role fixed at serve time
     role = None              # control role while connected: "controlled"|"controller"
     dialer = False           # True if we dialed (connect) vs listened (serve)
     conn = None              # ssl socket to peer
@@ -158,7 +163,7 @@ def _restore_yolo():
 
 # ---------------------------------------------------------------- server transport
 
-def _server_serve(port):
+def _server_serve(port, mode):
     if _st.active:
         LogUtils.printc("[Remote] already engaged (/remote off to stop)", color="yellow")
         return
@@ -172,6 +177,7 @@ def _server_serve(port):
         return
 
     _st.key = _derive_key(passkey)
+    _st.want = mode
     _st.srv_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     _st.srv_ctx.load_cert_chain(cert, key)
 
@@ -180,6 +186,7 @@ def _server_serve(port):
     try:
         srv.bind(("0.0.0.0", port))
     except OSError as e:
+        _st.want = None
         LogUtils.printc(f"[Remote] bind failed: {e}", color="red")
         return
     srv.listen(1)
@@ -189,7 +196,12 @@ def _server_serve(port):
     _st.active = True
     _st.listener_thread = threading.Thread(target=_serve_loop, daemon=True)
     _st.listener_thread.start()
-    LogUtils.printc(f"[Remote] serving on 0.0.0.0:{port}", color="green")
+    if mode == "controlled":
+        LogUtils.printc(f"[Remote] serving on 0.0.0.0:{port} - waiting for a driver (Ctrl+C cancels)",
+                        color="green")
+    else:
+        LogUtils.printc(f"[Remote] serving on 0.0.0.0:{port} - prompt stays local until a peer dials in",
+                        color="green")
 
 
 def _serve_loop():
@@ -197,7 +209,7 @@ def _serve_loop():
     while _st.active:
         try:
             sock, addr = srv.accept()
-        except socket.timeout:
+        except TimeoutError:
             continue
         except OSError:
             break
@@ -216,7 +228,8 @@ def _accept_client(sock, addr):
             _send_raw(tls, {"t": "error", "msg": "server busy: another client connected"})
             tls.close()
             return
-        if _server_handshake(tls) is None:
+        f_handshake = _server_handshake(tls)
+        if f_handshake is None:
             tls.close()
             return
         tls.settimeout(None)
@@ -228,13 +241,15 @@ def _accept_client(sock, addr):
             pass
         return
 
-    LogUtils.printc(f"[Remote] client connected from {addr[0]}", color="green")
     if _st.role == "controlled":
+        LogUtils.printc(f"[Remote] {addr[0]} connected - peer is driving now. Ctrl+C releases.",
+                        color="green")
         _force_yolo()
-        threading.Thread(target=_controlled_reader, args=(tls,), daemon=True).start()
+        threading.Thread(target=_controlled_reader, args=(tls, f_handshake), daemon=True).start()
     else:
-        LogUtils.printc("[Remote] peer is controlled - press Enter to take control", color="cyan")
-        threading.Thread(target=_controller_event_reader, args=(tls,), daemon=True).start()
+        LogUtils.printc(f"[Remote] {addr[0]} connected - your prompts now run there. /remote off releases.",
+                        color="green")
+        threading.Thread(target=_controller_event_reader, args=(tls, f_handshake), daemon=True).start()
 
 
 def _send_raw(sock, obj):
@@ -247,31 +262,34 @@ def _send_raw(sock, obj):
 def _server_handshake(tls):
     nonce_s = secrets.token_hex(16)
     fp_s = _fp(tls.getpeercert(True) or b"")
-    _send_raw(tls, {"t": "hello", "nonce": nonce_s, "fp": fp_s})
-    msg = _readline(tls.makefile("r", encoding="utf-8"))
+    mode = _st.want
+    # Single file object for the socket's whole lifetime: a second makefile
+    # could lose lines already buffered by the handshake read.
+    f = tls.makefile("r", encoding="utf-8")
+    _send_raw(tls, {"t": "hello", "nonce": nonce_s, "fp": fp_s, "mode": mode})
+    msg = _readline(f)
     if msg.get("t") != "proof":
         return None
     fp_seen = msg.get("fp", "")
-    role = msg.get("role", "controller")
-    if role not in ("controller", "controlled"):
-        role = "controller"
-    expected = _proof(_st.key, nonce_s, msg.get("nonce", ""), "client", fp_seen, role)
+    # hello.mode is informational only; the authoritative mode is _st.want and
+    # is proof-bound into "ready" so a MITM cannot flip it.
+    expected = _proof(_st.key, nonce_s, msg.get("nonce", ""), "client", fp_seen)
     if fp_seen != fp_s or not hmac.compare_digest(msg.get("proof", ""), expected):
         _send_raw(tls, {"t": "error", "msg": "auth failed"})
         return None
     _st.conn = tls
-    _st.role = "controller" if role == "controlled" else "controlled"
+    _st.role = mode
     _st.role_conn = tls
-    _send_raw(tls, {"t": "ready", "proof": _proof(_st.key, nonce_s, msg.get("nonce", ""), "server", fp_s)})
-    return role
+    _send_raw(tls, {"t": "ready", "mode": mode,
+                    "proof": _proof(_st.key, nonce_s, msg.get("nonce", ""), "server", fp_s, mode)})
+    return f
 
 
 # ---------------------------------------------------------------- controlled side
 
-def _controlled_reader(conn):
+def _controlled_reader(conn, f):
     """Inbound pump while controlled: prompts/stop/ping from the controller."""
     try:
-        f = conn.makefile("r", encoding="utf-8")
         while True:
             msg = _readline(f)
             t = msg.get("t")
@@ -299,6 +317,7 @@ def _stop_serving():
         _release_conn(_st.conn, quiet=True)
     _st.role = None
     _st.role_conn = None
+    _st.want = None
     if _st.listener:
         try:
             _st.listener.close()
@@ -346,37 +365,42 @@ def _client_print_event(msg, last_sent):
         LogUtils.printc(f"[Remote] {msg.get('msg', 'error')}", color="red")
 
 
-def _event_reader(conn, last_sent):
+def _event_reader(conn, f, last_sent):
     try:
-        f = conn.makefile("r", encoding="utf-8")
         while True:
             _client_print_event(_readline(f), last_sent)
     except Exception:
         pass
 
 
-def _controller_event_reader(conn):
-    _event_reader(conn, _st.last_sent)
+def _controller_event_reader(conn, f):
+    _event_reader(conn, f, _st.last_sent)
     _release_conn(conn)
 
 
-def _controller_input_loop(conn):
-    try:
-        while _st.conn is conn:
-            line = input()
-            text = line.strip()
-            if text in ("/detach", "/quit", "/off"):
+def _controller_drive(conn):
+    """Take over the local prompt: every line runs on the peer."""
+    while _st.conn is conn:
+        try:
+            line = _app.input_handler.get_user_input()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            break
+        text = line.strip()
+        if not text:
+            continue
+        if text == "/remote" or text.startswith("/remote "):
+            if text in ("/remote off", "/remote quit"):
+                _stop_serving()
                 break
-            if text:
-                _st.last_sent[0] = text
-                _send_raw(conn, {"t": "prompt", "text": text})
-    except (KeyboardInterrupt, EOFError):
-        print()
+            continue
+        _st.last_sent[0] = text
+        _send_raw(conn, {"t": "prompt", "text": text})
 
 
 # ---------------------------------------------------------------- client transport
 
-def _client_connect(host, port, controlled):
+def _client_connect(host, port):
     if _st.active:
         LogUtils.printc("[Remote] already engaged (/remote off to stop)", color="red")
         return
@@ -396,8 +420,6 @@ def _client_connect(host, port, controlled):
         conn = ctx.wrap_socket(raw)
         conn.settimeout(30)
         key = _derive_key(passkey)
-        role = "controlled" if controlled else "controller"
-
         f = conn.makefile("r", encoding="utf-8")
         hello = _readline(f)
         if hello.get("t") != "hello":
@@ -405,8 +427,8 @@ def _client_connect(host, port, controlled):
         nonce_c = secrets.token_hex(16)
         fp_seen = hello.get("fp", "")
         conn.sendall((json.dumps({
-            "t": "proof", "nonce": nonce_c, "fp": fp_seen, "role": role,
-            "proof": _proof(key, hello.get("nonce", ""), nonce_c, "client", fp_seen, role),
+            "t": "proof", "nonce": nonce_c, "fp": fp_seen,
+            "proof": _proof(key, hello.get("nonce", ""), nonce_c, "client", fp_seen),
         }) + "\n").encode("utf-8"))
 
         reply = _readline(f)
@@ -414,7 +436,10 @@ def _client_connect(host, port, controlled):
             raise ConnectionError(reply.get("msg", "auth failed"))
         if reply.get("t") != "ready":
             raise ConnectionError("bad handshake")
-        expected = _proof(key, hello.get("nonce", ""), nonce_c, "server", fp_seen)
+        mode = reply.get("mode")
+        if mode not in ("controller", "controlled"):
+            raise ConnectionError("server sent unknown mode")
+        expected = _proof(key, hello.get("nonce", ""), nonce_c, "server", fp_seen, mode)
         if not hmac.compare_digest(reply.get("proof", ""), expected):
             raise ConnectionError("server auth failed (possible MITM)")
         conn.settimeout(None)
@@ -432,37 +457,44 @@ def _client_connect(host, port, controlled):
     _st.role_conn = conn
     _st.dialer = True
     _st.active = True
-    if controlled:
+    if mode == "controlled":
         _st.role = "controlled"
         _force_yolo()
-        LogUtils.printc("[Remote] connected - CONTROLLED by peer. /remote off to disconnect.",
+        LogUtils.printc(f"[Remote] connected - {host} is driving. Mirroring output. Ctrl+C releases.",
                         color="green")
-        threading.Thread(target=_controlled_reader, args=(conn,), daemon=True).start()
+        threading.Thread(target=_controlled_reader, args=(conn, f), daemon=True).start()
         return
     _st.role = "controller"
-    LogUtils.printc(f"[Remote] connected to {host}:{port} - type to chat, /detach or Ctrl+C to release",
+    LogUtils.printc(f"[Remote] driving {host}:{port} - lines run there. /remote off or Ctrl+C releases.",
                     color="green")
-    threading.Thread(target=_controller_event_reader, args=(conn,), daemon=True).start()
-    _controller_input_loop(conn)
-    if _st.conn is conn:
-        _release_conn(conn, quiet=True)
-        print("[Remote] detached")
+    threading.Thread(target=_controller_event_reader, args=(conn, f), daemon=True).start()
 
 
 # ---------------------------------------------------------------- hooks
 
 def on_before_user_prompt():
-    """Park the local main loop while a peer is connected."""
-    if _st.conn is None or _st.role is None:
+    """Controller takeover: once a peer is attached, the local prompt drives it."""
+    if _st.role != "controller" or _st.conn is None:
         return
-    if _st.role == "controller":
-        conn = _st.conn
-        _controller_input_loop(conn)
-        if _st.conn is conn:
-            _release_conn(conn, quiet=True)
-            LogUtils.printc("[Remote] control released - local use restored", color="yellow")
-        return
-    # controlled: block until the controller sends a prompt
+    conn = _st.conn
+    _controller_drive(conn)
+    if _st.conn is conn:
+        _release_conn(conn, quiet=True)
+        LogUtils.printc("[Remote] control released - local use restored", color="yellow")
+
+
+def _serve_wait():
+    """Park the prompt while serving in controlled mode and no driver yet."""
+    try:
+        while _st.active and _st.conn is None and _st.listener is not None:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print()
+        _stop_serving()
+
+
+def _controlled_dispatch():
+    """Park until the controller sends a prompt, then feed it to the main loop."""
     LogUtils.printc("[Remote] waiting for peer input (Ctrl+C to disconnect)", color="cyan")
     try:
         while _st.conn is not None and not _app.has_next_prompt():
@@ -471,11 +503,30 @@ def on_before_user_prompt():
                     break
             time.sleep(0.2)
     except KeyboardInterrupt:
+        print()
         _stop_serving()
         return
     with _st.lock:
         if _st.pending:
             _app.set_next_prompt(_st.pending.popleft())
+
+
+def on_prompt_available():
+    """Prompt about to block on local input - remote business parks here.
+
+    Not gated by the Ctrl+C skip flag, so it fires every loop iteration.
+    """
+    if _st.want == "controlled" and _st.conn is None and _st.listener is not None:
+        _serve_wait()
+    if _is_controlled():
+        _controlled_dispatch()
+        return
+    if _st.role == "controller" and _st.conn is not None:
+        conn = _st.conn
+        _controller_drive(conn)
+        if _st.conn is conn:
+            _release_conn(conn, quiet=True)
+            LogUtils.printc("[Remote] control released - local use restored", color="yellow")
 
 
 def on_before_ai_processing():
@@ -510,27 +561,48 @@ def on_tool_result(message):
 
 # ---------------------------------------------------------------- command
 
+USAGE = "Usage: /remote serve [port] [--control] | /remote connect <host> [port] | /remote off"
+
+
 def _cmd_remote(args_str):
     parts = args_str.strip().split()
     if not parts:
-        print("Usage: /remote serve [port] | /remote connect <host> [port] [--controlled] | /remote off")
+        print(USAGE)
         return
     sub = parts[0]
     if sub == "serve":
-        port = int(parts[1]) if len(parts) > 1 else DEFAULT_PORT
-        _server_serve(port)
+        port = DEFAULT_PORT
+        mode = "controlled"
+        for p in parts[1:]:
+            if p == "--control":
+                mode = "controller"
+            else:
+                try:
+                    port = int(p)
+                except ValueError:
+                    print(USAGE)
+                    return
+        _server_serve(port, mode)
     elif sub == "connect":
-        args = [p for p in parts[1:] if p != "--controlled"]
-        controlled = len(args) != len(parts) - 1
-        if not args:
-            print("Usage: /remote connect <host> [port] [--controlled]")
+        args = parts[1:]
+        if any(p.startswith("--") for p in args):
+            print("[Remote] client role is decided by the server (--control on the serve side)")
             return
-        port = int(args[1]) if len(args) > 1 else DEFAULT_PORT
-        _client_connect(args[0], port, controlled)
+        if not args:
+            print(USAGE)
+            return
+        port = DEFAULT_PORT
+        if len(args) > 1:
+            try:
+                port = int(args[1])
+            except ValueError:
+                print(USAGE)
+                return
+        _client_connect(args[0], port)
     elif sub == "off":
         _stop_serving()
     else:
-        print("Usage: /remote serve [port] | /remote connect <host> [port] [--controlled] | /remote off")
+        print(USAGE)
 
 
 def create_plugin(ctx):
@@ -538,8 +610,9 @@ def create_plugin(ctx):
     _app = ctx.app
     atexit.register(_stop_serving)
 
-    ctx.register_command("remote", _cmd_remote, "Remote control: serve | connect <host> [--controlled] | off")
+    ctx.register_command("remote", _cmd_remote, "Remote control: serve [--control] | connect <host> | off")
     ctx.register_hook("before_user_prompt", on_before_user_prompt)
+    ctx.register_hook("on_prompt_available", on_prompt_available)
     ctx.register_hook("before_ai_processing", on_before_ai_processing)
     ctx.register_hook("after_ai_processing", on_after_ai_processing)
     ctx.register_hook("after_user_message_added", on_user_message)
