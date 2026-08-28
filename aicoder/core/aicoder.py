@@ -239,7 +239,11 @@ class AICoder:
                 else:
                     # Prompt genuinely available - about to block on real user input
                     self.plugin_system.call_hooks("on_prompt_available")
-                    user_input = self.input_handler.get_user_input()
+                    if self.has_next_prompt():
+                        # Hook injected a prompt (e.g. remote control dispatch)
+                        user_input = self.get_next_prompt()
+                    else:
+                        user_input = self.input_handler.get_user_input()
 
                 if not user_input.strip():
                     continue
