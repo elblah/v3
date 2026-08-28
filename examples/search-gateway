@@ -48,8 +48,8 @@ CMD="$1"
 ARG="$2"
 
 case "$CMD" in
-    search) REQ="gobrow search -max-tokens $MAX_TOKENS $ARG" ;;
-    fetch)  REQ="gobrow -max-tokens $MAX_TOKENS $ARG" ;;
+    search) REQ="gobrow search --max-tokens $MAX_TOKENS $ARG" ;;
+    fetch)  REQ="gobrow --max-tokens $MAX_TOKENS $ARG" ;;
     *) usage ;;
 esac
 
