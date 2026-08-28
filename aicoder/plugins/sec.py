@@ -25,7 +25,12 @@ from aicoder.utils.bool_utils import env_bool, parse_bool
 RT = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 HOME = os.environ.get("HOME") or ""
 
-RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb")
+# gocache recipe: bind GOCACHE (defaults to /mnt/gocache, the outer
+# bwrap's rw mount of the real store) read-write inside the seal on
+# /sec allow gocache. Not bound by default -> invisible (deny-by-default).
+_GOCACHE = os.environ.get("GOCACHE", "/mnt/gocache")
+
+RECIPES = ("proc", "tmux", "dtx", "dbrowser", "dbus", "x11", "rt", "adb", "gocache")
 
 # Env vars that leak host-service access: stripped in sealed mode,
 # restored by recipes from the values captured at plugin load.
@@ -224,6 +229,12 @@ def _build_argv(command: str) -> list[str]:
 
     if "rt" in allowed and os.path.isdir(RT):
         argv += ["--ro-bind", RT, RT]
+
+    if "gocache" in allowed:
+        # Read-write: write Go build cache artifacts. Not bound otherwise,
+        # so GOCACHE stays invisible inside the seal (deny-by-default).
+        # For read-only exposure instead, use --ro-bind below.
+        argv += ["--bind", _GOCACHE, _GOCACHE]
 
     argv += ["/bin/bash", "-c", command]
     return argv
