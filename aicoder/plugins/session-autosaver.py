@@ -17,6 +17,7 @@ import fcntl
 from pathlib import Path
 
 from aicoder.utils.bool_utils import env_bool, TRUTHY, FALSY
+from aicoder.utils.input_utils import prompt_choice
 from aicoder.utils.log import LogUtils
 
 def _orphan_tool_result_count(messages):
@@ -210,7 +211,7 @@ def create_plugin(ctx):
             c = Config.colors
             prompt = f"\n  {c['bold']}{c['brightYellow']}Load previous session from {session_file}{extra}? [Y/n]{c['reset']} "
             while True:
-                answer = input(prompt).strip().lower()
+                answer = prompt_choice(prompt, ["no", "yes"]).lower()
                 if not answer or answer in TRUTHY or answer in FALSY:
                     break
             print()
