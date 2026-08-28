@@ -298,6 +298,7 @@ def _controlled_reader(conn, f):
                 if text:
                     with _st.lock:
                         _st.pending.append(text)
+                    LogUtils.printc(f"[Remote] prompt received: {text}", color="cyan")
             elif t == "stop":
                 _app.is_processing = False
             elif t == "ping":
