@@ -8,6 +8,8 @@ user lifts at runtime restore specific access.
 SEC_PRINT_STATUS=0 silences the [sec] status line (default on).
 
 State is runtime-only: sessions start sealed, no recipes, no network.
+SANDBOX=0 (master kill switch) starts unsealed with net allowed;
+/sec seal on / net off re-tighten.
 Launcher-env overrides (read once at plugin load, parent env only):
 SEC_SEAL=0 starts unsealed, SEC_NET_ALLOW=1 starts with network.
 /sec seal|net on|off, /sec allow (named recipes), and
@@ -98,10 +100,13 @@ def _env_flag(name: str, default: bool) -> bool:
 
 # Read from the parent aicoder env at load — a sealed command cannot
 # inject these (same property as _DTX_EXTRA).
+# SANDBOX=0 (master kill switch, same var the /sec plugin load checks):
+# starts unsealed with net allowed; /sec seal on / net off re-tighten at runtime.
+_SANDBOX_OFF = not _env_flag("SANDBOX", True)
 _state = {
-    "sealed": _env_flag("SEC_SEAL", True),  # always start sealed unless SEC_SEAL=0
+    "sealed": _env_flag("SEC_SEAL", not _SANDBOX_OFF),  # start sealed unless SEC_SEAL=0 or SANDBOX=0
     "allowed": set(),  # recipe names lifted at runtime
-    "net": _env_flag("SEC_NET_ALLOW", False),  # net off by default
+    "net": _env_flag("SEC_NET_ALLOW", _SANDBOX_OFF),  # net off by default (on if SANDBOX=0)
     "binds": {},  # abs path -> "ro" | "rw" (generic dir binds: /sec allow ro|rw <path>)
 }
 
@@ -377,6 +382,8 @@ def _handle_sec(args: str):
 
 
 def create_plugin(ctx):
+    # SANDBOX=0 does NOT disable the plugin: it starts unsealed + net
+    # allowed (see _SANDBOX_OFF) and /sec can re-tighten at runtime.
     if not shutil.which("bwrap"):
         # No bwrap -> install nothing: no seal hook, no /sec command.
         return
