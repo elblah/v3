@@ -72,7 +72,11 @@ class Config:
 
     # Sandbox and detail mode state - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
-    _sandbox_disabled = not env_bool("MINI_SANDBOX", default=True)
+    # SANDBOX=0 is the master kill switch: disables both the /sec plugin
+    # and the mini sandbox (Sandbox-fs), regardless of MINI_SANDBOX.
+    _sandbox_disabled = not (
+        env_bool("MINI_SANDBOX", default=True) and env_bool("SANDBOX", default=True)
+    )
     _detail_mode = env_bool("DETAIL")
     _detail_tty = env_bool("DETAIL_TTY")
 
@@ -1114,7 +1118,9 @@ class Config:
 
         """
         Config._yolo_mode = env_bool("YOLO_MODE")
-        Config._sandbox_disabled = not env_bool("MINI_SANDBOX", default=True)
+        Config._sandbox_disabled = not (
+            env_bool("MINI_SANDBOX", default=True) and env_bool("SANDBOX", default=True)
+        )
         Config._detail_mode = env_bool("DETAIL")
         Config._debug_enabled = env_bool("DEBUG")
 
