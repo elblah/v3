@@ -558,6 +558,14 @@ def _serve_wait():
 
 def _controlled_dispatch():
     """Park until the controller sends a prompt, then feed it to the main loop."""
+    # Peer idle: previous turn ended. Commands that fail early (e.g. /es
+    # outside tmux) never run the AI cycle, so no processing hooks fire and
+    # the controller would park forever. Announce idle whenever we truly
+    # park (no prompt pending or queued).
+    if not _app.has_next_prompt():
+        with _st.lock:
+            if not _st.pending:
+                _send({"t": "status", "processing": False})
     LogUtils.printc("[Remote] waiting for peer input (Ctrl+C to disconnect)", color="cyan")
     try:
         while _st.conn is not None and not _app.has_next_prompt():
