@@ -22,10 +22,11 @@ Auth: passkey (never sent); scrypt-derived key; mutual HMAC proof bound to
 the server cert fingerprint AND the negotiated mode (MITM-safe).
 
 Events controlled->controller: user_msg, assistant_msg, tool_result, status.
-Controller->controlled: prompt, stop, ping.
+Controller->controlled: prompt, inject, stop, ping.
 """
 
 import atexit
+import builtins
 import getpass
 import hashlib
 import hmac
@@ -36,19 +37,18 @@ import signal
 import socket
 import ssl
 import subprocess
-import textwrap
 import threading
 import time
 from collections import deque
 
 from aicoder.core.config import Config
+from aicoder.core.markdown_colorizer import MarkdownColorizer
 from aicoder.utils.log import LogUtils
 
 DEFAULT_PORT = 8000
 SALT = b"aicoder-remote-v1"
 MAX_LINE = 1024 * 1024
 CERT_DIR = "/tmp/aicoder-remote"
-TOOL_RESULT_TRUNC = 800
 
 _app = None
 
@@ -64,10 +64,12 @@ class _State:
     lock = threading.Lock()  # guards pending
     send_lock = threading.Lock()
     last_sent = [None]       # controller: last prompt sent (echo suppression)
+    busy = False             # controller: peer is processing a prompt
     yolo_prev = None
     listener = None
     listener_thread = None
     srv_ctx = None
+    cert_fp = None          # sha256 of OUR cert der (channel binding anchor)
 
 
 _st = _State()
@@ -181,6 +183,8 @@ def _server_serve(port, mode):
     _st.want = mode
     _st.srv_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     _st.srv_ctx.load_cert_chain(cert, key)
+    with open(cert, "rb") as fh:
+        _st.cert_fp = _fp(ssl.PEM_cert_to_DER_cert(fh.read().decode()))
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -263,7 +267,7 @@ def _send_raw(sock, obj):
 
 def _server_handshake(tls):
     nonce_s = secrets.token_hex(16)
-    fp_s = _fp(tls.getpeercert(True) or b"")
+    fp_s = _st.cert_fp
     mode = _st.want
     # Single file object for the socket's whole lifetime: a second makefile
     # could lose lines already buffered by the handshake read.
@@ -319,6 +323,13 @@ def _controlled_reader(conn, f):
                     with _st.lock:
                         _st.pending.append(text)
                     LogUtils.printc(f"[Remote] prompt received: {text}", color="cyan")
+            elif t == "inject":
+                text = str(msg.get("text", ""))
+                if text:
+                    while _app.message_history.is_compacting:
+                        time.sleep(0.05)
+                    _app.message_history.insert_user_message_at_appropriate_position(text)
+                    LogUtils.printc(f"[Remote] injected: {text}", color="cyan")
             elif t == "stop":
                 _app.is_processing = False
             elif t == "ping":
@@ -352,36 +363,37 @@ def _stop_serving():
 
 # ---------------------------------------------------------------- controller side
 
-def _wrap_print(tag, text):
-    width = max(20, shutil_get_width() - len(tag) - 1)
-    body = textwrap.fill(str(text), width, subsequent_indent=" " * (len(tag) + 1))
-    print(f"{tag} {body}")
-
-
-def shutil_get_width():
-    try:
-        return os.get_terminal_size().columns
-    except OSError:
-        return 80
+_colorizer = None
 
 
 def _client_print_event(msg, last_sent):
+    """Controller mirror: render events exactly like the local app would."""
+    global _colorizer
     t = msg.get("t")
     if t == "user_msg":
         text = msg.get("text", "")
         if last_sent[0] is not None and text == last_sent[0]:
             last_sent[0] = None
             return
-        _wrap_print("\x1b[1mUSER>\x1b[0m", text)
+        LogUtils.print()
+        LogUtils.print(text)
     elif t == "assistant_msg":
-        _wrap_print("\x1b[1mAI>\x1b[0m", msg.get("text", ""))
+        if _colorizer is None:
+            _colorizer = MarkdownColorizer()
+        LogUtils.print()
+        if Config.show_ai_prefix():
+            LogUtils.printc("AI: ", color="cyan", bold=True)
+        builtins.print(_colorizer.process_with_colorization(msg.get("text", "")))
     elif t == "tool_result":
-        _wrap_print("\x1b[2mTOOL>\x1b[0m", msg.get("text", ""))
-    elif t == "status":
-        if msg.get("processing"):
-            print("\x1b[2m--- processing ---\x1b[0m")
+        text = msg.get("text", "")
+        LogUtils.print()
+        if text == "[*] Done":
+            LogUtils.success(text)
         else:
-            print("\x1b[2m--- idle ---\x1b[0m")
+            LogUtils.print(text)
+    elif t == "status":
+        with _st.lock:
+            _st.busy = bool(msg.get("processing"))
     elif t == "error":
         LogUtils.printc(f"[Remote] {msg.get('msg', 'error')}", color="red")
 
@@ -397,6 +409,26 @@ def _event_reader(conn, f, last_sent):
 def _controller_event_reader(conn, f):
     _event_reader(conn, f, _st.last_sent)
     _release_conn(conn)
+
+
+def _wait_peer_idle(conn):
+    """Park the controller while the peer runs. Ctrl+C stops the peer like a
+    local interrupt; a second Ctrl+C force-releases control."""
+    interrupted = False
+    while _st.conn is conn:
+        with _st.lock:
+            busy = _st.busy
+        if not busy:
+            return True
+        try:
+            time.sleep(0.05)
+        except KeyboardInterrupt:
+            if interrupted:
+                return False
+            print()
+            _send({"t": "stop"})
+            interrupted = True
+    return False
 
 
 def _controller_drive(conn):
@@ -416,7 +448,11 @@ def _controller_drive(conn):
                 break
             continue
         _st.last_sent[0] = text
+        with _st.lock:
+            _st.busy = True
         _send_raw(conn, {"t": "prompt", "text": text})
+        if not _wait_peer_idle(conn):
+            break
 
 
 # ---------------------------------------------------------------- client transport
@@ -446,10 +482,15 @@ def _client_connect(host, port):
         if hello.get("t") != "hello":
             raise ConnectionError("bad handshake")
         nonce_c = secrets.token_hex(16)
+        # Channel binding: hash the cert OUR TLS connection actually received.
+        # A relayed MITM presents its own cert, so this cannot match hello.fp.
+        fp_real = _fp(conn.getpeercert(True) or b"")
         fp_seen = hello.get("fp", "")
+        if not hmac.compare_digest(fp_seen, fp_real):
+            raise ConnectionError("server cert mismatch (possible MITM)")
         conn.sendall((json.dumps({
-            "t": "proof", "nonce": nonce_c, "fp": fp_seen,
-            "proof": _proof(key, hello.get("nonce", ""), nonce_c, "client", fp_seen),
+            "t": "proof", "nonce": nonce_c, "fp": fp_real,
+            "proof": _proof(key, hello.get("nonce", ""), nonce_c, "client", fp_real),
         }) + "\n").encode("utf-8"))
 
         reply = _readline(f)
@@ -558,7 +599,19 @@ def on_before_ai_processing():
 
 def on_after_ai_processing(has_tool_calls=None):
     if _is_controlled():
-        _send({"t": "status", "processing": False})
+        # Keep peer "busy" across recursive tool turns. Only clear busy on the
+        # final text turn (no tool calls), so the controller waits for the whole
+        # session instead of leaking its next prompt in the gap between turns.
+        if not has_tool_calls:
+            _send({"t": "status", "processing": False})
+
+
+def on_inject_user_text(text):
+    """Consume local inject-text and forward it to the controlled peer."""
+    if _st.role == "controller" and _st.conn is not None:
+        _send({"t": "inject", "text": text})
+        LogUtils.printc("[Remote] injected to peer", color="cyan")
+        return True
 
 
 def on_user_message(message):
@@ -573,12 +626,16 @@ def on_assistant_message(message):
             _send({"t": "assistant_msg", "text": content})
 
 
-def on_tool_result(message):
-    if _is_controlled():
-        text = message.get("content") or ""
-        if len(text) > TOOL_RESULT_TRUNC:
-            text = text[:TOOL_RESULT_TRUNC] + f" ...(+{len(text) - TOOL_RESULT_TRUNC} chars)"
-        _send({"t": "tool_result", "text": text})
+def on_single_tool_execution(tool_name, arguments, result):
+    if not _is_controlled():
+        return
+    tool_def = _app.tool_manager.tools.get(tool_name) or {}
+    if tool_def.get("hide_results"):
+        _send({"t": "tool_result", "text": "[*] Done"})
+        return
+    friendly = result.get("friendly", "")
+    if friendly:
+        _send({"t": "tool_result", "text": friendly})
 
 
 # ---------------------------------------------------------------- command
@@ -639,7 +696,8 @@ def create_plugin(ctx):
     ctx.register_hook("after_ai_processing", on_after_ai_processing)
     ctx.register_hook("after_user_message_added", on_user_message)
     ctx.register_hook("after_assistant_message_added", on_assistant_message)
-    ctx.register_hook("after_tool_results_added", on_tool_result)
+    ctx.register_hook("after_single_tool_execution", on_single_tool_execution)
+    ctx.register_hook("inject_user_text", on_inject_user_text)
 
     if Config.debug():
         LogUtils.print("  - /remote command")

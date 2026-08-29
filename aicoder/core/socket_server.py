@@ -584,8 +584,12 @@ class SocketServer:
             while self.aicoder.message_history.is_compacting:
                 time.sleep(0.05)
 
-            # Insert into message history
-            self.aicoder.message_history.insert_user_message_at_appropriate_position(text)
+            # Let plugins consume the injection (e.g. remote controller forwards to peer)
+            plugin_system = getattr(self.aicoder, "plugin_system", None)
+            results = plugin_system.call_hooks("inject_user_text", text) if plugin_system else None
+            if not (results and True in results):
+                # Insert into message history
+                self.aicoder.message_history.insert_user_message_at_appropriate_position(text)
 
             if Config.debug():
                 preview = repr(text[:100]) if len(text) > 100 else repr(text)
