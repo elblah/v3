@@ -23,6 +23,7 @@ from typing import Dict, Any, Tuple
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.tools.internal.run_shell_command import safe_subprocess_run
 
 _urllib_parse = None
 def _get_urllib():
@@ -38,11 +39,37 @@ def create_plugin(ctx):
 
     DEFAULT_LINES_PER_PAGE = 150
 
-    # In-memory cache to avoid repeated requests
-    _cache: Dict[str, str] = {}
+    # In-memory cache to avoid repeated requests. Values: (last_access, content).
+    _cache: Dict[str, Tuple[float, str]] = {}
     _provider_index = 0
     _last_search_time = 0.0
     SEARCH_COOLDOWN = 180  # 3 minutes - reset to preferred provider after this
+    CACHE_TTL = 180.0  # seconds since last access before an entry is evicted
+    CACHE_MAX_ENTRIES = 32  # LRU evicted when over this many entries
+    CACHE_MAX_BYTES = 32 * 1024 * 1024  # ~32MB total (strings, approximate)
+
+    def _cache_get(key: str) -> str:
+        """Fresh cached content or None; hit refreshes the access clock."""
+        entry = _cache.get(key)
+        if entry is None:
+            return None
+        atime, content = entry
+        now = time.time()
+        if now - atime > CACHE_TTL:
+            del _cache[key]
+            return None
+        _cache[key] = (now, content)  # sliding window
+        return content
+
+    def _cache_set(key: str, content: str) -> None:
+        """Store content and LRU-evict until under both caps (keeps >= 1 entry)."""
+        _cache[key] = (time.time(), content)
+        while len(_cache) > 1:
+            total = sum(len(c) for _, c in _cache.values())
+            if len(_cache) <= CACHE_MAX_ENTRIES and total <= CACHE_MAX_BYTES:
+                break
+            victim = min(_cache, key=lambda k: _cache[k][0])
+            del _cache[victim]
 
     # Parse search providers from environment variable
     # Format: "Name1,URL1;Name2,URL2;"
@@ -104,10 +131,10 @@ def create_plugin(ctx):
             return None
 
     def validate_url(url: str) -> bool:
-        """Basic URL validation"""
+        """Basic URL validation - only http/https allowed (blocks file:// etc)"""
         try:
             result = _get_urllib().urlparse(url)
-            return all([result.scheme, result.netloc])
+            return result.scheme in ("http", "https") and bool(result.netloc)
         except:
             return False
 
@@ -146,10 +173,11 @@ def create_plugin(ctx):
         import subprocess
         try:
             # Use bytes mode and decode manually for better encoding handling
-            result = subprocess.run(
+            result = safe_subprocess_run(
                 ["lynx", "-dump", "-nolist", url],
                 capture_output=True,
-                timeout=30
+                timeout=30,
+                requires_net=True,
             )
             # Try UTF-8 first, then latin-1, replace errors
             try:
@@ -173,9 +201,37 @@ def create_plugin(ctx):
             return f"Error fetching URL: {e}"
 
     def fetch_url_raw(url: str) -> str:
-        """Fetch raw HTML content using urllib"""
-        import urllib.request
+        """Fetch raw HTML: gorl (preferred) -> curl -> urllib fallback"""
         MAX_HTML_SIZE = 5 * 1024 * 1024  # 5MB limit
+
+        def _finish(data: bytes) -> str:
+            if len(data) > MAX_HTML_SIZE:
+                return f"Error: Response too large (> {MAX_HTML_SIZE // (1024*1024)}MB)"
+            try:
+                return data.decode("utf-8")
+            except UnicodeDecodeError:
+                return data.decode("latin-1")
+
+        # gorl/curl handles HTTP errors with non-zero rc and empty stdout ->
+        # fall through to the next fetcher. requires_net=True: refuse when the
+        # seal isolates the netns (do NOT leak through to urllib in that case).
+        for cmd in (
+            ["gorl", url, "-A", "Mozilla/5.0"],
+            ["curl", "-fsSL", "-A", "Mozilla/5.0", url],
+        ):
+            if not shutil.which(cmd[0]):
+                continue
+            try:
+                result = safe_subprocess_run(
+                    cmd, capture_output=True, timeout=30, requires_net=True
+                )
+                if result.returncode == 0:
+                    return _finish(result.stdout)
+            except Exception as e:
+                return f"Error fetching URL: {e}"
+
+        # Last-resort pure-Python fallback (works with no external binary)
+        import urllib.request
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=30) as response:
@@ -235,8 +291,8 @@ def create_plugin(ctx):
             }
 
         # Check cache first
-        if query in _cache:
-            content = _cache[query]
+        content = _cache_get(query)
+        if content is not None:
             lines = content.split("\n")[:DEFAULT_LINES_PER_PAGE]
             return {
                 "tool": "web_search",
@@ -270,7 +326,7 @@ def create_plugin(ctx):
 
                 # Update rotation index and cache successful result
                 _provider_index = (idx + 1) % num_providers
-                _cache[query] = content
+                _cache_set(query, content)
                 lines = content.split("\n")[:DEFAULT_LINES_PER_PAGE]
                 return {
                     "tool": "web_search",
@@ -323,8 +379,8 @@ def create_plugin(ctx):
         cache_key = f"{url}?raw={raw}"
 
         # Check cache first (only for non-raw content)
-        if not raw and cache_key in _cache:
-            content = _cache[cache_key]
+        content = _cache_get(cache_key) if not raw else None
+        if content is not None:
             lines = content.split("\n")
             total = len(lines)
             max_page = (total + DEFAULT_LINES_PER_PAGE - 1) // DEFAULT_LINES_PER_PAGE
@@ -346,7 +402,7 @@ def create_plugin(ctx):
 
             # Only cache non-raw content
             if not raw:
-                _cache[cache_key] = content
+                _cache_set(cache_key, content)
 
             # Paginate by lines for text, by chars for raw HTML
             if raw:
@@ -378,6 +434,13 @@ def create_plugin(ctx):
                 "detailed": f"Error: {e}",
             }
 
+    def _raw_fetcher_label():
+        """Raw fetch attempt chain (gorl -> curl -> urllib), per binaries present."""
+        avail = [b for b in ("gorl", "curl") if shutil.which(b)]
+        if not avail:
+            return "urllib"
+        return " -> ".join(avail) + " -> urllib"
+
     # Format function for get_url_content (shows URL during approval)
     def format_get_url_content(args):
         """Format arguments for get_url_content, including gateway mode"""
@@ -386,7 +449,7 @@ def create_plugin(ctx):
         raw = args.get("raw", False)
         raw_str = " (raw HTML)" if raw else " (lynx text)"
         if raw:
-            mode = "native raw HTML (no gateway)"
+            mode = f"native raw HTML ({_raw_fetcher_label()})"
         elif _search_script_path():
             mode = "gateway (WEB_SEARCH_SCRIPT)"
         else:

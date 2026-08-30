@@ -6,6 +6,7 @@ Run shell command tool
 import subprocess
 import signal
 import os
+import shlex
 import time
 from typing import Dict, Any, List, Optional
 from aicoder.core.config import Config
@@ -189,6 +190,30 @@ def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = 
             except Exception:
                 pass
             _active_proc = None
+
+
+def safe_subprocess_run(argv: List[str], requires_net: bool = False, **kwargs) -> subprocess.CompletedProcess:
+    """Run argv through the same seal hooks as run_shell_command.
+
+    Plugins that spawn helper binaries (lynx, vision gateways, ...) should
+    route through here instead of bare subprocess.run so the /sec bwrap
+    seal applies. Accepts the same kwargs as subprocess.run and returns a
+    CompletedProcess. Same fail-open fallback as the main tool: no hook /
+    bwrap absent -> runs argv unwrapped.
+
+    requires_net=True: argv needs egress (e.g. lynx fetch). If the active
+    seal isolates the network (bwrap --unshare-net), raise instead of
+    running a command that can only fail dead.
+    """
+    command, sealed_argv = resolve_command(shlex.join(argv))
+    if isinstance(sealed_argv, list):
+        if requires_net and "--unshare-net" in sealed_argv:
+            raise RuntimeError(
+                "command requires network but the seal isolates the netns "
+                "(net off); run /sec net on to allow it"
+            )
+        return subprocess.run(sealed_argv, **kwargs)
+    return subprocess.run(argv, **kwargs)
 
 
 def _format_duration(seconds: float) -> str:
