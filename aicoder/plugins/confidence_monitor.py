@@ -100,7 +100,7 @@ def create_plugin(ctx):
             return None
         avg = sum(confidences) / len(confidences)
         c = _value_color(int(avg))
-        return f"conf:{c}{avg:.1f}{colors['reset']}"
+        return f"cm:{c}{avg:.1f}{colors['reset']}"
 
     ctx.register_hook("on_system_prompt_append", on_system_prompt_append)
     ctx.register_hook("modify_tool_definitions", modify_tool_definitions)
