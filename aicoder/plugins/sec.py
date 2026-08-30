@@ -5,7 +5,13 @@ Wraps every run_shell_command payload in a nested bwrap sandbox
 ("sealed" mode). Sealed = the shell cannot reach host services
 (tmux socket, dbus, X11, dtx, pulse) or /proc — only recipes the
 user lifts at runtime restore specific access.
-SEC_PRINT_STATUS=0 silences the [sec] status line (default on).
+SEC_PRINT_STATUS=1 enables the [sec] status line printed before each
+command (default off).
+SEC_BADGE=0 disables the seal|net context-bar badge (default on).
+The context bar appends a two-slot seal|net badge: [S|N] = bwrap +
+net; U = unsealed, X = net off, N = net on. ASCII-only (wide emoji
+break tmux rendering); green = safe (sealed / net off), bold yellow =
+warning (unsealed / net on). Legend always printed by /sec status.
 
 State is runtime-only: sessions start sealed, no recipes, no network.
 SANDBOX=0 (master kill switch) starts unsealed with net allowed;
@@ -110,8 +116,10 @@ _state = {
     "binds": {},  # abs path -> "ro" | "rw" (generic dir binds: /sec allow ro|rw <path>)
 }
 
-# [sec] Net/Seal/Allowed status line before each command; SEC_PRINT_STATUS=0 silences.
-_PRINT_STATUS = _env_flag("SEC_PRINT_STATUS", True)
+# [sec] Net/Seal/Allowed status line before each command; SEC_PRINT_STATUS=1 enables (default off).
+_PRINT_STATUS = _env_flag("SEC_PRINT_STATUS", False)
+# [sec] Seal|net context-bar badge; SEC_BADGE=0 disables (default on).
+_BADGE_ON = _env_flag("SEC_BADGE", True)
 
 
 def _blocked(msg: str) -> list[str]:
@@ -265,6 +273,24 @@ def _on_before_run_shell_command(command):
         return _blocked(f"seal error ({e}); command blocked (fail-closed)")
 
 
+def _badge() -> str:
+    """Two-slot context-bar badge: [S|X]. ASCII-only (wide emoji break
+    tmux rendering); green = safe (sealed / net off), bold yellow = warning
+    (unsealed / net on)."""
+    c = Config.colors
+    warn = c["bold"] + c["yellow"]
+    seal = (c["brightGreen"] + "S" + c["reset"]) if _state["sealed"] \
+        else (warn + "U" + c["reset"])
+    net = (c["brightGreen"] + "X" + c["reset"]) if not _state["net"] \
+        else (warn + "N" + c["reset"])
+    return f"{c['dim']}[{c['reset']}{seal}{c['dim']}|{c['reset']}{net}{c['dim']}]{c['reset']}"
+
+
+def _on_context_bar():
+    """Hook: append the seal|net badge to the context bar."""
+    return _badge()
+
+
 def _status() -> str:
     bwrap_ok = shutil.which("bwrap") is not None
     lines = []
@@ -285,6 +311,8 @@ def _status() -> str:
         f"{p}({_state['binds'][p]})" for p in sorted(_state["binds"])
     ) or "(none)"
     lines.append(f"  binds: {binds}")
+    lines.append("  badge: [S|X]  S=sealed U=unsealed  X=net off N=net on")
+    lines.append("         green = safe, bold yellow = warning")
     if not bwrap_ok:
         lines.append("  WARNING: bwrap not found - commands are BLOCKED (fail-closed)")
     return "\n".join(lines)
@@ -388,6 +416,8 @@ def create_plugin(ctx):
         # No bwrap -> install nothing: no seal hook, no /sec command.
         return
     ctx.register_hook("on_before_run_shell_command", _on_before_run_shell_command)
+    if _BADGE_ON:
+        ctx.register_hook("on_context_bar", _on_context_bar)
 
     ctx.register_command(
         "sec",
