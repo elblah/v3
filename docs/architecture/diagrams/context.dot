@@ -1,0 +1,30 @@
+// C4 L1 - System Context: AI Coder v3
+// graphviz; render: dot -Tpng context.dot -o ../img/context.png
+digraph context {
+    rankdir=LR;
+    graph [fontname="DejaVu Sans", fontsize=11, splines=true, nodesep=0.5, ranksep=0.9];
+    node  [fontname="DejaVu Sans", fontsize=11, shape=box, style="rounded,filled", fillcolor="#ffffff", color="#2b6f9e", penwidth=2];
+    edge  [fontname="DejaVu Sans", fontsize=10, color="#7a869a"];
+
+    // External actors
+    user  [label="User\n(tmux / terminal)", fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+    llm   [label="LLM Provider\nOpenAI-compatible / Anthropic\n(HTTPS SSE)", fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+    sock  [label="Socket clients\n(scripts, editors, tmux)", fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+    fs    [label="Filesystem\ncwd (rw) / tmp (rw)\n~/.config (ro)", shape=folder, fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+
+    // System boundary
+    subgraph cluster_system {
+        label="AI Coder v3  (rpi3-class host, single process)";
+        fontname="DejaVu Sans"; fontsize=12; style="rounded,dashed"; color="#5a6a7a"; penwidth=2;
+        aicoder [label="AI Coder v3\nPython >=3.12, stdlib only", fillcolor="#dce7f2", color="#2b6f9e"];
+    }
+
+    user   -> aicoder [label="prompts, /commands, Ctrl-C/Ctrl-D"];
+    aicoder -> user   [label="streamed replies, context bar"];
+    aicoder -> llm    [label="HTTPS POST messages + tools"];
+    llm    -> aicoder [label="SSE chunks + usage"];
+    sock   -> aicoder [label="UDS: status / inject / control (token auth)"];
+    aicoder -> sock   [label="replies, error codes 1001-1301"];
+    aicoder -> fs     [label="read/write (cwd + /tmp)"];
+    fs     -> aicoder [label="read (config, plugin dirs)"];
+}

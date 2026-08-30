@@ -1,0 +1,37 @@
+/* AI Coder v3 architecture doc - print + screen stylesheet (weasyprint-safe) */
+@page {
+    size: A4;
+    margin: 2cm 1.8cm;
+    @bottom-right { content: counter(page) " / " counter(pages); }
+    @bottom-left  { content: "AI Coder v3 - System Architecture"; }
+}
+body {
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #1a1a1a;
+}
+header#title-block-header {
+    background: #1f3a5f;
+    color: #ffffff;
+    padding: 0.8em 1em;
+    border-radius: 6px;
+    margin-bottom: 1.5em;
+}
+header#title-block-header h1.title { font-size: 22pt; margin: 0 0 0.15em; }
+header#title-block-header p.subtitle { font-size: 12pt; margin: 0 0 0.2em; }
+header#title-block-header p.author, header#title-block-header p.date {
+    font-size: 9pt; margin: 0; opacity: 0.9;
+}
+h1 { font-size: 16pt; color: #1f3a5f; border-bottom: 2px solid #2b6f9e; padding-bottom: 2px; page-break-after: avoid; }
+h2 { font-size: 13pt; color: #2b6f9e; page-break-after: avoid; }
+h3 { font-size: 11pt; color: #2b6f9e; page-break-after: avoid; }
+table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 9pt; }
+th { background: #1f3a5f; color: #ffffff; text-align: left; padding: 4px 6px; }
+td { border: 1px solid #c8d2de; padding: 4px 6px; }
+tr:nth-child(even) td { background: #eef2f6; }
+figure, table, pre, img { page-break-inside: avoid; }
+img { max-width: 100%; }
+code { background: #eef2f6; padding: 0 3px; border-radius: 3px; font-size: 9pt; }
+pre { background: #f5f7fa; border: 1px solid #d5dde6; padding: 8px; border-radius: 4px; }
+blockquote { border-left: 3px solid #b07c2a; margin: 0.8em 0; padding-left: 1em; color: #444; }
