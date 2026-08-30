@@ -3,6 +3,7 @@ Context bar component for displaying context usage
 
 """
 
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -64,8 +65,10 @@ class ContextBar:
         # Add YOLO indicator if enabled
         yolo_suffix = f"{Config.colors['yellow']}{Config.colors['bold']} YOLO{Config.colors['reset']}" if Config.yolo_mode() else ""
 
-        # Build the base context bar (not dimmed)
-        context_bar = f"Context: {progress_bar} {percentage_str}% ({current_tokens_str}/{max_tokens_str} @{model_short}{yolo_suffix})"
+        # Build the base context bar (not dimmed). Label configurable via
+        # AICODER_CONTEXT_BAR_LABEL (set to "" to remove the "Context:" text).
+        label = os.environ.get("AICODER_CONTEXT_BAR_LABEL", "Context: ")
+        context_bar = f"{label}{progress_bar} {percentage_str}% ({current_tokens_str}/{max_tokens_str} @{model_short}{yolo_suffix})"
 
         # Add time at the end if provided (dimmed)
         time_str = self.get_current_hour()
