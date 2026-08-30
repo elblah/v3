@@ -1,0 +1,16 @@
+// Key flow 5.3 - socket control
+msc {
+    hscale = "1.25";
+
+    client [label="socket client"], srv [label="SocketServer"],
+    app [label="AICoder session"], hook [label="reply path"];
+
+    client => srv [label="connect UDS; present token"];
+    srv => srv [label="auth: token compare"];
+    srv >> client [label="error 1001-1301 if auth fails"];
+    srv => app [label="dispatch: status / inject / control"];
+    app => app [label="inject cap: 10 MiB enforced"];
+    app >> hook [label="process (interactive pipeline or status)"];
+    hook >> srv [label="payload"];
+    srv >> client [label="reply over UDS"];
+}

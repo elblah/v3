@@ -1,0 +1,40 @@
+// C4 L2 - Container View: AI Coder v3 process decomposition
+// graphviz; render: dot -Tpng containers.dot -o ../img/containers.png
+digraph containers {
+    rankdir=TB;
+    graph [fontname="DejaVu Sans", fontsize=11, nodesep=0.45, ranksep=0.6, splines=true];
+    node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled",
+           fillcolor="#dce7f2", color="#2b6f9e", penwidth=1.5, margin="0.3,0.16"];
+    edge  [fontname="DejaVu Sans", fontsize=9, color="#7a869a", labeldistance=1.5, labelangle=0];
+
+    // External
+    llm   [label="LLM Provider\n(HTTPS SSE)", fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+    plugindirs [label="Plugin dirs (3-tier)\n.aicoder/plugins/ > ~/.config > bundled", shape=cylinder, fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+    sandbox [label="Sandbox\nbwrap, HTTPS-only egress", shape=cylinder, fillcolor="#b07c2a", color="#7a5a1e", fontcolor="#ffffff"];
+
+    // Containers
+    cli   [label="CLI entry\nmain.py"];
+    core  [label="Orchestrator\nAICoder class"];
+    cfg   [label="Config\nstatic, env-driven"];
+    sess  [label="Session pipeline\nSessionManager\n+ StreamProcessor"];
+    api   [label="Provider clients\nStreamingClient | AnthropicClient"];
+    tools [label="Tool system\nToolManager\n+ ToolExecutor"];
+    plug  [label="Plugin system\nPluginSystem\n+ aicoder/plugins/"];
+    mem   [label="Conversation memory\nMessageHistory\n+ CompactionService"];
+    ipc   [label="IPC\nSocketServer\n(UDS, token auth)"];
+    tui   [label="TUI layer\nInputHandler + CommandHandler\n+ ContextBar + Stats"];
+
+    cli   -> core  [label="instantiates + runs"];
+    core  -> cfg   [label="reads"];
+    core  -> sess  [label="drives"];
+    sess  -> api   [label="stream_request()"];
+    api   -> llm   [label="HTTPS"];
+    sess  -> tools [label="tool calls"];
+    tools -> plug  [headlabel="plugin tools", labeldistance=3];
+    plug  -> plugindirs [label="loads"];
+    tools -> sandbox [label="shell spawns"];
+    sess  -> mem   [label="append / compact"];
+    core  -> plug  [label="hooks"];
+    core  -> ipc   [label="hosts"];
+    core  -> tui   [label="prompt loop"];
+}

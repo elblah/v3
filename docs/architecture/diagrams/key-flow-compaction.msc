@@ -1,0 +1,20 @@
+// Key flow 5.4 - auto-compaction
+msc {
+    hscale = "1.3";
+
+    mh [label="MessageHistory"], cs [label="CompactionService"],
+    api [label="Provider client"], model [label="LLM"], hooks [label="plugin hooks"];
+
+    mh => mh [label="append turn; stats.current_prompt_size updated"];
+    mh => cs [label="should_auto_compact: over CONTEXT_SIZE * pct/100 ?"];
+    cs >> mh [label="false: return"];
+    mh => cs [label="compact(messages)"];
+    cs => cs [label="skip images; group; protect last N rounds (default 2)"];
+    cs => api [label="summary request (old groups only)"];
+    api => model [label="POST"];
+    model >> api [label="summary text"];
+    api >> cs [label="summary"];
+    cs => cs [label="validate (>= MIN_SUMMARY_LENGTH)"];
+    cs >> mh [label="rebuild: system + [SUMMARY]s + protected rounds"];
+    mh => hooks [label="after_compaction"];
+}

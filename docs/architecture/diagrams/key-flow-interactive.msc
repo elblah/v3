@@ -1,0 +1,27 @@
+// Key flow 5.1 - interactive prompt with tool-call loop
+msc {
+    hscale = "1.3";
+
+    user [label="User"], inh [label="Input"], sm [label="SessionMgr"],
+    sp [label="StreamProc"], api [label="Client"], llm [label="LLM API"],
+    ex [label="ToolExec"], tm [label="ToolMgr"];
+
+    user => inh [label="prompt"];
+    inh => sm [label="submit"];
+    sm => sp [label="prepare messages"];
+    sm => api [label="stream_request"];
+    api => llm [label="POST (SSE)"];
+    llm >> api [label="chunks"];
+    api >> sp [label="deltas"];
+    sp => sp [label="accumulate, detect reasoning, cache-collapse"];
+    sp >> sm [label="full content"];
+    sm => ex [label="tool call"];
+    ex => ex [label="approval + preview (skip in YOLO)"];
+    ex >> tm [label="run tool (built-in or plugin)"];
+    tm >> sm [label="tool result (capped)"];
+    sm => api [label="re-request with result"];
+    api => llm [label="POST (SSE)"];
+    llm >> api [label="final response"];
+    api >> sm [label="reply"];
+    sm >> user [label="rendered"];
+}
