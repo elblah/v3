@@ -220,11 +220,15 @@ class AICoder:
         LogUtils.success("Type your message or /help for commands.")
 
         self._skip_hooks_once = False
+        self._skip_auto_compact_once = False
 
         while self.is_running:
             try:
-                # Auto-compaction check
-                if self.message_history.should_auto_compact():
+                # Auto-compaction check (skipped once right after Ctrl+C so an
+                # interrupted compaction is not immediately restarted)
+                if self._skip_auto_compact_once:
+                    self._skip_auto_compact_once = False
+                elif self.message_history.should_auto_compact():
                     self.perform_auto_compaction()
 
                 # Get user input
@@ -274,6 +278,7 @@ class AICoder:
 
             except KeyboardInterrupt:
                 self._skip_hooks_once = True
+                self._skip_auto_compact_once = True
                 self.next_prompt = None
                 continue
             except EOFError:
