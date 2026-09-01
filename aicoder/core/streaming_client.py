@@ -674,6 +674,13 @@ class StreamingClient:
             if provider:
                 log_debug(f"*** Provider: {provider}")
 
+        # Some gateways (e.g., cline) wrap the payload in an envelope:
+        # {"data": {"choices": [...]}, "success": true} — unwrap the inner object
+        if not isinstance(data.get("choices"), list):
+            inner = data.get("data")
+            if isinstance(inner, dict) and inner.get("choices"):
+                data = inner
+
         # Convert non-streaming response to streaming format
         if data.get("choices") and len(data["choices"]) > 0:
             choice = data["choices"][0]

@@ -580,6 +580,42 @@ class TestHandleNonStreamingResponse:
         assert len(result) == 1
         assert result[0]["choices"][0]["delta"]["tool_calls"] is not None
 
+    def test_handles_envelope_wrapped_payload(self):
+        """Gateway envelope {"data": {choices...}, "success": true} must be unwrapped (cline)"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "data": {
+                "choices": [{
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": "Hello. Ready when you are — what's the task?",
+                        "reasoning": "internal reasoning text",
+                        "role": "assistant",
+                    },
+                }],
+                "model": "deepseek/deepseek-v4-flash-0731",
+                "object": "chat.completion",
+            },
+            "success": True,
+        }
+
+        result = list(client._handle_non_streaming_response(mock_response))
+        assert len(result) == 1
+        assert result[0]["choices"][0]["delta"]["content"] == "Hello. Ready when you are — what's the task?"
+
+    def test_envelope_without_choices_yields_nothing(self):
+        """Envelope whose inner object has no choices still yields no chunks"""
+        client = StreamingClient()
+
+        mock_response = Mock()
+        mock_response.json.return_value = {"data": {"error": "no choices here"}, "success": False}
+
+        result = list(client._handle_non_streaming_response(mock_response))
+        assert result == []
+
 
 class TestUpdateStatsFromUsage:
     """Test _update_stats_from_usage method"""
