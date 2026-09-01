@@ -419,10 +419,44 @@ def _status() -> str:
     return "\n".join(lines)
 
 
+def _sec_help() -> str:
+    """Multi-line help. Recipes carry one-liners so allow/deny is
+    unambiguous without /sec status archaeology."""
+    recipes = {
+        "proc": "mount /proc",
+        "tmux": "tmux socket + TMUX/AICODER_TMUX_PANE (vet)",
+        "dtx": "dtx socket + extras (vet)",
+        "dbrowser": "dbrowser socket",
+        "dbus": "session bus socket + address",
+        "x11": "X11 sockets + DISPLAY",
+        "rt": "XDG_RUNTIME_DIR ro-bind",
+        "adb": "adb server socket / client (denied by default)",
+        "gocache": "Go caches (rw bind + vars)",
+        "home": "full $HOME ro-bind (writable .cache)",
+        "env": "parent launcher env (minus stripped)",
+    }
+    lines = [
+        "/sec status                    show seal, net, allowed, binds",
+        "/sec seal on|off               nested bwrap (default-deny)",
+        "/sec net  on|off               network: isolated netns vs host",
+        "/sec allow <recipe>            lift a restriction:",
+    ]
+    lines += [f"      {r:<10} {d}" for r, d in recipes.items()]
+    lines += [
+        "/sec deny  <recipe>            re-tighten a recipe",
+        "/sec allow ro|rw <path>        bind an extra directory",
+        "/sec deny <path>               unbind that directory",
+        "/sec help                      this text",
+    ]
+    return "\n".join(lines)
+
+
 def _handle_sec(args: str):
     parts = args.strip().split()
 
-    if not parts or parts[0] == "status":
+    if not parts or parts[0] in ("help", "-h", "--help"):
+        return _sec_help()
+    if parts[0] == "status":
         return _status()
 
     cmd = parts[0]
@@ -507,7 +541,7 @@ def _handle_sec(args: str):
         _state["allowed"].discard(name)
         return f"denied recipe '{name}'"
 
-    return "usage: /sec seal on|off | /sec net on|off | /sec allow|deny <recipe> | /sec allow ro|rw <path> | /sec deny <path> | /sec status"
+    return f"unknown command. /sec help for usage (commands: seal/net/allow/deny/status)"
 
 
 def create_plugin(ctx):
