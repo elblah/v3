@@ -87,7 +87,7 @@ def _get_cleared_env() -> Optional[Dict[str, str]]:
     if not vars_to_clear:
         return None
     
-    return {k: v for k, v in os.environ.items() if k not in vars_to_clear}
+    return {k: v for k, v in os.environ.items() if k != "AICODER_SHELL_CLEAR_VARS" and not any(s in k for s in vars_to_clear)}
 
 
 def _kill_process_group(proc: subprocess.Popen) -> None:
