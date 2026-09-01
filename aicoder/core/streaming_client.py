@@ -9,6 +9,7 @@ import os
 from typing import List, Generator, Optional, Dict, Any
 
 from aicoder.core.config import Config
+from aicoder.core.compaction_service import CompactionError
 from aicoder.core.markdown_colorizer import MarkdownColorizer
 from aicoder.utils.log import error as log_error, warn as log_warn, info as log_info, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
@@ -754,7 +755,11 @@ class StreamingClient:
                 log_warn("[*] API failed with large context - attempting auto-recovery")
                 log_warn(f"[*] Context size: {current_size:,} (threshold: {threshold:,})")
                 self._recovery_attempted = True
-                self.message_history.force_compact_rounds(1)
+                try:
+                    self.message_history.force_compact_rounds(1)
+                except CompactionError as e:
+                    log_warn(f"[X] Recovery compaction failed: {e}")
+                    return False  # Don't retry — normal error handling proceeds
                 log_info("[*] Retrying request after compaction...")
                 return True  # Retry with compacted context
 

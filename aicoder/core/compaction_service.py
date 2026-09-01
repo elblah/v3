@@ -10,6 +10,11 @@ from aicoder.utils.log import LogUtils
 from aicoder.core.config import Config
 
 
+class CompactionError(Exception):
+    """Raised when AI compaction cannot produce a valid summary."""
+    pass
+
+
 class MessageGroup:
     """Group of messages that should stay together - simple class instead of dataclass"""
 
@@ -97,8 +102,6 @@ class CompactionService:
 
         try:
             summary = self._get_ai_summary(old_groups)
-            if summary is None:
-                return messages  # Summary failed validation, skip compaction
             summary_message = self._create_summary_message(summary)
 
             # Rebuild: system + existing summaries + new summary + recent messages
@@ -166,8 +169,6 @@ class CompactionService:
                 for msg in filtered_messages
             ]
         )
-        if summary is None:
-            return messages  # Summary failed validation, skip compaction
         summary_message = self._create_summary_message(summary)
 
         return self._replace_messages_with_summary(messages, filtered_messages, summary_message)
@@ -215,8 +216,6 @@ class CompactionService:
                 for msg in messages_to_compact
             ]
         )
-        if summary is None:
-            return messages  # Summary failed validation, skip compaction
         summary_message = self._create_summary_message(summary)
 
         return self._replace_messages_with_summary(messages, messages_to_compact, summary_message)
@@ -381,15 +380,20 @@ Prioritize:
                     LogUtils.warn(f"[!] Summary preview: {full_response[:300]}")
 
             if not self._validate_summary(full_response):
-                LogUtils.warn(f"[!] Generated summary too short ({len(full_response)} chars) - skipping compaction")
+                LogUtils.warn(f"[!] Generated summary too short ({len(full_response)} chars)")
                 if full_response:
                     LogUtils.warn(f"[!] Summary was: {full_response[:200]}...")
                 else:
                     LogUtils.warn(f"[!] Summary was EMPTY")
-                return None  # Signal to skip compaction
+                raise CompactionError(
+                    f"summary empty or too short ({len(full_response)} chars) - "
+                    "provider/gateway may be misconfigured"
+                )
 
             return full_response or "Conversation summarized"
 
+        except CompactionError:
+            raise
         except Exception as e:
             raise Exception(f"AI summarization failed: {e}")
 

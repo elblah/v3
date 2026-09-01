@@ -7,6 +7,7 @@ import json
 from typing import Dict, Any, List
 
 from aicoder.core.config import Config
+from aicoder.core.compaction_service import CompactionError
 from aicoder.utils.log import LogUtils
 
 
@@ -306,6 +307,12 @@ class SessionManager:
                     return
 
             self.message_history.compact_memory()
+        except CompactionError as e:
+            # Deterministic failure (empty/invalid summary) — retrying this turn
+            # would loop on ~90k-token summarizer calls. Abort the turn instead.
+            LogUtils.error(f"[X] Auto-compaction failed: {e}")
+            LogUtils.warn("[!] Returning to prompt to avoid a retry loop. Context remains over threshold.")
+            self.is_processing = False
         except Exception as e:
             if Config.debug():
                 LogUtils.warn(f"[!] Auto-compaction failed: {e}")
