@@ -2,8 +2,8 @@
 
 import os
 
-TRUTHY = frozenset(("1", "true", "t", "yes", "y", "on", "enable"))
-FALSY = frozenset(("0", "false", "f", "no", "n", "off", "disable"))
+TRUTHY = frozenset(("1", "true", "t", "yes", "y", "on", "enable", "allow"))
+FALSY = frozenset(("0", "false", "f", "no", "n", "off", "disable", "deny"))
 
 _MISSING = object()
 
@@ -11,7 +11,7 @@ _MISSING = object()
 def parse_bool(value: str, default=_MISSING) -> bool:
     """Parse a string as boolean. Returns True/False.
 
-    Accepts: 1/true/t/yes/y/on/enable and 0/false/f/no/n/off/disable
+    Accepts: 1/true/t/yes/y/on/enable/allow and 0/false/f/no/n/off/disable/deny
     (case-insensitive, whitespace-stripped).
 
     Raises ValueError on anything else, unless default is given.

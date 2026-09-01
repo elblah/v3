@@ -429,7 +429,11 @@ class MessageHistory:
             compaction = CompactionService(self.api_client)
             original_count = len(self.messages)
 
-            new_messages = compaction.compact(self.messages)
+            try:
+                new_messages = compaction.compact(self.messages)
+            except KeyboardInterrupt:
+                LogUtils.error("[x] Compaction cancelled (Ctrl+C)")
+                raise
             self.set_messages(new_messages)
 
             if len(self.messages) < original_count:

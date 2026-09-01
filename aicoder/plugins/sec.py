@@ -478,7 +478,7 @@ def _handle_sec(args: str):
         except ValueError:
             val = None
         if val is None:
-            return f"usage: /sec {cmd} on|off|1|0|true|false|yes|no"
+            return f"usage: /sec {cmd} on|off"
         if cmd == "seal":
             _state["sealed"] = val
             return "sealed: nested bwrap active" if val else \
