@@ -85,7 +85,7 @@ export ASIAN_NUDGE=1
 export AICODER_THEME=luna
 
 # Don't allow the ai shell commands to see tokens and special vars
-export AICODER_SHELL_CLEAR_VARS=OPENAI_API_KEY,API_KEY,ANTHROPIC_API_KEY,GITHUB_TOKEN,SESSION_FILE
+export AICODER_SHELL_CLEAR_VARS=OPENAI_,_KEY,_TOKEN,SECRET
 
 #;Wikipedia,https://en.wikipedia.org/w/api.php?action=query&format=json&list=search&srsearch=
 #;Startpage,https://www.startpage.com/search?q=
