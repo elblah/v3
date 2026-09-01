@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import sys
 
-from aicoder.core.compaction_service import CompactionService, MessageGroup
+from aicoder.core.compaction_service import CompactionService, MessageGroup, CompactionError
 
 class TestMessageGroup:
     """Test MessageGroup dataclass."""
@@ -457,3 +457,37 @@ class TestCompactionServiceUnit:
         # Count non-system messages (should be 3 kept + summary)
         non_system = [m for m in result if m.get("role") != "system"]
         assert len(non_system) == 4  # 3 kept + 1 summary
+
+
+class TestGetAiSummary:
+    """Test _get_ai_summary raising CompactionError on invalid summaries."""
+
+    def _make_service_with_response(self, content):
+        service = CompactionService(api_client=MagicMock())
+        service.streaming_client.stream_request = MagicMock(
+            return_value=iter([{"choices": [{"delta": {"content": content}}]}])
+        )
+        return service
+
+    def _groups(self):
+        return [MessageGroup(
+            messages=[{"role": "user", "content": "Hello"}],
+            is_summary=False,
+            is_user_turn=True,
+        )]
+
+    def test_invalid_summary_raises_compaction_error(self):
+        """Empty/short summaries raise CompactionError instead of returning None."""
+        service = self._make_service_with_response("")
+        with pytest.raises(CompactionError):
+            service._get_ai_summary(self._groups())
+
+    def test_short_summary_raises_compaction_error(self):
+        service = self._make_service_with_response("Too short")
+        with pytest.raises(CompactionError):
+            service._get_ai_summary(self._groups())
+
+    def test_valid_summary_returned(self):
+        summary = "x" * 150
+        service = self._make_service_with_response(summary)
+        assert service._get_ai_summary(self._groups()) == summary

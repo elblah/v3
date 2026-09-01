@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import sys
 
 from aicoder.core.session_manager import SessionManager
+from aicoder.core.compaction_service import CompactionError
 
 class TestSessionManagerBasics:
     """Test SessionManager basic initialization."""
@@ -353,6 +354,34 @@ class TestSessionManagerPerformAutoCompaction:
             mock_config.debug.return_value = True
             # Should not raise even in debug mode
             manager._perform_auto_compaction()
+
+    def test_perform_auto_compaction_error_aborts_turn(self):
+        """CompactionError aborts the turn instead of retry-looping."""
+        mock_app = MagicMock()
+        mock_app.message_history.compact_memory = MagicMock(
+            side_effect=CompactionError("summary empty or too short (0 chars)")
+        )
+        manager = SessionManager(mock_app)
+        manager.is_processing = True
+
+        manager._perform_auto_compaction()
+
+        assert manager.is_processing is False
+
+    def test_perform_auto_compaction_generic_error_keeps_turn(self):
+        """Generic exceptions stay swallowed (debug-only), turn continues."""
+        mock_app = MagicMock()
+        mock_app.message_history.compact_memory = MagicMock(
+            side_effect=Exception("network blip")
+        )
+        manager = SessionManager(mock_app)
+        manager.is_processing = True
+
+        with patch('aicoder.core.session_manager.Config') as mock_config:
+            mock_config.debug.return_value = False
+            manager._perform_auto_compaction()
+
+        assert manager.is_processing is True
 
     def test_perform_auto_compaction_skip_via_hook(self):
         """Test auto compaction skipped when plugin hook returns True."""
