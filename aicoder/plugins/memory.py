@@ -20,7 +20,7 @@ import time
 import math
 from typing import List
 
-from aicoder.utils.bool_utils import env_bool
+from aicoder.utils.bool_utils import env_bool, parse_bool
 
 # Resolve to an absolute path at load time so the prompt can show the exact
 # location. The relative default resolves against aicoder's working directory
@@ -33,6 +33,7 @@ MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048")
 # Max topic files listed in the system prompt (sorted by NN- band); rest are counted, not named
 LIST_LIMIT = int(os.environ.get("AICODER_MEMORY_LIST_LIMIT", "25"))
 LIMIT_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_limit")
+NUDGE_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_nudge")
 
 
 def _parse_size(value: str) -> int:
@@ -62,10 +63,27 @@ _project_limit = _load_project_limit()
 if _project_limit is not None:
     MAX_AUTOLOAD_BYTES = _project_limit
 
-# Nudge config
+# Nudge config — on by default; disable via /memory nudge off (persists
+# per-project in NUDGE_FILE, overrides env) or AICODER_MEMORY_NUDGE=0
 NUDGE_ENABLED = env_bool("AICODER_MEMORY_NUDGE", default=True)
 NUDGE_CHARS = int(os.environ.get("AICODER_MEMORY_NUDGE_CHARS", "1000"))
 NUDGE_SECONDS = int(os.environ.get("AICODER_MEMORY_NUDGE_SECONDS", "300"))
+
+
+def _load_project_nudge() -> bool | None:
+    """Load per-project nudge override from NUDGE_FILE ('1'/'0')."""
+    try:
+        if os.path.isfile(NUDGE_FILE):
+            with open(NUDGE_FILE) as f:
+                return parse_bool(f.read())
+    except (ValueError, OSError, IOError):
+        pass
+    return None
+
+
+_project_nudge = _load_project_nudge()
+if _project_nudge is not None:
+    NUDGE_ENABLED = _project_nudge
 
 # Auto-approve write_file/edit_file targeting the memory dir (skip approval prompt)
 AUTO_APPROVE_MEMORY = env_bool("AICODER_MEMORY_AUTO_APPROVE", default=True)
@@ -372,7 +390,7 @@ def create_plugin(ctx):
 
     def handle_command(args_str: str):
         """Handle /memory command"""
-        global MAX_AUTOLOAD_BYTES
+        global MAX_AUTOLOAD_BYTES, NUDGE_ENABLED
         from aicoder.utils.log import LogUtils
 
         parts = args_str.split()
@@ -546,6 +564,25 @@ def create_plugin(ctx):
             except Exception as e:
                 LogUtils.error(f"[memory] Import failed: {e}")
 
+        elif subcmd == "nudge":
+            if len(parts) < 2:
+                src = "project file" if os.path.isfile(NUDGE_FILE) else "env/default"
+                LogUtils.info(f"[memory] Nudge: {'on' if NUDGE_ENABLED else 'off'} ({src})")
+                return
+            try:
+                NUDGE_ENABLED = parse_bool(parts[1])
+            except ValueError as e:
+                LogUtils.error(f"[memory] {e}")
+                return
+            try:
+                os.makedirs(os.path.dirname(NUDGE_FILE), exist_ok=True)
+                with open(NUDGE_FILE, "w") as f:
+                    f.write("1" if NUDGE_ENABLED else "0")
+                LogUtils.success(f"[memory] Nudge {'enabled' if NUDGE_ENABLED else 'disabled'} "
+                                 f"for this project ({NUDGE_FILE})")
+            except OSError as e:
+                LogUtils.error(f"[memory] Nudge set for this session, but could not persist: {e}")
+
         elif subcmd == "limit":
             if len(parts) < 2:
                 LogUtils.info(f"[memory] Current limit: {MAX_AUTOLOAD_BYTES} bytes")
@@ -569,18 +606,23 @@ def create_plugin(ctx):
             LogUtils.dim("  /memory move           - Undo: move memory back to .aicoder/memory")
             LogUtils.dim("  /memory export <path>  - Export memory to archive (.tar.gz)")
             LogUtils.dim("  /memory import <file>  - Import memory from archive (replaces files)")
+            LogUtils.dim("  /memory nudge [on|off] - Toggle memory-write nudges (persisted per project)")
             LogUtils.dim("  /memory limit <size>   - Set per-project autoload size (e.g. 10k, 2m)")
             LogUtils.dim("  /memory rm-all         - Delete all memory (requires confirmation)")
             LogUtils.dim("  /memory status         - Show memory status and file sizes")
             LogUtils.dim("  /memory show           - Print the memory section as injected into the prompt")
             LogUtils.dim("  Disable via PLUGINS_DENY=...,memory env var")
 
-    # Print startup message if project uses custom memory limit
+    # Print startup message if project uses custom memory limit or nudge override
     _project_limit_now = _load_project_limit()
     if _project_limit_now is not None:
         from aicoder.utils.log import LogUtils
         if sys.stdout.isatty():
             LogUtils.info(f"[memory] Project memory limit: {_project_limit_now} bytes ({LIMIT_FILE})")
+    if _project_nudge is not None:
+        from aicoder.utils.log import LogUtils
+        if sys.stdout.isatty():
+            LogUtils.info(f"[memory] Project nudge: {'on' if NUDGE_ENABLED else 'off'} ({NUDGE_FILE})")
 
     # Register hooks
     ctx.register_hook("after_file_write", _on_after_file_write)
