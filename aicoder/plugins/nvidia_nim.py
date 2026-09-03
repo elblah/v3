@@ -782,8 +782,11 @@ def _before_request(endpoint: str, data: dict):
 
 _EMPTY_RESPONSE_PENALTY = int(os.environ.get("NIM_EMPTY_RESPONSE_PENALTY", "3"))
 
-def _on_empty_response():
-    """Model returned empty response — break sticky, rotate, reset trust level."""
+def _on_empty_response(**kwargs):
+    """Model returned empty response — break sticky, rotate, reset trust level.
+
+    empty_retry dispatches reasoning kwargs for compaction plugins; ignored here.
+    """
     mid = _req_model or _current_model or Config.model()
     if not mid:
         return
