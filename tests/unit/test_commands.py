@@ -128,6 +128,88 @@ class TestDebugCommand:
             assert result.should_quit is False
             mock_config.set_debug.assert_called_with(False)
 
+    def test_debug_timestamped_enable(self, mock_context):
+        """/debug timestamped on -> setter called with True."""
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "bold": "\033[1m",
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_config.set_debug_timestamped = MagicMock()
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["timestamped", "on"])
+            assert result.should_quit is False
+            mock_config.set_debug_timestamped.assert_called_with(True)
+
+    def test_debug_timestamped_disable(self, mock_context):
+        """/debug timestamped off -> setter called with False."""
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "bold": "\033[1m",
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_config.set_debug_timestamped = MagicMock()
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["ts", "off"])
+            assert result.should_quit is False
+            mock_config.set_debug_timestamped.assert_called_with(False)
+
+    def test_debug_timestamped_toggle(self, mock_context):
+        """/debug timestamped toggle reads current state, flips it."""
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "bold": "\033[1m",
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_config.debug_timestamped.return_value = False
+            mock_config.set_debug_timestamped = MagicMock()
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["timestamped", "toggle"])
+            assert result.should_quit is False
+            mock_config.set_debug_timestamped.assert_called_with(True)
+
+    def test_debug_timestamped_status_no_args(self, mock_context):
+        """/debug timestamped (no arg) shows status, does not set."""
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "bold": "\033[1m",
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_config.debug_timestamped.return_value = True
+            mock_config.set_debug_timestamped = MagicMock()
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["timestamped"])
+            assert result.should_quit is False
+            mock_config.set_debug_timestamped.assert_not_called()
+
+    def test_debug_timestamped_unknown_arg(self, mock_context):
+        """Unknown argument errors and shows help, does not set."""
+        with patch('aicoder.core.commands.debug.Config') as mock_config:
+            mock_config.colors = {
+                "bold": "\033[1m",
+                "green": "\033[32m",
+                "yellow": "\033[33m",
+                "dim": "\033[2m",
+                "reset": "\033[0m"
+            }
+            mock_config.set_debug_timestamped = MagicMock()
+            cmd = DebugCommand(mock_context)
+            result = cmd.execute(["timestamped", "bogus"])
+            assert result.should_quit is False
+            mock_config.set_debug_timestamped.assert_not_called()
+
     def test_fix_tools_clean_history(self, mock_context):
         """Fix-tools on valid history: nothing removed, no issues."""
         mock_context.message_history._messages = [

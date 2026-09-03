@@ -99,11 +99,15 @@ def rotate_debug_log(path: str) -> Optional[str]:
 def debug_filename(name: str) -> str:
     """Debug capture filename.
 
-    Default: unchanged. AICODER_DEBUG_TIMESTAMPED=1 appends unix time
+    Default: unchanged. Timestamped mode (AICODER_DEBUG_TIMESTAMPED=1 or
+    /debug timestamped on) appends unix time
     (last-response.json -> last-response-1767438200.json) so successive
     captures accumulate instead of overwriting.
     """
-    if not env_bool("AICODER_DEBUG_TIMESTAMPED"):
+    # Function-local import: utils must not depend on core at load time
+    from aicoder.core.config import Config
+
+    if not Config.debug_timestamped():
         return name
     stem, ext = os.path.splitext(name)
     return f"{stem}-{int(time.time())}{ext}"

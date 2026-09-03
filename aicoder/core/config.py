@@ -1012,6 +1012,19 @@ class Config:
         """
         cls._debug_enabled = enabled
 
+    # Timestamped debug captures - initialize from env var ONCE at module load
+    _debug_timestamped = env_bool("AICODER_DEBUG_TIMESTAMPED")
+
+    @staticmethod
+    def debug_timestamped() -> bool:
+        """Check if debug captures write timestamped filenames"""
+        return Config._debug_timestamped
+
+    @classmethod
+    def set_debug_timestamped(cls, enabled: bool) -> None:
+        """Set timestamped debug capture state"""
+        cls._debug_timestamped = enabled
+
     # No fallbacks - use only configured provider
     @staticmethod
     def fallback_configs():
