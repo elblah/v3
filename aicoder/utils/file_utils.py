@@ -96,6 +96,19 @@ def rotate_debug_log(path: str) -> Optional[str]:
     return new_path
 
 
+def debug_filename(name: str) -> str:
+    """Debug capture filename.
+
+    Default: unchanged. AICODER_DEBUG_TIMESTAMPED=1 appends unix time
+    (last-response.json -> last-response-1767438200.json) so successive
+    captures accumulate instead of overwriting.
+    """
+    if not env_bool("AICODER_DEBUG_TIMESTAMPED"):
+        return name
+    stem, ext = os.path.splitext(name)
+    return f"{stem}-{int(time.time())}{ext}"
+
+
 _DENY_PREFIXES = ("/proc", "/sys", "/dev", "/etc", "/run", "/")
 
 

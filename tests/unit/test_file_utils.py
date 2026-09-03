@@ -706,3 +706,38 @@ class TestSandboxDenylist:
                 assert os.read(fd, 4) == b"fine"
             finally:
                 os.close(fd)
+
+
+class TestDebugFilename:
+    """Test debug_filename env-gated timestamping."""
+
+    def test_default_unchanged(self, monkeypatch):
+        from aicoder.utils.file_utils import debug_filename
+        monkeypatch.delenv("AICODER_DEBUG_TIMESTAMPED", raising=False)
+        assert debug_filename("last-request.json") == "last-request.json"
+        assert debug_filename("last-response.log") == "last-response.log"
+
+    def test_empty_env_unchanged(self, monkeypatch):
+        from aicoder.utils.file_utils import debug_filename
+        monkeypatch.setenv("AICODER_DEBUG_TIMESTAMPED", "")
+        assert debug_filename("last-request.json") == "last-request.json"
+
+    def test_enabled_appends_unix_time(self, monkeypatch):
+        from aicoder.utils.file_utils import debug_filename
+        import time as time_mod
+        monkeypatch.setenv("AICODER_DEBUG_TIMESTAMPED", "1")
+        before = int(time_mod.time())
+        name = debug_filename("last-response.json")
+        after = int(time_mod.time())
+        stem, ext = os.path.splitext(name)
+        assert stem.startswith("last-response-")
+        assert ext == ".json"
+        ts = int(stem.rsplit("-", 1)[1])
+        assert before <= ts <= after
+
+    def test_enabled_log_ext(self, monkeypatch):
+        from aicoder.utils.file_utils import debug_filename
+        monkeypatch.setenv("AICODER_DEBUG_TIMESTAMPED", "1")
+        name = debug_filename("last-response.log")
+        assert name.startswith("last-response-")
+        assert name.endswith(".log")

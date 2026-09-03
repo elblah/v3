@@ -13,7 +13,7 @@ from aicoder.core.compaction_service import CompactionError
 from aicoder.core.markdown_colorizer import MarkdownColorizer
 from aicoder.utils.log import error as log_error, warn as log_warn, info as log_info, debug as log_debug
 from aicoder.utils.http_utils import fetch, Response
-from aicoder.utils.file_utils import rotate_debug_log
+from aicoder.utils.file_utils import rotate_debug_log, debug_filename
 
 
 
@@ -96,7 +96,7 @@ class StreamingClient:
                 if Config.debug():
                     debug_dir = os.path.join(os.getcwd(), ".aicoder")
                     os.makedirs(debug_dir, exist_ok=True)
-                    debug_file = os.path.join(debug_dir, "last-request.json")
+                    debug_file = os.path.join(debug_dir, debug_filename("last-request.json"))
                     moved = rotate_debug_log(debug_file)
                     if moved:
                         log_debug(f"*** Previous request log kept: {moved}")
@@ -635,7 +635,7 @@ class StreamingClient:
             if Config.debug():
                 debug_dir = os.path.join(os.getcwd(), ".aicoder")
                 os.makedirs(debug_dir, exist_ok=True)
-                debug_file = os.path.join(debug_dir, "last-response.log")
+                debug_file = os.path.join(debug_dir, debug_filename("last-response.log"))
                 moved = rotate_debug_log(debug_file)
                 if moved:
                     log_debug(f"*** Previous response log kept: {moved}")
@@ -656,7 +656,7 @@ class StreamingClient:
         if Config.debug():
             debug_dir = os.path.join(os.getcwd(), ".aicoder")
             os.makedirs(debug_dir, exist_ok=True)
-            debug_file = os.path.join(debug_dir, "last-response.json")
+            debug_file = os.path.join(debug_dir, debug_filename("last-response.json"))
             moved = rotate_debug_log(debug_file)
             if moved:
                 log_debug(f"*** Previous response log kept: {moved}")
