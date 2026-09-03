@@ -456,6 +456,59 @@ class TestAccumulateToolCall:
         assert accumulated["call_1"]["function"]["name"] == "read_file"
         assert accumulated["call_1"]["function"]["arguments"] == "path=\"/test\""
 
+    def test_accumulate_preserves_extra_content(self):
+        """Gemini extra_content (thought_signature) survives accumulation."""
+        tool_call = {
+            "index": 0,
+            "id": "call_1",
+            "type": "function",
+            "extra_content": {"google": {"thought_signature": "sig=="}},
+            "function": {"name": "run_shell_command", "arguments": "{\"command\":\"uname\"}"}
+        }
+        accumulated = {}
+
+        self.processor.accumulate_tool_call(tool_call, accumulated)
+
+        assert accumulated["call_1"]["extra_content"] == {"google": {"thought_signature": "sig=="}}
+
+    def test_accumulate_merges_extra_content_from_later_delta(self):
+        """extra_content arriving on a later delta merges, not clobbers."""
+        tool_call1 = {
+            "index": 0,
+            "id": "call_1",
+            "type": "function",
+            "extra_content": {"google": {"thought_signature": "sig=="}},
+            "function": {"name": "f", "arguments": "a"}
+        }
+        tool_call2 = {
+            "index": 0,
+            "extra_content": {"other": {"note": "x"}},
+            "function": {"arguments": "b"}
+        }
+        accumulated = {}
+        self.processor.accumulate_tool_call(tool_call1, accumulated)
+        self.processor.accumulate_tool_call(tool_call2, accumulated)
+
+        assert accumulated["call_1"]["extra_content"] == {
+            "google": {"thought_signature": "sig=="},
+            "other": {"note": "x"},
+        }
+        assert accumulated["call_1"]["function"]["arguments"] == "ab"
+
+    def test_accumulate_without_extra_content_unchanged(self):
+        """Providers without extra_content produce no extra key."""
+        tool_call = {
+            "index": 0,
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "f", "arguments": "{}"}
+        }
+        accumulated = {}
+
+        self.processor.accumulate_tool_call(tool_call, accumulated)
+
+        assert "extra_content" not in accumulated["call_1"]
+
     def test_accumulate_arguments(self):
         """Test accumulating arguments for existing tool call."""
         tool_call1 = {
