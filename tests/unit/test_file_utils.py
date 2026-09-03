@@ -709,23 +709,20 @@ class TestSandboxDenylist:
 
 
 class TestDebugFilename:
-    """Test debug_filename env-gated timestamping."""
+    """Test debug_filename timestamping (Config state, not env at runtime)."""
 
-    def test_default_unchanged(self, monkeypatch):
+    def test_disabled_unchanged(self, monkeypatch):
+        from aicoder.core.config import Config
         from aicoder.utils.file_utils import debug_filename
-        monkeypatch.delenv("AICODER_DEBUG_TIMESTAMPED", raising=False)
+        monkeypatch.setattr(Config, "_debug_timestamped", False)
         assert debug_filename("last-request.json") == "last-request.json"
         assert debug_filename("last-response.log") == "last-response.log"
 
-    def test_empty_env_unchanged(self, monkeypatch):
-        from aicoder.utils.file_utils import debug_filename
-        monkeypatch.setenv("AICODER_DEBUG_TIMESTAMPED", "")
-        assert debug_filename("last-request.json") == "last-request.json"
-
     def test_enabled_appends_unix_time(self, monkeypatch):
+        from aicoder.core.config import Config
         from aicoder.utils.file_utils import debug_filename
         import time as time_mod
-        monkeypatch.setenv("AICODER_DEBUG_TIMESTAMPED", "1")
+        monkeypatch.setattr(Config, "_debug_timestamped", True)
         before = int(time_mod.time())
         name = debug_filename("last-response.json")
         after = int(time_mod.time())
@@ -736,8 +733,21 @@ class TestDebugFilename:
         assert before <= ts <= after
 
     def test_enabled_log_ext(self, monkeypatch):
+        from aicoder.core.config import Config
         from aicoder.utils.file_utils import debug_filename
-        monkeypatch.setenv("AICODER_DEBUG_TIMESTAMPED", "1")
+        monkeypatch.setattr(Config, "_debug_timestamped", True)
         name = debug_filename("last-response.log")
         assert name.startswith("last-response-")
         assert name.endswith(".log")
+
+    def test_runtime_toggle_overrides(self, monkeypatch):
+        """Setter flips behavior without env change."""
+        from aicoder.core.config import Config
+        from aicoder.utils.file_utils import debug_filename
+        monkeypatch.setattr(Config, "_debug_timestamped", False)
+        assert debug_filename("x.json") == "x.json"
+        Config.set_debug_timestamped(True)
+        try:
+            assert debug_filename("x.json") != "x.json"
+        finally:
+            Config.set_debug_timestamped(False)

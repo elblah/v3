@@ -55,6 +55,10 @@ class DebugCommand(BaseCommand):
         if action in ["fix-tools", "ft"]:
             return self._fix_tools()
 
+        # Handle timestamped debug captures
+        if action in ["timestamped", "timestamps", "ts"]:
+            return self._timestamped_captures(args[1:])
+
         # Handle help/status
         if action in ["help", "h", "status", "s"]:
             return self._show_help()
@@ -84,6 +88,7 @@ class DebugCommand(BaseCommand):
             ("on",             "Enable debug mode"),
             ("off",            "Disable debug mode"),
             ("toggle",         "Toggle debug mode on/off"),
+            ("timestamped",    "Timestamped debug capture files on/off (ts, timestamps)"),
             ("status",         "Show current debug status (default)"),
             ("prompt",         "Print the full system prompt sent to the AI"),
             ("rebuild-prompt", "Re-read all files and rebuild system prompt (rp, reload-prompt)"),
@@ -130,6 +135,31 @@ class DebugCommand(BaseCommand):
     def _show_status(self) -> CommandResult:
         """Show current debug status"""
         return self._show_help()
+
+    def _timestamped_captures(self, args: List[str]) -> CommandResult:
+        """Show or set timestamped debug capture state"""
+        sub = args[0].lower() if args else ""
+
+        if sub in TRUTHY:
+            Config.set_debug_timestamped(True)
+        elif sub in FALSY:
+            Config.set_debug_timestamped(False)
+        elif sub == "toggle":
+            Config.set_debug_timestamped(not Config.debug_timestamped())
+        elif sub not in ["", "status", "s", "help", "h"]:
+            LogUtils.error(f"Unknown timestamped argument: {sub}")
+            return self._show_help()
+
+        c = Config.colors
+        state = Config.debug_timestamped()
+        color = "green" if state else "yellow"
+        state_text = "ENABLED" if state else "DISABLED"
+        LogUtils.print(
+            f"{c[color]}●{c['reset']} Timestamped debug captures: "
+            f"{c[color]}{state_text}{c['reset']} "
+            f"{c['dim']}(/debug timestamped on|off|toggle){c['reset']}"
+        )
+        return CommandResult(should_quit=False, run_api_call=False)
 
     def _rebuild_prompt(self) -> CommandResult:
         """Rebuild the system prompt from scratch"""
