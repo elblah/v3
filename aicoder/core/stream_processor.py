@@ -290,6 +290,11 @@ class StreamProcessor:
                     "arguments": args,
                 },
             }
+            # Provider-specific metadata (e.g. Gemini extra_content with
+            # thought_signature) must survive accumulation or the next
+            # request gets rejected with HTTP 400.
+            if tool_call.get("extra_content"):
+                accumulated_tool_calls[key]["extra_content"] = tool_call["extra_content"]
             return
 
         # Deltas may carry metadata and arguments separately. Preserve metadata
@@ -306,3 +311,7 @@ class StreamProcessor:
             existing_function["arguments"] = (
                 existing_function.get("arguments") or ""
             ) + args
+        if tool_call.get("extra_content"):
+            merged = dict(existing.get("extra_content") or {})
+            merged.update(tool_call["extra_content"])
+            existing["extra_content"] = merged

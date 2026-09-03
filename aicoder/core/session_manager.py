@@ -140,17 +140,20 @@ class SessionManager:
         # Add assistant message with tool calls and reasoning
         tool_calls_for_message = []
         for i, call in enumerate(valid_tool_calls):
-            tool_calls_for_message.append(
-                {
-                    "id": call.get("id"),
-                    "type": call.get("type", "function"),
-                    "function": {
-                        "name": call.get("function", {}).get("name"),
-                        "arguments": call.get("function", {}).get("arguments"),
-                    },
-                    "index": i,
-                }
-            )
+            entry = {
+                "id": call.get("id"),
+                "type": call.get("type", "function"),
+                "function": {
+                    "name": call.get("function", {}).get("name"),
+                    "arguments": call.get("function", {}).get("arguments"),
+                },
+                "index": i,
+            }
+            # Preserve provider metadata (Gemini thought_signature) so it is
+            # replayed verbatim in the next request.
+            if call.get("extra_content"):
+                entry["extra_content"] = call["extra_content"]
+            tool_calls_for_message.append(entry)
 
         assistant_message = {
             "content": full_response or "",
