@@ -159,6 +159,16 @@ class Config:
         """Set show_ai_prefix state"""
         cls._show_ai_prefix = value
 
+    # AI prefix text - initialize from env var ONCE at module load time
+    # AICODER_AI_PREFIX="Sage: " replaces the default "AI: " marker
+    # Default (unset): "AI: "
+    _ai_prefix = os.environ.get("AICODER_AI_PREFIX", "AI: ")
+
+    @staticmethod
+    def ai_prefix() -> str:
+        """Get AI prefix text printed before responses"""
+        return Config._ai_prefix
+
     # Suppress error body - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
     # false = include error body in HTTP error messages (default)

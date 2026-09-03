@@ -382,7 +382,7 @@ def _client_print_event(msg, last_sent):
             _colorizer = MarkdownColorizer()
         LogUtils.print()
         if Config.show_ai_prefix():
-            LogUtils.printc("AI: ", color="cyan", bold=True)
+            LogUtils.printc(Config.ai_prefix(), color="cyan", bold=True)
         builtins.print(_colorizer.process_with_colorization(msg.get("text", "")))
     elif t == "tool_result":
         text = msg.get("text", "")
