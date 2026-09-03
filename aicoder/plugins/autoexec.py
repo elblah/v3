@@ -8,6 +8,11 @@ Example .aicoder/autoexec:
   /detail on
   hello my name is Blah
 
+Env var AICODER_AUTOEXEC (newline-separated commands) is executed after
+the file lines:
+  AICODER_AUTOEXEC='/verbose on
+  /detail off' aicoder
+
 Commands:
   /autoexec help       - Show usage
   /autoexec show       - Show current autoexec contents
@@ -20,22 +25,33 @@ from aicoder.utils.log import LogUtils
 _AUTOEXEC_FILE = ".aicoder/autoexec"
 
 
+def _keep_line(line: str):
+    """Return cleaned line, or None if blank/comment-only."""
+    line = line.strip()
+    if not line or line.startswith('#'):
+        return None
+    if ' #' in line:
+        line = line[:line.index(' #')].strip()
+    return line or None
+
+
 def _read_autoexec():
-    """Return list of non-comment, non-empty lines from autoexec file."""
-    if not os.path.exists(_AUTOEXEC_FILE):
-        return []
+    """Return list of non-comment, non-empty lines from autoexec file,
+    then AICODER_AUTOEXEC env var (file lines first, env lines last)."""
     lines = []
-    try:
-        with open(_AUTOEXEC_FILE, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    if ' #' in line:
-                        line = line[:line.index(' #')].strip()
+    if os.path.exists(_AUTOEXEC_FILE):
+        try:
+            with open(_AUTOEXEC_FILE, 'r') as f:
+                for raw in f:
+                    line = _keep_line(raw)
                     if line:
                         lines.append(line)
-    except Exception:
-        return []
+        except Exception:
+            return []
+    for raw in os.environ.get("AICODER_AUTOEXEC", "").splitlines():
+        line = _keep_line(raw)
+        if line:
+            lines.append(line)
     return lines
 
 
@@ -119,7 +135,8 @@ def create_plugin(ctx):
                 "Usage: /autoexec <subcommand>\n"
                 "  help       Show this help\n"
                 "  show       Display .aicoder/autoexec contents\n"
-                "  edit       Open $EDITOR in tmux to edit .aicoder/autoexec"
+                "  edit       Open $EDITOR in tmux to edit .aicoder/autoexec\n"
+                "Env: AICODER_AUTOEXEC (newline-separated) runs after file lines"
             )
         elif sub == "edit":
             _edit_autoexec()
