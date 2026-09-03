@@ -11,6 +11,7 @@ Usage:
   /over status  Show current state
 """
 
+import os
 from typing import Optional
 
 from aicoder.utils.log import LogUtils
@@ -19,6 +20,7 @@ from aicoder.core.config import Config
 
 
 OVER_TAG = "[OVER]"
+OVER_MAX_NUDGES = int(os.environ.get("OVER_MAX_NUDGES", "3"))
 OVER_INSTRUCTION = (
     "\n\n<system-reminder>\n"
     "IMPORTANT: YOUR RESPONSE MUST CONTAIN [OVER] SOMEWHERE.\n"
@@ -98,6 +100,9 @@ class OverCommand:
         # Don't append to commands
         if user_input.strip().startswith("/"):
             return None
+        # Reset nudge cap on real user prompts; own injected retry must not reset it
+        if not user_input.startswith(CONTINUE_PROMPT):
+            OverService.reset_retry()
         return user_input + OVER_INSTRUCTION
 
     def on_after_ai_processing(self, has_tool_calls: bool) -> Optional[str]:
@@ -137,9 +142,17 @@ class OverCommand:
             OverService.reset_retry()
             return None
 
-        # Missing [OVER] - likely cut off, retry
+        # Missing [OVER] - likely cut off, retry up to OVER_MAX_NUDGES times
         OverService.increment_retry()
         count = OverService.get_retry_count()
+
+        if count > OVER_MAX_NUDGES:
+            LogUtils.warn(
+                f"[OVER] gave up after {OVER_MAX_NUDGES} nudges — "
+                "accepting response (may be truncated)"
+            )
+            OverService.reset_retry()
+            return None
 
         LogUtils.warn(f"[OVER] Response missing [OVER] tag (retry #{count})")
         return CONTINUE_PROMPT
