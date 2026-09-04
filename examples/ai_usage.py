@@ -20,6 +20,7 @@ Notes:
     - Default period is 24h (rolling).
     - Stats are loaded from central log (~/.aicoder/central_stats.log) by default.
     - LOCAL=1 uses per-project .aicoder/stats.log instead.
+    - SESSION_DELTA=1 adds per-session avg context growth per request section.
     - TZ=+8 sets timezone offset (useful for matching provider dashboards).
 
 Cache behavior:
@@ -50,7 +51,7 @@ FILTER_MODEL = os.environ.get("FILTER_MODEL")
 def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
     """Extract prompt, completion, cache_read, cache_miss, cost from raw usage object.
 
-    Returns dict with: prompt, completion, cache_read, cache_miss, cost
+    Returns dict with: prompt, completion, cache_read, cache_miss, cache_write, cost
 
     IMPORTANT: Providers define "input_tokens" differently:
     - Anthropic: input_tokens = NON-CACHED only (cache miss). Total = input_tokens + cache_read_input_tokens
@@ -72,10 +73,11 @@ def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
         cache_read = usage.get("cache_read_input_tokens") or 0
         prompt = input_tokens + cache_read
         return {
-            "prompt": prompt,      # Total input (cached + non-cached)
+            "prompt": prompt,      # Total input (cached + non-cached, EXCLUDES cache write)
             "completion": output_tokens,
             "cache_read": cache_read,
             "cache_miss": input_tokens,  # Same as input_tokens for Anthropic
+            "cache_write": usage.get("cache_creation_input_tokens") or 0,
             "cost": 0,
         }
     else:
@@ -111,6 +113,7 @@ def parse_usage(usage: Dict[str, Any], provider: str) -> Dict[str, int]:
             "completion": completion,
             "cache_read": cache_read,
             "cache_miss": cache_miss,
+            "cache_write": usage.get("cache_creation_input_tokens") or 0,
             "cost": cost,
         }
 
@@ -305,6 +308,7 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
         # some legacy entries carry "cost": null.
         entry_cost = entry.get("cost") or 0.0
         return {
+            "ts": entry["ts"],
             "url": entry.get("url", ""),
             "model": entry.get("model", ""),
             "session": entry.get("session", ""),
@@ -313,6 +317,7 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
             "elapsed": entry.get("elapsed", 0),
             "cache_read": parsed["cache_read"],
             "cache_miss": parsed["cache_miss"],
+            "cache_write": parsed["cache_write"],
             "cost": parsed["cost"] or entry_cost,
             "est": float(entry.get("cost_estimate") or 0.0),
         }
@@ -363,6 +368,105 @@ def parse_central_stats(filepath: Path, start: datetime | None, end: datetime | 
     return parse_stats(filepath, start, end)
 
 
+def env_flag(name: str) -> bool:
+    """Truthy env check: unset/empty/0/false/no/off = off."""
+    return os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no", "off")
+
+
+def print_session_growth(entries: List[Dict]) -> None:
+    """Opt-in (SESSION_DELTA=1): avg context growth per request within sessions.
+
+    Context size of one request = miss + read + write (Anthropic "prompt" in the
+    summary excludes cache-write tokens). Growth = delta between consecutive
+    requests in a session, decomposed per field:
+      read  ~= cached prefix billed at cheap read price (grows ~ by prev total)
+      write ~= new content written to cache this request
+      miss  ~= new content billed at full input price (spikes on cache expiry
+               and after compaction, when the whole prefix is a miss)
+      output: request N's output becomes part of request N+1's context
+    Net avg includes drops (compaction, negative deltas); gross counts positives.
+    """
+    by_session: Dict[str, List[Dict]] = defaultdict(list)
+    skipped = 0
+    for e in entries:
+        if e["model"] == "test-model":
+            continue
+        sid = e.get("session")
+        if not sid:
+            skipped += 1
+            continue
+        by_session[sid].append(e)
+
+    pairs = 0
+    net_sum = 0
+    gross_sum = 0
+    gross_n = 0
+    drop_n = 0
+    drop_sum = 0
+    fdelta = {"miss": 0, "read": 0, "write": 0}
+    n_req = 0
+    level = {"miss": 0, "read": 0, "write": 0, "out": 0}
+    rows = []
+    for sid, ents in by_session.items():
+        ents.sort(key=lambda e: e.get("ts", ""))  # stable: ties keep log order
+        miss = [e.get("cache_miss", 0) for e in ents]
+        read = [e.get("cache_read", 0) for e in ents]
+        write = [e.get("cache_write", 0) for e in ents]
+        ctx = [m + r + w for m, r, w in zip(miss, read, write)]
+        n_req += len(ents)
+        level["miss"] += sum(miss)
+        level["read"] += sum(read)
+        level["write"] += sum(write)
+        level["out"] += sum(e["completion"] for e in ents)
+        deltas = [b - a for a, b in zip(ctx, ctx[1:])]
+        if not deltas:
+            continue
+        pos = [d for d in deltas if d > 0]
+        rows.append({
+            "sid": sid[:8],
+            "req": len(ents),
+            "net": sum(deltas) / len(deltas),
+            "gross": sum(pos) / len(pos) if pos else 0.0,
+            "first": ctx[0],
+            "last": ctx[-1],
+        })
+        for i, d in enumerate(deltas, start=1):
+            pairs += 1
+            net_sum += d
+            if d > 0:
+                gross_sum += d
+                gross_n += 1
+            else:
+                drop_n += 1
+                drop_sum += d
+            fdelta["miss"] += miss[i] - miss[i - 1]
+            fdelta["read"] += read[i] - read[i - 1]
+            fdelta["write"] += write[i] - write[i - 1]
+
+    print("\nSESSION CONTEXT GROWTH (opt-in: SESSION_DELTA=1)")
+    if skipped:
+        print(f"    Skipped: {skipped} entries without session field")
+    if not pairs:
+        print("    No multi-request sessions found in range.")
+        return
+    drop_info = f", {drop_n} drops avg {-drop_sum / drop_n:,.0f} tok" if drop_n else ""
+    print(f"    Sessions: {len(rows)} ({pairs:,} pairs{drop_info})")
+    print(f"    Avg/Req: miss={level['miss'] / n_req:,.0f} read={level['read'] / n_req:,.0f}"
+          f" write={level['write'] / n_req:,.0f} output={level['out'] / n_req:,.0f} tok")
+    gross = f"{gross_sum / gross_n:+,.0f}" if gross_n else "n/a"
+    print(f"    Avg Delta/Req: {net_sum / pairs:+,.0f} net | {gross} gross (drops excluded)")
+    print(f"      by field: miss={fdelta['miss'] / pairs:+,.0f}"
+          f" read={fdelta['read'] / pairs:+,.0f} write={fdelta['write'] / pairs:+,.0f} tok")
+    rows.sort(key=lambda r: r["req"], reverse=True)
+    shown = rows[:10]
+    print(f"    Per-session (top {len(shown)} by requests):")
+    for r in shown:
+        print(f"      {r['sid']} req={r['req']:<4} net={r['net']:+,.0f} gross={r['gross']:+,.0f}"
+              f" ctx {r['first']:,}->{r['last']:,}")
+    if len(rows) > len(shown):
+        print(f"      ... {len(rows) - len(shown)} more sessions")
+
+
 def main():
     import sys
     args = sys.argv[1:]
@@ -381,6 +485,7 @@ def main():
         print("  ai_usage.py update         # Scan all dirs below, update cache")
         print("  ai_usage.py clear-cache    # Delete cache")
         print("  LOCAL=1 ALL=1 ai_usage.py ...  # All cached dirs (ignore cwd filter)")
+        print("  SESSION_DELTA=1 ai_usage.py ...  # Add per-session avg context growth/req")
         sys.exit(0)
     elif "update" in args or "--update" in args:
         # Update cache: scan filesystem, add new dirs, remove invalid
@@ -547,6 +652,8 @@ def main():
         print(f"    Total Est Cost:      ${total['est']:.6f}")
     if total["cost"] > 0 or total["est"] > 0:
         print()
+    if env_flag("SESSION_DELTA"):
+        print_session_growth(entries)
 
 
 if __name__ == "__main__":
