@@ -24,6 +24,12 @@ Also complements stats_logger's JSONL entries via the on_stats_entry hook:
 sets entry["cost_estimate"] (our env-var math) next to entry["cost"]
 (provider-reported), so both stay in stats.log for deviation tracking.
 
+Command:
+  /ai-cost hint [S=2000] [K=20000] [G=4412] [P=0.05]
+    Per-model compaction-point hint: toll-vs-rent balance from PRICE_*
+    vars + live session measurement (growth G, drop rate P). S/K are
+    quality dials (summary size, context kept), not derived by the math.
+
 Token semantics (per provider):
 - OpenAI:  prompt_tokens = TOTAL input; cached = prompt_tokens_details.cached_tokens;
            miss = prompt_tokens - cached (creation folded into miss price)
@@ -31,6 +37,7 @@ Token semantics (per provider):
              cache_read_input_tokens; cache_creation_input_tokens
 """
 
+import math
 import os
 from datetime import datetime, timezone
 
@@ -42,6 +49,7 @@ _session_cost = 0.0     # per-request: reported cost wins, else estimate
 _request_count = 0
 _est_total = 0.0        # sum of env-var estimates (all requests)
 _has_reported = False   # any provider-reported cost this session
+_usage_history = []     # per-request (prompt_total, cache_read), capped
 
 
 def _load_prices():
@@ -181,6 +189,124 @@ def _estimate_cost(usage):
     return est
 
 
+def _extract_tokens(usage):
+    """(prompt_total, cache_read) from a usage dict, or (None, None)."""
+    if not isinstance(usage, dict):
+        return None, None
+    if "cache_read_input_tokens" in usage or "cache_creation_input_tokens" in usage:
+        # Anthropic-style: input_tokens is miss only
+        prompt = ((usage.get("input_tokens") or 0)
+                  + (usage.get("cache_read_input_tokens") or 0)
+                  + (usage.get("cache_creation_input_tokens") or 0))
+        cache_read = usage.get("cache_read_input_tokens") or 0
+    else:
+        # OpenAI-style: prompt_tokens is total
+        prompt = usage.get("prompt_tokens") or 0
+        cache_read = ((usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+                      or usage.get("prompt_cache_hit_tokens") or 0)
+    if not prompt:
+        return None, None
+    return prompt, cache_read
+
+
+def _measured_growth(history):
+    """Mean positive prompt growth per request; None without 3+ deltas."""
+    deltas = [b[0] - a[0] for a, b in zip(history, history[1:]) if b[0] > a[0]]
+    return sum(deltas) / len(deltas) if len(deltas) >= 3 else None
+
+
+def _measured_drop_rate(history):
+    """Fraction of eligible requests with cache_read ~0 (cache drop).
+
+    First request excluded (legitimate full miss). Needs 5+ eligible.
+    """
+    eligible = [(pr, rd) for pr, rd in history[1:] if pr >= 2000]
+    if len(eligible) < 5:
+        return None
+    drops = sum(1 for pr, rd in eligible if rd < pr * 0.1)
+    return drops / len(eligible)
+
+
+def _cmd_hint(args: str) -> None:
+    """/ai-cost hint — per-model compaction point from prices + live session."""
+    if _PRICES is None:
+        print("[ai-cost] inactive: set PRICE_INPUT and PRICE_OUTPUT")
+        return
+    parts = (args or "").split()
+    if not parts or parts[0] != "hint":
+        print("usage: /ai-cost hint [S=2000] [K=20000] [G=4412] [P=0.05]")
+        print("  S=summary tokens, K=context kept after compaction,")
+        print("  G=growth tokens/request, P=drop probability (override measured)")
+        return
+    vals = {}
+    for part in parts[1:]:
+        if "=" not in part:
+            print(f"[ai-cost] bad arg (want KEY=VALUE): {part}")
+            return
+        key, raw = part.split("=", 1)
+        try:
+            vals[key.strip().upper()] = float(raw)
+        except ValueError:
+            print(f"[ai-cost] bad number: {part}")
+            return
+
+    S = vals.get("S", 2000.0)
+    K = vals.get("K", 20000.0)
+    g = vals.get("G") or _measured_growth(_usage_history)
+    p = vals.get("P")
+    if p is None:
+        p = _measured_drop_rate(_usage_history)
+        drops_src = "measured" if p is not None else "assumed"
+        p = 0.05 if p is None else p
+    else:
+        drops_src = "arg"
+    p = min(max(p, 0.0), 1.0)
+
+    m = _PRICES["input"]   # $/1M non-cached input (miss)
+    x = _PRICES["output"]
+    r_raw = os.environ.get("PRICE_CACHE_READ", "")
+    r = None
+    if r_raw.strip():
+        try:
+            r = float(r_raw)
+        except ValueError:
+            r = None
+
+    print("--- /ai-cost hint ---")
+    if g is None or g <= 0:
+        print("need growth: 3+ requests this session, or pass G=tokens")
+        return
+    if r is None:
+        r = m
+        print(f"PRICE_CACHE_READ unset -> assuming NO cache discount (r={m:g})")
+        print("set it (e.g. 0.015) for cached-price math")
+    m_pt, r_pt, x_pt = m / 1e6, r / 1e6, x / 1e6
+    print(f"prices $/1M: miss {m:g}  read {r:g}  out {x:g}")
+    print(f"growth {g:,.0f} tok/req   drops {p * 100:.1f}% ({drops_src})")
+    print(f"assumed: S={S:,.0f} summary  K={K:,.0f} kept after compaction")
+
+    T = x_pt * S + m_pt * K  # one-time compaction toll, USD
+    denom = g * (r_pt / 2 + p * (m_pt - r_pt) / 2)
+    if denom <= 0:
+        print("no rent (read>=miss, no drops): no optimum, compact freely")
+        return
+    k_star = math.sqrt(T / denom)
+    c_star = K + k_star * g
+    print(f"toll T = {x:g}*{S:,.0f} + {m:g}*{K:,.0f} = ${T:.4f} (once per cycle)")
+    print(f"balance k* = {k_star:.1f} requests between compactions")
+    if r >= m * 0.8:
+        print("NO meaningful cache discount: rent is full price,")
+        print("keep context SMALL and compact often.")
+    print(f"COMPACT AT ~{c_star:,.0f} tokens")
+    print(f"KEEP ~{K:,.0f} after compaction (summary + recent tail)")
+    if c_star < 100000:
+        extra = r_pt * (100000 - c_star)
+        line = f"stretch to 100k costs +${extra:.4f}/req in reads"
+        if r < m * 0.8:
+            line += f"; a drop there costs {100000 / c_star:.1f}x one at C*"
+        print(line)
+
+
 def create_plugin(ctx):
     global _PRICES, _PEAK, _session_cost, _request_count, _est_total, _has_reported
     _PRICES = _load_prices()
@@ -191,6 +317,7 @@ def create_plugin(ctx):
     _request_count = 0
     _est_total = 0.0
     _has_reported = False
+    _usage_history.clear()
 
     def _on_usage_data(usage):
         global _session_cost, _request_count, _est_total, _has_reported
@@ -203,6 +330,11 @@ def create_plugin(ctx):
             _est_total += est
             if reported is not None:
                 _has_reported = True
+        prompt, cache_read = _extract_tokens(usage)
+        if prompt:
+            _usage_history.append((prompt, cache_read))
+            if len(_usage_history) > 200:
+                del _usage_history[:len(_usage_history) - 200]
 
     def _on_session_change(*_args, **_kwargs):
         global _session_cost, _request_count, _est_total, _has_reported
@@ -210,6 +342,7 @@ def create_plugin(ctx):
         _request_count = 0
         _est_total = 0.0
         _has_reported = False
+        _usage_history.clear()
 
     def _on_stats_entry(entry):
         """Complement stats_logger JSONL entry with our env-var estimate."""
@@ -253,5 +386,7 @@ def create_plugin(ctx):
     ctx.register_hook("on_context_bar", _on_context_bar)
     ctx.register_hook("on_stats", _on_stats)
     ctx.register_hook("on_stats_entry", _on_stats_entry)
+    ctx.register_command("ai-cost", _cmd_hint,
+                         "Cost hint: per-model compaction point (/ai-cost hint)")
 
     return {}
