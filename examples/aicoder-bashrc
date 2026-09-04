@@ -56,7 +56,7 @@ export CONTEXT_SIZE=100000
 
 # Set cache compact threshold at 65% (efficient token compaction)
 export CACHE_COMPACT_THRESHOLD=65
-export CACHE_COMPACT_KEEP_PERCENT=5
+export CACHE_COMPACT_KEEP_PERCENT=10
 #export CACHE_COMPACT_DEBUG=1
 
 # Set compaction strategy threshold (less agressive than full compaction compaction at 80%)
