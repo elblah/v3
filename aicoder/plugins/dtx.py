@@ -13,6 +13,7 @@ load time it takes a best-effort snapshot of the available commands (via
 """
 
 import os
+import socket
 import subprocess
 from typing import Optional
 
@@ -35,6 +36,21 @@ def _socket_path() -> str:
     if tmpdir:
         return os.path.join(tmpdir, "dtx-server.sock")
     return SOCKET_PATH
+
+
+def _socket_alive(timeout: float = 1.0) -> bool:
+    """True only if the dtx socket exists AND a server is accepting connections.
+
+    Equivalent to `nc -z -U <path>`: a stale socket file with no listener
+    fails (ECONNREFUSED), a missing file fails (ENOENT).
+    """
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            sock.connect(_socket_path())
+            return True
+    except OSError:
+        return False
 
 
 def _request(cmdline: str) -> str:
@@ -90,6 +106,8 @@ def _discover_commands(timeout: float = 5.0) -> Optional[str]:
 
 def create_plugin(ctx):
     if env_bool("DTX_DISABLED"):
+        return
+    if not _socket_alive():
         return
 
     snapshot = _discover_commands()
