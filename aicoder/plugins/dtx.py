@@ -17,6 +17,7 @@ import subprocess
 from typing import Optional
 
 from aicoder.utils.bool_utils import env_bool
+from aicoder.utils.log import LogUtils
 
 SOCKET_PATH = "/run/user/1000/tmp/dtx-server.sock"
 
@@ -109,11 +110,14 @@ def create_plugin(ctx):
         if not isinstance(command, str) or not command.strip():
             raise ValueError("dtx: 'command' is required (e.g. 'help')")
 
+        # Echo the command line to the terminal BEFORE it runs (dtx calls can
+        # take minutes on a slow host; the user should see what is executing).
+        LogUtils.printc(f"> dtx {command}", color="cyan", bold=True)
         output = _request(command)
         return {
             "tool": "dtx",
-            "friendly": f"dtx {command}\n{output}",
-            "detailed": f"dtx {command}\n{output}",
+            "friendly": output,
+            "detailed": output,
         }
 
     ctx.register_tool(
