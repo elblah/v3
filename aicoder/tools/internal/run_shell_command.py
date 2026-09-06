@@ -7,6 +7,7 @@ import subprocess
 import signal
 import os
 import shlex
+import stat
 import time
 from typing import Dict, Any, List, Optional
 from aicoder.core.config import Config
@@ -64,8 +65,23 @@ def get_tty_path() -> str:
     for fd in [0, 1, 2]:
         try:
             if os.isatty(fd):
-                _tty_path = os.ttyname(fd)
-                return _tty_path
+                try:
+                    _tty_path = os.ttyname(fd)
+                    return _tty_path
+                except OSError:
+                    # ttyname() reads /proc/self/fd/N, absent in a sealed
+                    # bwrap without the proc recipe. Match the fd's device
+                    # number against the device nodes bwrap recreated in
+                    # its fresh /dev (e.g. /dev/console).
+                    rdev = os.fstat(fd).st_rdev
+                    for name in sorted(os.listdir("/dev")):
+                        try:
+                            dst = os.stat(os.path.join("/dev", name))
+                        except OSError:
+                            continue
+                        if stat.S_ISCHR(dst.st_mode) and dst.st_rdev == rdev:
+                            _tty_path = os.path.join("/dev", name)
+                            return _tty_path
         except OSError:
             pass
     
@@ -119,36 +135,94 @@ def _wrap_with_tee(command: str) -> Optional[str]:
     return f"({command}) 2>&1 | tee {tty} 2>/dev/null; exit ${{PIPESTATUS[0]}}"
 
 
+def _dup_tty_fd() -> Optional[int]:
+    """Dup the tty on stdin so the child can stream output to the terminal.
+
+    The fd crosses bwrap's sandbox untouched (fds are not mounts) and
+    survives setsid (no controlling tty needed). Returns None when stdin
+    is not a tty (dup failure included).
+    """
+    try:
+        if os.isatty(0):
+            return os.dup(0)
+    except OSError:
+        pass
+    return None
+
+
+def _live_wrap(command: str, tty_fd: int) -> str:
+    """Wrap command to stream lines to tty_fd while output stays captured.
+
+    Line-based: partial lines (progress bars) appear on the next newline.
+    Preserves the exit code via PIPESTATUS; the trailing partial line is
+    still emitted (`|| [ -n "$_l" ]`).
+    """
+    return (
+        f"({command}) 2>&1 | while IFS= read -r _l || [ -n \"$_l\" ]; do "
+        f"printf '%s\\n' \"$_l\"; printf '%s\\n' \"$_l\" >&{tty_fd}; done; "
+        f"exit ${{PIPESTATUS[0]}}"
+    )
+
+
+def _live_wrap_argv(argv: List[str], tty_fd: int) -> List[str]:
+    """Live-wrap the payload of a raw argv ending in [shell, '-c', payload].
+
+    sec's bwrap argv ends with ['/bin/bash', '-c', command]; wrapping the
+    payload streams live output to the inherited tty fd while the result
+    is still captured. /dev paths (/dev/console, /dev/tty) are unusable
+    inside the seal: the terminal is a pts invisible under bwrap's --dev,
+    and setsid drops the controlling tty. Argv without a shell tail is
+    returned unchanged.
+    """
+    if len(argv) >= 3 and argv[-2] == "-c":
+        return argv[:-3] + [argv[-3], "-c", _live_wrap(argv[-1], tty_fd)]
+    return argv
+
+
 def execute_with_process_group(command: str, timeout: int, cwd: Optional[str] = None, live_output: bool = False, argv: Optional[List[str]] = None) -> subprocess.CompletedProcess:
     """Execute command with proper process group termination.
 
-    argv (list) bypasses bash -c and the tee wrap: the payload is exec'd
-    directly (used by the sec plugin to wrap commands in nested bwrap).
+    argv (list) execs the argv directly (used by the sec plugin to wrap
+    commands in nested bwrap). When live output is wanted, stdin's tty fd
+    is dup()ed and passed to the child (fds cross bwrap untouched), and
+    the command/payload streams each line to it while the full output is
+    still captured. See _live_wrap / _live_wrap_argv.
     """
     global _active_proc
 
     # Get env with cleared vars (or None to inherit parent env)
     clean_env = _get_cleared_env()
 
-    # Wrap command with tee when detail TTY passthrough is enabled OR per-call live_output flag
-    if argv is None and (Config.detail_tty() or live_output):
-        wrapped = _wrap_with_tee(command)
-        if wrapped:
-            command = wrapped
+    # Stream to the terminal when detail TTY passthrough is enabled OR
+    # per-call live_output flag. No tty on stdin -> capture only.
+    tty_fd = None
+    if Config.detail_tty() or live_output:
+        tty_fd = _dup_tty_fd()
+        if tty_fd is not None:
+            if argv is None:
+                command = _live_wrap(command, tty_fd)
+            else:
+                argv = _live_wrap_argv(argv, tty_fd)
 
     # Create process group for the entire process tree
-    proc = subprocess.Popen(
-        argv if argv is not None else ["bash", "-c", command],
-        shell=False,
-        preexec_fn=os.setsid,  # Create new process group
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=cwd,
-        env=clean_env,
-    )
+    try:
+        proc = subprocess.Popen(
+            argv if argv is not None else ["bash", "-c", command],
+            shell=False,
+            preexec_fn=os.setsid,  # Create new process group
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=cwd,
+            env=clean_env,
+            pass_fds=(tty_fd,) if tty_fd is not None else (),
+        )
+    finally:
+        # Child has its own copy; the parent copy is spent either way.
+        if tty_fd is not None:
+            os.close(tty_fd)
 
     _active_proc = proc
 

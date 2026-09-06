@@ -12,7 +12,13 @@ import pytest
 
 import sys
 
-from aicoder.tools.internal.run_shell_command import execute, execute_with_process_group
+from aicoder.tools.internal.run_shell_command import (
+    _dup_tty_fd,
+    _live_wrap,
+    _live_wrap_argv,
+    execute,
+    execute_with_process_group,
+)
 
 class TestRunShellCommand:
     """Test shell command execution."""
@@ -294,3 +300,43 @@ class TestConcurrentExecution:
         # Start a command and it should handle interruption gracefully
         result = execute({"command": "sleep 0.1; echo done", "timeout": 5})
         assert result["tool"] == "run_shell_command"
+
+
+class TestLiveOutputWrap:
+    """Test fd-based live output wrapping (see _live_wrap / _live_wrap_argv)."""
+
+    def test_live_wrap_payload(self):
+        """Payload streams to the given fd and preserves the exit code."""
+        wrapped = _live_wrap("echo hi", 9)
+        assert ">&9" in wrapped
+        assert "PIPESTATUS[0]" in wrapped
+        assert "echo hi" in wrapped
+
+    def test_live_wrap_argv_shell_tail(self):
+        """[shell, -c, payload] tail gets wrapped, prefix preserved."""
+        argv = ["bwrap", "--dev", "/dev", "/bin/bash", "-c", "echo hi"]
+        out = _live_wrap_argv(argv, 9)
+        assert len(out) == len(argv)
+        assert out[0] == "bwrap"
+        assert out[-2] == "-c"
+        assert ">&9" in out[-1]
+        assert "echo hi" in out[-1]
+
+    def test_live_wrap_argv_passthrough(self):
+        """Argv without a shell tail is returned unchanged."""
+        argv = ["/usr/bin/lynx", "-dump", "https://example.com"]
+        assert _live_wrap_argv(argv, 9) == argv
+
+    def test_dup_tty_fd_no_tty(self):
+        """No tty on stdin -> no wrap fd."""
+        if os.isatty(0):
+            pytest.skip("stdin is a tty")
+        assert _dup_tty_fd() is None
+
+    def test_live_output_flag_captures(self):
+        """live_output=True still captures output when stdin is not a tty."""
+        if os.isatty(0):
+            pytest.skip("stdin is a tty")
+        result = execute_with_process_group("echo livecap", 10, live_output=True)
+        assert result.returncode == 0
+        assert "livecap" in result.stdout
