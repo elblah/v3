@@ -21,6 +21,8 @@ from aicoder.core.tool_manager import ToolManager
 _api_provider = os.environ.get("API_PROVIDER", "").lower()
 if _api_provider == "anthropic":
     from aicoder.core.anthropic_client import AnthropicClient as ApiClient
+elif _api_provider == "responses":
+    from aicoder.core.responses_client import ResponsesClient as ApiClient
 else:
     from aicoder.core.streaming_client import StreamingClient as ApiClient
 
