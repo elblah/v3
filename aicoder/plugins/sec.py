@@ -18,8 +18,8 @@ SANDBOX=0 (master kill switch) starts unsealed with net allowed;
 /sec seal on / net off re-tighten.
 Launcher-env overrides (read once at plugin load, parent env only):
 SEC_SEAL=0 starts unsealed, SEC_NET_ALLOW=1 starts with network.
-/sec seal|net on|off, /sec allow (named recipes), and
-/sec allow ro|rw <path> (generic dir binds) are the runtime escape hatches.
+/sec seal|net on|off, /sec allow (named recipes; net aliases /sec net on),
+and /sec allow ro|rw <path> (generic dir binds) are the runtime escape hatches.
 
 Sealed shells run with bwrap --clearenv: only a keep-list survives
 (PATH/HOME/TERM/SHELL/LANG/LC_ALL/LC_*/TMUX_PANE — host-neutral or
@@ -439,6 +439,7 @@ def _sec_help() -> str:
         "/sec status                    show seal, net, allowed, binds",
         "/sec seal on|off               nested bwrap (default-deny)",
         "/sec net  on|off               network: isolated netns vs host",
+        "/sec allow net                 alias: /sec net on (deny net = off)",
         "/sec allow <recipe>            lift a restriction:",
     ]
     lines += [f"      {r:<10} {d}" for r, d in recipes.items()]
@@ -489,7 +490,7 @@ def _handle_sec(args: str):
 
     if cmd in ("allow", "deny"):
         if len(parts) < 2:
-            return f"usage: /sec {cmd} <recipe> | /sec allow ro|rw <path>  (recipes: {', '.join(RECIPES)})"
+            return f"usage: /sec {cmd} <recipe> | /sec allow ro|rw <path> | allow|deny net (recipes: {', '.join(RECIPES)})"
         arg = parts[1]
 
         # Generic directory bind: /sec allow ro <path> | /sec allow rw <path>
@@ -511,6 +512,13 @@ def _handle_sec(args: str):
                 return f"no bind for '{arg}'"
             del _state["binds"][arg]
             return f"denied bind '{arg}'"
+
+        # Alias: /sec allow net == /sec net on ; /sec deny net == /sec net off.
+        # Same _state["net"] bit, single source of truth for _build_argv.
+        if arg == "net":
+            _state["net"] = cmd == "allow"
+            return "net: ON (network available)" if _state["net"] else \
+                "net: OFF (isolated netns - no egress, no localhost services)"
 
         name = arg
         if name not in RECIPES:
