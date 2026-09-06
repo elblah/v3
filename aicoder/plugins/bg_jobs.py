@@ -22,8 +22,24 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from aicoder.core.config import Config
+from aicoder.core.nudges import add_nudge
 from aicoder.tools.internal.run_shell_command import resolve_command
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils, info, dim, warn, success, print
+
+# Completion notification (env-gated: BG_JOBS_NOTIFY, default ON)
+NOTIFY_TAG = "BG_JOBS"
+
+
+def _should_notify(killed=False, notify=True):
+    """Decide whether a finished job deserves a completion nudge.
+
+    bg_jobs is for background work (slow compilations, servers, parallel
+    tasks), so every job end is significant: default = notify. Silent only
+    for explicit kills (the AI performed them itself and sees the 'killed'
+    status in the kill result) and per-job opt-out (notify=false).
+    """
+    return not killed and notify
 
 
 def create_plugin(ctx):
@@ -32,12 +48,15 @@ def create_plugin(ctx):
     """
 
     # In-memory job storage
-    # Key: pid, Value: {name, process, command, started_at}
+    # Key: pid, Value: {name, process, command, started_at, notify}
     jobs: Dict[int, Dict[str, Any]] = {}
-    # Completed jobs history: [{name, command, started_at, ended_at, duration_seconds, pid}]
+    # Completed jobs history: [{name, command, started_at, ended_at, duration_seconds, pid, exit_code, killed, notify}]
     completed_jobs: list = []
+    notify_enabled = env_bool("BG_JOBS_NOTIFY", default=True)
+    # Archived jobs awaiting one batched nudge at the next context bar
+    pending_notifications: list = []
 
-    def start_background_job(name: str, command: str) -> int:
+    def start_background_job(name: str, command: str, notify: bool = True) -> int:
         """Start a background job with proper process group handling"""
         # Start with new session/process group (like run_shell_command does)
         # Redirect stdout/stderr to DEVNULL to prevent output appearing on screen
@@ -57,6 +76,7 @@ def create_plugin(ctx):
             "process": process,
             "command": command,
             "started_at": datetime.now(),
+            "notify": notify,
         }
 
         return process.pid
@@ -86,6 +106,9 @@ def create_plugin(ctx):
             # We can't do more - just mark it as done
             pass
 
+        # Mark as killed so completion notification stays silent
+        job["killed"] = True
+
         # Remove from jobs dict and archive
         archive_job(pid)
         return True
@@ -106,14 +129,19 @@ def create_plugin(ctx):
         job = jobs[pid]
         ended_at = datetime.now()
         duration = int((ended_at - job["started_at"]).total_seconds())
-        completed_jobs.append({
+        record = {
             "name": job["name"],
             "command": job["command"],
             "started_at": job["started_at"],
             "ended_at": ended_at,
             "duration_seconds": duration,
             "pid": pid,
-        })
+            "exit_code": job["process"].returncode,
+            "killed": job.get("killed", False),
+            "notify": job.get("notify", True),
+        }
+        completed_jobs.append(record)
+        pending_notifications.append(record)
         del jobs[pid]
 
     def cleanup_dead_jobs() -> None:
@@ -173,6 +201,8 @@ def create_plugin(ctx):
             command = args.get("command", "")
             lines.append(f"Name: {name}")
             lines.append(f"Command: {command}")
+            if args.get("notify", True) is False:
+                lines.append("Notify: off")
         elif action == "kill":
             pid = args.get("pid", "")
             lines.append(f"PID: {pid}")
@@ -188,6 +218,7 @@ def create_plugin(ctx):
         if action == "run":
             name = args.get("name")
             command = args.get("command")
+            notify = args.get("notify", True) is not False
 
             if not name or not command:
                 return {
@@ -199,7 +230,7 @@ def create_plugin(ctx):
             # Clean up dead jobs first
             cleanup_dead_jobs()
 
-            pid = start_background_job(name, command)
+            pid = start_background_job(name, command, notify=notify)
             return {
                 "tool": "bg_jobs",
                 "friendly": f"Started background job: {name} (pid: {pid})",
@@ -311,41 +342,60 @@ def create_plugin(ctx):
             }
 
     # Register the bg_jobs tool
+    # Schema adapts to the gate: notify param exists only when notifications
+    # are enabled (BG_JOBS_NOTIFY unset or != 0).
+    tool_properties = {
+        "action": {
+            "type": "string",
+            "enum": ["run", "list", "kill", "kill_all", "history"],
+            "description": "Action to perform"
+        },
+        "name": {
+            "type": "string",
+            "description": "Friendly name for the job (required for 'run' action)"
+        },
+        "command": {
+            "type": "string",
+            "description": (
+                "Bash command to run (required for 'run' action). "
+                "NOTE: stdout/stderr are discarded. To capture output, "
+                "redirect to files: 'cmd > out.log 2>&1'."
+            )
+        },
+        "pid": {
+            "type": "integer",
+            "description": "Process ID to kill (required for 'kill' action)"
+        },
+    }
+    if notify_enabled:
+        tool_properties["notify"] = {
+            "type": "boolean",
+            "description": (
+                "Notify the AI when this job ends (default true; "
+                "set false to silence this job). Explicit kills are "
+                "always silent (kill status returned in the kill result)."
+            )
+        }
+    tool_description = (
+        "Manage background long-running processes (web servers, databases, etc.). "
+        "Use 'list' to see running jobs with uptime, 'history' to see finished jobs. "
+        "IMPORTANT: stdout and stderr are discarded (sent to /dev/null). "
+        "If you need to read the output, redirect it to files in the command, "
+        "e.g.: 'mycommand > output.log 2>&1', then read the file later."
+    )
+    if not notify_enabled:
+        tool_description += (
+            " Completion notifications are disabled (BG_JOBS_NOTIFY=0); "
+            "check 'list' or 'history' for job status."
+        )
+
     ctx.register_tool(
         name="bg_jobs",
         fn=bg_jobs_tool,
-        description=(
-            "Manage background long-running processes (web servers, databases, etc.). "
-            "Use 'list' to see running jobs with uptime, 'history' to see finished jobs. "
-            "IMPORTANT: stdout and stderr are discarded (sent to /dev/null). "
-            "If you need to read the output, redirect it to files in the command, "
-            "e.g.: 'mycommand > output.log 2>&1', then read the file later."
-        ),
+        description=tool_description,
         parameters={
             "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["run", "list", "kill", "kill_all", "history"],
-                    "description": "Action to perform"
-                },
-                "name": {
-                    "type": "string",
-                    "description": "Friendly name for the job (required for 'run' action)"
-                },
-                "command": {
-                    "type": "string",
-                    "description": (
-                        "Bash command to run (required for 'run' action). "
-                        "NOTE: stdout/stderr are discarded. To capture output, "
-                        "redirect to files: 'cmd > out.log 2>&1'."
-                    )
-                },
-                "pid": {
-                    "type": "integer",
-                    "description": "Process ID to kill (required for 'kill' action)"
-                }
-            },
+            "properties": tool_properties,
             "required": ["action"]
         },
         auto_approved=False,  # Killing jobs should require approval
@@ -499,6 +549,30 @@ Started: {format_time(job['started_at'])}
     def on_context_bar():
         """Hook: show running job count in context bar"""
         cleanup_dead_jobs()  # prune finished jobs (cheap poll, no subprocess)
+        # One batched completion nudge per turn for jobs archived since last bar
+        if pending_notifications:
+            lines = []
+            if notify_enabled:
+                for rec in pending_notifications:
+                    if _should_notify(killed=rec["killed"], notify=rec["notify"]):
+                        code = rec["exit_code"]
+                        if code is None:
+                            status = "ended"
+                        elif code < 0:
+                            status = f"killed by signal {-code}"
+                        elif code == 0:
+                            status = "finished"
+                        else:
+                            status = f"exited with code {code}"
+                        lines.append(
+                            f"- {rec['name']} (pid {rec['pid']}): {status} "
+                            f"after {format_duration(rec['duration_seconds'])}"
+                        )
+            pending_notifications.clear()
+            if lines:
+                add_nudge(ctx.app, NOTIFY_TAG,
+                          "The following background job(s) finished:\n\n"
+                          + "\n".join(lines))
         if not jobs:
             return None
         return f"{Config.colors['yellow']}{Config.colors['bold']}bg:{len(jobs)}{Config.colors['reset']}"
