@@ -158,6 +158,8 @@ class ResponsesClient:
         api_key = Config.api_key()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        # Add custom headers from environment
+        headers.update(Config.http_headers())
         return headers
 
     def _prepare_request_data(self, messages: List[Dict[str, Any]], send_tools: bool, stream: bool) -> Dict[str, Any]:
