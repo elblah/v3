@@ -467,6 +467,11 @@ def print_session_growth(entries: List[Dict]) -> None:
         print(f"      ... {len(rows) - len(shown)} more sessions")
 
 
+def _new_billed():
+    """Empty per-model aggregate for billed-entry subsets (BUDGET projection)."""
+    return {"n": 0, "p": 0, "c": 0, "cr": 0, "cm": 0, "cost": 0.0}
+
+
 def main():
     import sys
     args = sys.argv[1:]
@@ -486,6 +491,7 @@ def main():
         print("  ai_usage.py clear-cache    # Delete cache")
         print("  LOCAL=1 ALL=1 ai_usage.py ...  # All cached dirs (ignore cwd filter)")
         print("  SESSION_DELTA=1 ai_usage.py ...  # Add per-session avg context growth/req")
+        print("  BUDGET=100 ai_usage.py ...       # Project per-model usage a $100 budget buys")
         sys.exit(0)
     elif "update" in args or "--update" in args:
         # Update cache: scan filesystem, add new dirs, remove invalid
@@ -561,22 +567,51 @@ def main():
             print(f"No requests found in central log for: {label}")
             sys.exit(0)
 
-    # Aggregate: url -> model -> stats
-    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0}))
+    # Aggregate: url -> model -> stats ("rc" = real-cost subset, "ec" = est-only
+    # subset; used by the BUDGET projection so priceless entries can't dilute it)
+    agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {
+        "n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0,
+        "rc": _new_billed(), "ec": _new_billed(),
+    }))
     for e in entries:
         if e["model"] == "test-model":
             continue
-        agg[e["url"]][e["model"]]["n"] += 1
-        agg[e["url"]][e["model"]]["p"] += e["prompt"]
-        agg[e["url"]][e["model"]]["c"] += e["completion"]
-        agg[e["url"]][e["model"]]["t"] += e["elapsed"]
-        agg[e["url"]][e["model"]]["cr"] += e.get("cache_read", 0)
-        agg[e["url"]][e["model"]]["cm"] += e.get("cache_miss", 0)
+        d = agg[e["url"]][e["model"]]
+        d["n"] += 1
+        d["p"] += e["prompt"]
+        d["c"] += e["completion"]
+        d["t"] += e["elapsed"]
+        d["cr"] += e.get("cache_read", 0)
+        d["cm"] += e.get("cache_miss", 0)
         cost = e.get("cost", 0.0)
         if isinstance(cost, dict):
             cost = cost.get("usd", 0.0)
-        agg[e["url"]][e["model"]]["cost"] += cost
-        agg[e["url"]][e["model"]]["est"] += e["est"]
+        d["cost"] += cost
+        d["est"] += e["est"]
+        sub, price = None, 0.0
+        if cost > 0:
+            sub, price = d["rc"], cost
+        elif e["est"] > 0:
+            sub, price = d["ec"], e["est"]
+        if sub is not None:
+            sub["n"] += 1
+            sub["p"] += e["prompt"]
+            sub["c"] += e["completion"]
+            sub["cr"] += e.get("cache_read", 0)
+            sub["cm"] += e.get("cache_miss", 0)
+            sub["cost"] += price
+
+    # Optional BUDGET=<usd> projection (per model)
+    budget = 0.0
+    budget_raw = os.environ.get("BUDGET", "").strip()
+    if budget_raw:
+        try:
+            budget = float(budget_raw)
+            if budget <= 0:
+                raise ValueError
+        except ValueError:
+            print(f"Warning: invalid BUDGET '{budget_raw}', ignoring", file=sys.stderr)
+            budget = 0.0
 
     # Report
     print(f"\n{'='*60}")
@@ -616,7 +651,24 @@ def main():
                     diff = f" ({(d['cost'] - d['est']) / d['est'] * 100:+.3f}%)"
                 print(f"        Est Cost:       ${d['est']:.6f}{diff}")
             print(f"        Avg Req Time:   {avg:.2f}s")
-            print(f"        Output tok/s:   {tps:.1f}\n")
+            print(f"        Output tok/s:   {tps:.1f}")
+            if budget > 0:
+                # Projection from billed entries only: real cost preferred,
+                # est-only fallback. Priceless entries would dilute avg
+                # cost/request and inflate the projection.
+                sub, tag = (d["rc"], "") if d["rc"]["n"] else (d["ec"], " (ESTIMATED COST)")
+                if sub["n"] and sub["cost"] > 0:
+                    factor = budget / sub["cost"]
+                    billed_input = sub["cr"] + sub["cm"]
+                    b_hit = sub["cr"] / billed_input * 100 if billed_input else 0
+                    b_miss = sub["cm"] / billed_input * 100 if billed_input else 0
+                    print(f"\n        Estimates for BUDGET={budget:g}{tag}:")
+                    print(f"            Requests:       {sub['n'] * factor:,.0f}")
+                    print(f"            Input Tokens:   {sub['p'] * factor:,.0f}")
+                    print(f"            Output Tokens:  {sub['c'] * factor:,.0f}")
+                    print(f"            Cache Hit:      {sub['cr'] * factor:,.0f} ({b_hit:.1f}%)")
+                    print(f"            Cache Miss:     {sub['cm'] * factor:,.0f} ({b_miss:.1f}%)")
+            print()
             total["n"] += d["n"]
             total["p"] += d["p"]
             total["c"] += d["c"]
