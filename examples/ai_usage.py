@@ -611,7 +611,10 @@ def main():
             if d["cost"] > 0:
                 print(f"        Cost:           ${d['cost']:.6f}")
             if d["est"] > 0:
-                print(f"        Est Cost:       ${d['est']:.6f}")
+                diff = ""
+                if d["cost"] > 0:
+                    diff = f" ({(d['cost'] - d['est']) / d['est'] * 100:+.3f}%)"
+                print(f"        Est Cost:       ${d['est']:.6f}{diff}")
             print(f"        Avg Req Time:   {avg:.2f}s")
             print(f"        Output tok/s:   {tps:.1f}\n")
             total["n"] += d["n"]
