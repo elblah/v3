@@ -135,13 +135,15 @@ class AnthropicClient:
                     return
 
     def _build_headers(self) -> Dict[str, str]:
-        api_key = Config.api_key()
-        return {
+        headers = {
             "Content-Type": "application/json",
-            "x-api-key": api_key,
+            "x-api-key": Config.api_key(),
             "anthropic-version": "2023-06-01",
             "User-Agent": "Mozilla/5.0",
         }
+        # Add custom headers from environment
+        headers.update(Config.http_headers())
+        return headers
 
     def _prepare_request_data(self, messages: List[Dict[str, Any]], max_tokens: int, send_tools: bool, stream: bool = False) -> Dict[str, Any]:
         # Separate system message from conversation messages
