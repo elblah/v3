@@ -17,6 +17,7 @@ Commands:
   /autoexec help       - Show usage
   /autoexec show       - Show current autoexec contents
   /autoexec edit       - Open $EDITOR to edit .aicoder/autoexec
+  /autoexec apply      - Re-read file and run all lines now (no restart)
 """
 import os
 from aicoder.core.config import Config
@@ -127,6 +128,7 @@ def create_plugin(ctx):
 
     def cmd_autoexec(args: str) -> str:
         """Handle /autoexec subcommands"""
+        nonlocal lines, started
         parts = args.strip().split()
         sub = parts[0] if parts else "show"
 
@@ -136,8 +138,19 @@ def create_plugin(ctx):
                 "  help       Show this help\n"
                 "  show       Display .aicoder/autoexec contents\n"
                 "  edit       Open $EDITOR in tmux to edit .aicoder/autoexec\n"
+                "  apply      Re-read file and run all lines now\n"
                 "Env: AICODER_AUTOEXEC (newline-separated) runs after file lines"
             )
+        elif sub == "apply":
+            new_lines = _read_autoexec()
+            if not new_lines:
+                LogUtils.info("Nothing to apply (.aicoder/autoexec empty or missing).")
+                return ""
+            started = True
+            lines = new_lines
+            c = Config.colors
+            print(f"\n{c['cyan']}[autoexec] applying {len(lines)} line(s){c['reset']}")
+            return ""
         elif sub == "edit":
             _edit_autoexec()
             return ""
