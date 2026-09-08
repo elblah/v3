@@ -83,6 +83,8 @@ class StreamProcessor:
         # Track which reasoning field name the provider uses
         reasoning_field_name = None
         thinking_signature = ""
+        # Responses-API encrypted reasoning items (replayed next turn)
+        reasoning_items = []
 
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
@@ -142,6 +144,10 @@ class StreamProcessor:
                     # Capture thinking signature for Anthropic-style APIs
                     if delta.get("thinking_signature"):
                         thinking_signature = delta.get("thinking_signature")
+
+                    # Capture Responses-API encrypted reasoning items for replay
+                    if delta.get("reasoning_items"):
+                        reasoning_items.extend(delta["reasoning_items"])
 
                     # Debug: log which reasoning field was detected
                     if Config.debug() and reasoning_field_name and accumulated_reasoning == reasoning:
@@ -207,6 +213,7 @@ class StreamProcessor:
                 "reasoning_content": "",
                 "reasoning_field": None,
                 "thinking_signature": "",
+                "reasoning_items": [],
                 "accumulated_tool_calls": {},
                 "error": str(e)
             }
@@ -217,6 +224,7 @@ class StreamProcessor:
             "reasoning_content": accumulated_reasoning,
             "reasoning_field": reasoning_field_name,
             "thinking_signature": thinking_signature,
+            "reasoning_items": reasoning_items,
             "accumulated_tool_calls": accumulated_tool_calls,
         }
 
