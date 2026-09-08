@@ -175,6 +175,10 @@ class MessageHistory:
         if message.get("thinking_signature"):
             assistant_message["thinking_signature"] = message.get("thinking_signature")
 
+        # Preserve Responses-API encrypted reasoning items for next-turn replay
+        if message.get("reasoning_items"):
+            assistant_message["reasoning_items"] = message.get("reasoning_items")
+
         # Cache tokens immediately on creation (performance optimization)
         from .token_estimator import cache_message
         cache_message(assistant_message)

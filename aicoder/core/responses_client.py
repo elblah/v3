@@ -178,11 +178,16 @@ class ResponsesClient:
                     "call_id": msg.get("tool_call_id") or msg.get("tool_use_id", ""),
                     "output": msg.get("content", ""),
                 })
-            elif role == "assistant" and msg.get("tool_calls"):
-                # Assistant turn with tool calls: text (if any) + function_call items
+            elif role == "assistant":
+                # Replay encrypted reasoning items first (store=false: server
+                # keeps no state, so the reasoning chain must be fed back
+                # verbatim). They must precede the content/function_call items
+                # they were produced with.
+                for ritem in msg.get("reasoning_items") or []:
+                    input_items.append(ritem)
                 if msg.get("content"):
                     input_items.append({"role": "assistant", "content": msg.get("content")})
-                for tc in msg.get("tool_calls", []):
+                for tc in msg.get("tool_calls") or []:
                     func = tc.get("function", {})
                     input_items.append({
                         "type": "function_call",
@@ -234,6 +239,9 @@ class ResponsesClient:
         effort = Config.reasoning_effort()
         if effort and effort.lower() not in ("none", "max"):
             request_data["reasoning"] = {"effort": effort.lower()}
+            # Required to receive encrypted reasoning items (store=false
+            # continuity: items are replayed as input on the next request).
+            request_data["include"] = ["reasoning.encrypted_content"]
 
         # Escape hatch for provider-specific fields
         thinking_extra = Config.thinking_extra_body()
@@ -289,6 +297,7 @@ class ResponsesClient:
         accumulated_tool_calls = {}
         tool_index = 0
         current_tool = None  # {"call_id","name","args"} while a function_call streams
+        reasoning_items = []  # encrypted reasoning items for next-turn replay
         message_usage = None
         api_error = None
 
@@ -370,7 +379,12 @@ class ResponsesClient:
 
                             elif dtype == "response.output_item.done":
                                 item = data.get("item") or {}
-                                if item.get("type") == "function_call":
+                                if item.get("type") == "reasoning" and item.get("encrypted_content"):
+                                    # Store verbatim for replay next turn. Items
+                                    # without encrypted_content are useless
+                                    # stateless (store=false) - skip them.
+                                    reasoning_items.append(item)
+                                elif item.get("type") == "function_call":
                                     call_id = item.get("call_id") or (current_tool or {}).get("call_id") or ""
                                     name = item.get("name") or (current_tool or {}).get("name") or ""
                                     args = item.get("arguments")
@@ -423,13 +437,14 @@ class ResponsesClient:
 
         # Final yield - content already streamed via deltas, so don't include
         # it to avoid double-printing.
+        final_delta = {
+            "finish_reason": "stop",
+            "index": 0
+        }
+        if reasoning_items:
+            final_delta["reasoning_items"] = reasoning_items
         yield {
-            "choices": [{
-                "delta": {
-                    "finish_reason": "stop",
-                    "index": 0
-                }
-            }],
+            "choices": [{"delta": final_delta}],
             "accumulated_tool_calls": accumulated_tool_calls,
             "done": True
         }
@@ -439,6 +454,7 @@ class ResponsesClient:
 
         full_content = ""
         accumulated_tool_calls = {}
+        reasoning_items = []  # encrypted reasoning items for next-turn replay
 
         if data.get("error"):
             yield {"error": json.dumps(data["error"]), "done": True}
@@ -449,7 +465,9 @@ class ResponsesClient:
             output = [output]
         for item in output:
             item_type = item.get("type")
-            if item_type == "message":
+            if item_type == "reasoning" and item.get("encrypted_content"):
+                reasoning_items.append(item)
+            elif item_type == "message":
                 for part in item.get("content") or []:
                     if part.get("type") == "output_text":
                         full_content += part.get("text", "")
@@ -474,7 +492,8 @@ class ResponsesClient:
             "choices": [{
                 "delta": {
                     "content": full_content,
-                    "tool_calls": tool_calls_list
+                    "tool_calls": tool_calls_list,
+                    "reasoning_items": reasoning_items
                 },
                 "finish_reason": "stop",
                 "index": 0

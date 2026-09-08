@@ -58,6 +58,7 @@ class SessionManager:
                 streaming_result.get("reasoning_field"),
                 streaming_result["accumulated_tool_calls"],
                 streaming_result.get("thinking_signature", ""),
+                streaming_result.get("reasoning_items"),
             )
 
             self._handle_post_processing(has_tool_calls, status)
@@ -115,7 +116,7 @@ class SessionManager:
         return result
 
     def _validate_and_process_tool_calls(
-        self, full_response: str, reasoning_content: str, reasoning_field: str, accumulated_tool_calls: dict, thinking_signature: str = ""
+        self, full_response: str, reasoning_content: str, reasoning_field: str, accumulated_tool_calls: dict, thinking_signature: str = "", reasoning_items: list | None = None
     ) -> tuple[bool, str]:
         """Validate and process accumulated tool calls
         
@@ -127,7 +128,7 @@ class SessionManager:
                 - "validation_error": Tool calls had invalid JSON (error condition)
         """
         if not accumulated_tool_calls:
-            content_status = self._handle_empty_response(full_response, reasoning_content, reasoning_field, thinking_signature)
+            content_status = self._handle_empty_response(full_response, reasoning_content, reasoning_field, thinking_signature, reasoning_items)
             return False, content_status
 
         valid_tool_calls = self._validate_tool_calls(accumulated_tool_calls)
@@ -166,6 +167,11 @@ class SessionManager:
             assistant_message[field] = reasoning_content
             if thinking_signature:
                 assistant_message["thinking_signature"] = thinking_signature
+
+        # Encrypted reasoning items (Responses API) - independent of text
+        # reasoning: muse-spark emits encrypted blobs only, no text.
+        if reasoning_items:
+            assistant_message["reasoning_items"] = reasoning_items
 
         self.message_history.add_assistant_message(assistant_message)
 
@@ -208,7 +214,7 @@ class SessionManager:
         """Handle processing errors"""
         LogUtils.error(f"Processing error: {error}")
 
-    def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str, thinking_signature: str = "") -> str:
+    def _handle_empty_response(self, full_response: str, reasoning_content: str, reasoning_field: str, thinking_signature: str = "", reasoning_items: list | None = None) -> str:
         """Handle empty/no-tool response from AI. Returns status: 'text_content' or 'empty_content'."""
         field = Config.get_reasoning_field() or reasoning_field
 
@@ -219,6 +225,8 @@ class SessionManager:
                 assistant_message[field] = reasoning_content
                 if thinking_signature:
                     assistant_message["thinking_signature"] = thinking_signature
+            if reasoning_items:
+                assistant_message["reasoning_items"] = reasoning_items
             self.message_history.add_assistant_message(assistant_message)
             LogUtils.print("")
             return "text_content"
