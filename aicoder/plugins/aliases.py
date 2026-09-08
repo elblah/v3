@@ -17,9 +17,10 @@ Commands:
   /alias            - list aliases (default)
   /alias list       - list aliases
   /alias edit       - open $EDITOR (tmux) to edit .aicoder/alias
-  /alias name=value - set alias, persists to .aicoder/alias
-  /alias rm <name>  - remove alias
-  /alias <name>     - show a single alias value
+
+The file is the only source of truth: aliases are added/removed by editing it
+(/alias edit), never by the AI writing through this plugin — the launcher may
+seal .aicoder read-only, and the editor runs outside that seal.
 """
 import os
 
@@ -121,7 +122,7 @@ def create_plugin(ctx):
     def _list() -> str:
         aliases = _get_aliases()
         if not aliases:
-            return "No aliases defined. Add one: /alias name=value"
+            return "No aliases defined. Add one with /alias edit"
         c = Config.colors
         width = max(len(n) for n in aliases)
         return "\n".join(
@@ -129,37 +130,18 @@ def create_plugin(ctx):
             for name, value in sorted(aliases.items())
         )
 
-    def _write(name: str, value=None):
-        """Set (value not None) or remove (value None) a line, preserving order."""
-        lines = _read_file().splitlines()
-        if value is None:
-            lines = [
-                ln for ln in lines
-                if not _keep_line(ln)
-                or _keep_line(ln).partition("=")[0].strip().lstrip("/") != name
-            ]
-        else:
-            replaced = False
-            for i, ln in enumerate(lines):
-                cleaned = _keep_line(ln)
-                if cleaned and "=" in cleaned:
-                    if cleaned.partition("=")[0].strip().lstrip("/") == name:
-                        lines[i] = f"{name}={value}"
-                        replaced = True
-                        break
-            if not replaced:
-                lines.append(f"{name}={value}")
-        os.makedirs(os.path.dirname(_ALIAS_FILE) or ".", exist_ok=True)
-        with open(_ALIAS_FILE, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + ("\n" if lines else ""))
-        _cache["mtime"] = None  # force reload
-
     def _edit() -> str:
         if not os.environ.get("TMUX"):
             return "This command only works inside a tmux environment."
         if not os.path.exists(_ALIAS_FILE):
-            open(_ALIAS_FILE, "a").close()
-            LogUtils.dim(f"Created {_ALIAS_FILE}")
+            # Best effort: a sealed .aicoder can't be created from here, but the
+            # editor (outside the seal) can still save a new file.
+            try:
+                open(_ALIAS_FILE, "a").close()
+            except OSError:
+                pass
+            else:
+                LogUtils.dim(f"Created {_ALIAS_FILE}")
         from aicoder.utils.tmux_edit_utils import tmux_open_editor
         if tmux_open_editor(_ALIAS_FILE, window_name_prefix="alias"):
             _cache["mtime"] = None
@@ -177,9 +159,6 @@ def create_plugin(ctx):
                 "Usage: /alias <subcommand>\n"
                 "  list            List aliases (default)\n"
                 "  edit            Open $EDITOR in tmux to edit .aicoder/alias\n"
-                "  name=value      Set alias (persists to file)\n"
-                "  rm <name>       Remove alias\n"
-                "  <name>          Show a single alias value\n"
                 "Invoke: /<name> [args] - value starting with / runs as a command,\n"
                 "otherwise it is sent to the AI as a prompt (args appended)."
             )
@@ -187,30 +166,10 @@ def create_plugin(ctx):
             return _list()
         elif sub == "edit":
             return _edit()
-        elif sub == "rm":
-            if len(parts) < 2:
-                return "Usage: /alias rm <name>"
-            name = parts[1].strip().lstrip("/")
-            if name not in _get_aliases():
-                return f"No alias '{name}'"
-            _write(name, value=None)
-            return f"Removed alias '{name}'"
-        elif "=" in args:
-            name, _, value = args.partition("=")
-            name = name.strip().lstrip("/")
-            value = value.strip()
-            if not name or not value:
-                return "Usage: /alias name=value"
-            if app.command_handler.registry.get_command(name):
-                return f"Refusing: '/{name}' is a registered command"
-            _write(name, value)
-            return _list()
-        elif sub in _get_aliases():
-            return f"{sub} -> {_get_aliases()[sub]}"
         else:
             return cmd_alias("help")
 
-    ctx.register_command("alias", cmd_alias, "Manage aliases (.aicoder/alias): list|edit|name=value|rm <name>")
+    ctx.register_command("alias", cmd_alias, "Manage aliases (.aicoder/alias): list|edit")
     ctx.register_hook("on_unknown_command", on_unknown_command)
 
     return None
