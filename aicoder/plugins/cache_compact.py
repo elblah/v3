@@ -7,6 +7,10 @@ One injection path: after_assistant_message_added.
   history; re-injected on every non-complying reply. AI must comply.
 - Continuation turn after a fulfilled compaction -> guard cleared, no re-inject.
 
+User command:
+- /ccr - request a compaction summary now: injects the forced instruction as a
+  user message regardless of how full the context is; the AI must comply next turn.
+
 Env:
 - CACHE_COMPACT_THRESHOLD   trigger % of context size (default 65, 0 = disabled)
 - CACHE_COMPACT_KEEP_PERCENT  keep N% of recent context after [SUMMARY] (default 15)
@@ -30,9 +34,8 @@ PASSIVE_INSTRUCTION = """If you're at a natural breakpoint and the conversation 
 _RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
 
-FORCE_COMPACT_INSTRUCTION = (
-    "⚠ SYSTEM REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
-    "Context limit approaching. You MUST comply:\n"
+_INSTRUCTION_BODY = (
+    "You MUST comply:\n"
     "1. Do NOT call any tools\n"
     "2. Begin your VISIBLE reply with [COMPACT_SUMMARY] — never put the tag or "
     "summary inside your reasoning/thinking block; the visible message must "
@@ -42,6 +45,17 @@ FORCE_COMPACT_INSTRUCTION = (
     "current state, failed approaches, next steps\n"
     "5. This summary becomes your ENTIRE memory — omit nothing critical\n\n"
     "OUTPUT ONLY THE SUMMARY AS YOUR REPLY. DO NOT CONTINUE WORKING. COMPLY NOW."
+)
+
+FORCE_COMPACT_INSTRUCTION = (
+    "⚠ SYSTEM REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
+    "Context limit approaching. " + _INSTRUCTION_BODY
+)
+
+# Manual route (/ccr): same demand, but sourced from the user, not the threshold.
+USER_COMPACT_INSTRUCTION = (
+    "⚠ USER REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
+    "The user explicitly asked for a compaction summary. " + _INSTRUCTION_BODY
 )
 
 
@@ -381,7 +395,28 @@ def create_plugin(ctx):
                     f"-> injected compaction request{c['reset']}"
                 )
 
-
+    def _on_ccr_command(args: str) -> str:
+        """ccr - manual compaction request: inject the forced instruction now."""
+        c = Config.colors
+        if cfg["threshold"] <= 0:
+            return (
+                f"{c['brightYellow']}[ccr] cache_compact is disabled "
+                f"(CACHE_COMPACT_THRESHOLD=0) — no request to make.{c['reset']}"
+            )
+        current = app.stats.current_prompt_size or 0
+        max_size = Config.context_size()
+        pct = (current / max_size * 100) if max_size else 0
+        # One request only: drop any pending (threshold-injected) reminder first.
+        clear_nudges(app, "COMPACTION")
+        add_nudge(app, "COMPACTION", USER_COMPACT_INSTRUCTION)
+        # A summary asked for right after a fulfilled compaction would otherwise
+        # be refused as re-compaction junk — the guard is the caller's intent now.
+        state["cont_prompt"] = False
+        return (
+            f"{c['bold']}[ccr] compaction requested{c['reset']} "
+            f"({pct:.0f}% of context) — the AI must reply with [COMPACT_SUMMARY] "
+            f"on its next turn."
+        )
 
     def _on_info(sub: str) -> None:
         if sub == "config":
@@ -392,15 +427,20 @@ def create_plugin(ctx):
             )
             if enabled:
                 print(
-                    f"  threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  mode: force"
+                    f"  threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  mode: force  cmd: /ccr"
                 )
 
     ctx.register_hook("on_info", _on_info)
-
     ctx.register_hook("after_compaction", _on_after_compaction)
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
     ctx.register_hook("on_empty_assistant_message", _on_empty_assistant_message)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
+
+    ctx.register_command(
+        "ccr",
+        _on_ccr_command,
+        "Request a compaction summary now (injects the forced instruction)",
+    )
 
     if Config.debug():
         enabled = cfg["threshold"] > 0
