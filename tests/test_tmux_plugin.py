@@ -1,5 +1,6 @@
 """Test tmux plugin _restore_session mode logic (rs / rs n / rs full)"""
 
+import os
 import sys
 import types
 from pathlib import Path
@@ -147,3 +148,112 @@ def test_editor_used_for_int_and_default_modes():
     editor_default.assert_called_once()
     _, editor_full = _run_full(pane)
     editor_full.assert_not_called()
+
+
+# ---- wintitle: AICODER_TMUX_WINTITLE_OVERRIDE ----
+
+
+class LoadCtx(FakeCtx):
+    """ctx capturing register_command / register_hook from create_plugin."""
+
+    def __init__(self):
+        super().__init__()
+        self.commands = {}
+        self.hooks = {}
+
+    def register_command(self, name, handler, description=None):
+        self.commands[name] = handler
+
+    def register_hook(self, event, handler):
+        self.hooks.setdefault(event, []).append(handler)
+
+
+def _load(tmp_path, monkeypatch, override=None):
+    """Load plugin in isolated cwd with (optionally) the override env set."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TMUX", "/tmp/tmux-sock,1,1")
+    if override is None:
+        monkeypatch.delenv(tmux.OVERRIDE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(tmux.OVERRIDE_ENV, override)
+    monkeypatch.setattr(tmux, "_MARKER_LOADED", False)
+    ctx = LoadCtx()
+    assert tmux.create_plugin(ctx) == {"name": "tmux"}
+    return ctx
+
+
+def _startup(ctx):
+    """Fire registered after_session_initialized hooks."""
+    for hook in ctx.hooks.get("after_session_initialized", []):
+        hook()
+
+
+def test_override_applies_at_startup_without_file(tmp_path, monkeypatch):
+    """Override set, no files: startup applies override title (auto-enabled)."""
+    ctx = _load(tmp_path, monkeypatch, override="ovr title")
+    popen = MagicMock()
+    with patch.object(tmux.subprocess, "Popen", popen):
+        _startup(ctx)
+    assert popen.called, "expected override title applied at startup"
+    assert 'rename-window "ovr title"' in popen.call_args[0][0]
+
+
+def test_override_beats_active_and_disabled_files(tmp_path, monkeypatch):
+    """Override wins even when a wintitle file exists; file name not applied."""
+    aic = tmp_path / ".aicoder"
+    aic.mkdir()
+    (aic / "tmux-wintitle").write_text("file name\n")
+    (aic / "_tmux-wintitle").write_text("stale\n")
+    ctx = _load(tmp_path, monkeypatch, override="ovr")
+    popen = MagicMock()
+    with patch.object(tmux.subprocess, "Popen", popen):
+        _startup(ctx)
+    script = popen.call_args[0][0]
+    assert 'rename-window "ovr"' in script
+    assert "file name" not in script
+
+
+def test_override_disables_subcommands(tmp_path, monkeypatch):
+    """While override set: mutation subcommands refused, no files written."""
+    ctx = _load(tmp_path, monkeypatch, override="ovr")
+    handler = ctx.commands["tmux"]
+    for args_str in ("wintitle on", "wintitle myname", "wintitle reset",
+                     "wintitle off"):
+        out = handler(args_str)
+        assert "override" in out.lower(), args_str
+    assert not (tmp_path / ".aicoder").exists(), "no state files should be written"
+
+
+def test_override_show_still_works(tmp_path, monkeypatch):
+    """show reports window, file state, and the active override."""
+    ctx = _load(tmp_path, monkeypatch, override="ovr")
+    r = types.SimpleNamespace(returncode=0, stdout="curwin\n", stderr="")
+    with patch.object(tmux.subprocess, "run", lambda *a, **k: r):
+        out = ctx.commands["tmux"]("wintitle show")
+    assert "curwin" in out
+    assert "Override" in out and "ovr" in out
+
+
+def test_no_override_keeps_file_control(tmp_path, monkeypatch):
+    """Unset override: subcommands work, startup applies from active file."""
+    ctx = _load(tmp_path, monkeypatch, override=None)
+    with patch.object(tmux.subprocess, "Popen"):
+        out = ctx.commands["tmux"]("wintitle myname")
+    assert "myname" in out
+    assert (tmp_path / ".aicoder" / "tmux-wintitle").read_text().strip() == "myname"
+    popen = MagicMock()
+    with patch.object(tmux.subprocess, "Popen", popen):
+        _startup(ctx)
+    assert 'rename-window "myname"' in popen.call_args[0][0]
+
+
+def test_invalid_override_value_falls_back(tmp_path, monkeypatch):
+    """Override with only unsafe chars: warned, ignored; file control intact."""
+    ctx = _load(tmp_path, monkeypatch, override="!!!")
+    popen = MagicMock()
+    with patch.object(tmux.subprocess, "Popen", popen):
+        _startup(ctx)
+    popen.assert_not_called()
+    with patch.object(tmux.subprocess, "Popen"):
+        out = ctx.commands["tmux"]("wintitle myname")
+    assert "myname" in out
