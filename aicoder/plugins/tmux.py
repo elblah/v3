@@ -15,6 +15,8 @@ MARKER_PREFIX = "[tmux]"
 MARKER_TEXT = "session-start"
 WINTITLE_FILE = ".aicoder/tmux-wintitle"
 WINTITLE_FILE_DISABLED = ".aicoder/_tmux-wintitle"
+# When set, this env var wins over both files and all /tmux wintitle subcommands
+OVERRIDE_ENV = "AICODER_TMUX_WINTITLE_OVERRIDE"
 # Title is interpolated into a bash script (see _apply_title) — whitelist only
 WINTITLE_SAFE_CHARS = set(
     "abcdefghijklmnopqrstuvwxyz"
@@ -56,6 +58,13 @@ def create_plugin(ctx):
     def _safe_title(name):
         """Strip chars outside WINTITLE_SAFE_CHARS — title reaches a shell script"""
         return "".join(c for c in name if c in WINTITLE_SAFE_CHARS)
+
+    _override_raw = os.environ.get(OVERRIDE_ENV, "").strip()
+    override_name = _safe_title(_override_raw)
+    override_active = bool(override_name)
+    if _override_raw and not override_active:
+        LogUtils.warn(
+            f"[tmux] {OVERRIDE_ENV} set but contains no safe chars — override ignored" )
 
     def _apply_title(name):
         """Rename window if single pane and name differs. Fully async."""
@@ -111,7 +120,16 @@ def create_plugin(ctx):
             exists = "active" if os.path.isfile(active) else (
                 "saved (off)" if os.path.isfile(disabled) else "off (no file)"
             )
-            return f"Window: {cur}\nWintitle state: {exists}"
+            out = f"Window: {cur}\nWintitle state: {exists}"
+            if override_active:
+                out += (f"\nOverride: '{override_name}' via {OVERRIDE_ENV} "
+                        "(subcommands disabled while set)")
+            return out
+
+        if override_active:
+            return (f"Wintitle override is active: '{override_name}' "
+                    f"(from {OVERRIDE_ENV}). The plugin is bound to it — unset "
+                    "the env var to control the title from this command.")
 
         cmd = parts[0]
 
@@ -180,6 +198,7 @@ def create_plugin(ctx):
                 "  wintitle off             - Disable wintitle (saves name)\n"
                 "  wintitle reset           - Reset to current directory name\n"
                 "  wintitle <custom name>   - Set custom window title\n"
+                f"  note: {OVERRIDE_ENV} env var, when set, overrides all of the above\n"
                 "  help                     - Show this help"
             )
         else:
@@ -187,11 +206,16 @@ def create_plugin(ctx):
 
     ctx.register_command("tmux", handle_tmux, "Tmux session management (restore-session, wintitle)")
 
-    # Apply wintitle on startup if active file exists — fire-and-forget
-    if os.path.isfile(_wintitle_filepath()) or os.path.isfile(_wintitle_filepath_disabled()):
-        LogUtils.info("[tmux] wintitle file exists, will apply on session init")
-    ctx.register_hook("after_session_initialized", lambda *_: _set_wintitle_from_file()
-                       if os.path.isfile(_wintitle_filepath()) else None)
+    # Apply wintitle on startup — fire-and-forget. Env override beats all files.
+    if override_active:
+        LogUtils.info(f"[tmux] wintitle override active: '{override_name}'")
+        ctx.register_hook("after_session_initialized",
+                          lambda *_: _apply_title(override_name))
+    else:
+        if os.path.isfile(_wintitle_filepath()) or os.path.isfile(_wintitle_filepath_disabled()):
+            LogUtils.info("[tmux] wintitle file exists, will apply on session init")
+        ctx.register_hook("after_session_initialized", lambda *_: _set_wintitle_from_file()
+                          if os.path.isfile(_wintitle_filepath()) else None)
 
     return {"name": "tmux"}
 
