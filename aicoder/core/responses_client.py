@@ -71,7 +71,8 @@ class ResponsesClient:
         for attempt_num in range(1, max_retries + 1) if max_retries > 0 else itertools.count(1):
             try:
                 if attempt_num > 1:
-                    self._wait_for_retry(attempt_num)
+                    # _calculate_backoff takes a 0-based retry index
+                    self._wait_for_retry(attempt_num - 2)
 
                 request_data = self._prepare_request_data(messages, send_tools, stream)
                 endpoint = self._endpoint()
@@ -137,7 +138,7 @@ class ResponsesClient:
                         raise
                     yield {"error": str(e), "done": True}
                     return
-                if attempt_num >= max_retries:
+                if max_retries > 0 and attempt_num >= max_retries:
                     if throw_on_error:
                         raise
                     yield {"error": str(e), "done": True}
