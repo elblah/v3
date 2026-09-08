@@ -330,3 +330,53 @@ def test_external_compaction_clears_nudges(ps):
     # Fresh cycle works.
     _assistant_turn(ps, "more", _pct(ps, 78))
     assert len(_reminders(ps)) == 1
+
+
+def _ccr(ps, args=""):
+    """Invoke the /ccr plugin command handler."""
+    return ps.ps.commands["ccr"]["fn"](args)
+
+
+def test_ccr_injects_request_below_threshold(ps):
+    """/ccr injects the forced instruction as a user message at 0% context."""
+    _seed(ps)
+    out = _ccr(ps)
+    reminders = _reminders(ps)
+    assert len(reminders) == 1
+    assert "[NUDGE:COMPACTION]" in reminders[0]["content"]
+    assert "USER REQUEST" in reminders[0]["content"]
+    assert "NOT OPTIONAL" in reminders[0]["content"]
+    assert "COMPACTION REQUIRED" in reminders[0]["content"]
+    assert out  # handler prints a confirmation
+
+
+def test_ccr_replaces_pending_nudge(ps):
+    """A pending threshold reminder is not stacked: /ccr leaves exactly one."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    _ccr(ps)
+    reminders = _reminders(ps)
+    assert len(reminders) == 1
+    assert "USER REQUEST" in reminders[0]["content"]
+
+
+def test_ccr_unlocks_summary_after_compaction(ps):
+    """/ccr clears the continuation guard: a fresh summary is accepted, not dropped."""
+    _seed(ps)
+    _assistant_turn(ps, "[COMPACT_SUMMARY] first round", 0)
+    assert ps.app.message_history.compaction_count == 1
+
+    _ccr(ps)
+    _assistant_turn(ps, "[COMPACT_SUMMARY] second round", 0)
+    assert ps.app.message_history.compaction_count == 2
+    contents = [m["content"] for m in ps.app.message_history.get_messages()]
+    assert any(c.startswith("[SUMMARY] second round") for c in contents)
+
+
+def test_ccr_refused_when_disabled(make_ps):
+    """CACHE_COMPACT_THRESHOLD=0: no detection, so /ccr refuses and injects nothing."""
+    ps = make_ps(threshold="0")
+    _seed(ps)
+    out = _ccr(ps)
+    assert "disabled" in out
+    assert _reminders(ps) == []
