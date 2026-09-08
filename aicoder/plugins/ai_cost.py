@@ -364,7 +364,10 @@ def create_plugin(ctx):
         if _has_reported:
             lines.append(f"  Session Cost: ${_session_cost:.4f}")
             if _est_total > 0:
-                lines.append(f"  Estimated:    ${_est_total:.4f}")
+                diff = (_session_cost - _est_total) / _est_total * 100
+                # Rounded to nothing = no visible difference, so show nothing.
+                pct = f" ({diff:+.3f}%)" if abs(diff) >= 0.0005 else ""
+                lines.append(f"  Estimated:    ${_est_total:.4f}{pct}")
         else:
             lines.append(f"  Estimated:    ${_est_total:.4f}")
         lines.append(f"  Requests: {_request_count} (avg ${avg:.4f}/req)")
