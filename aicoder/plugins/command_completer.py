@@ -47,6 +47,16 @@ def create_plugin(ctx):
                     if alias not in commands:  # Avoid duplicates
                         options.append(f"/{alias}")
 
+            # Add file-based aliases (.aicoder/alias), excluding real commands
+            try:
+                from aicoder.plugins.aliases import get_alias_names
+                known = {o[1:] for o in options}
+                options.extend(
+                    f"/{name}" for name in get_alias_names() if name not in known
+                )
+            except Exception:
+                pass
+
             # Filter commands that match the prefix
             filtered = [cmd for cmd in options if cmd.startswith(text)]
 

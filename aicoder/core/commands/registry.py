@@ -175,6 +175,16 @@ class CommandRegistry:
         # Get command
         command = self.get_command(command_name)
         if not command:
+            # Give plugins a chance to handle unknown commands (e.g. aliases)
+            command_handler = self.context.command_handler if self.context else None
+            plugin_system = command_handler.plugin_system if command_handler else None
+            if plugin_system:
+                results = plugin_system.call_hooks(
+                    "on_unknown_command", command_name, " ".join(args)
+                )
+                for result in results or []:
+                    if result is not None:
+                        return result
             LogUtils.error(f"Unknown command: {command_line}")
             return CommandResult(should_quit=False, run_api_call=False)
 
