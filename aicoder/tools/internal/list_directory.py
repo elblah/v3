@@ -8,6 +8,7 @@ import os
 from typing import Dict, Any
 from aicoder.core.config import Config
 from aicoder.utils.file_utils import check_sandbox, open_directory_verified, sandbox_denial_message
+from aicoder.utils.num_utils import coerce_int
 
 
 def _matches_pattern(filename: str, pattern: str) -> bool:
@@ -22,8 +23,9 @@ def validateArguments(args: Dict[str, Any]) -> None:
     path = args.get("path")
     if not path or path.strip() == "":
         args["path"] = "."
-    max_depth = args.get("max_depth")
-    if not max_depth or max_depth < 1:
+    max_depth = coerce_int(args.get("max_depth"), "max_depth", 1)
+    args["max_depth"] = max_depth
+    if max_depth < 1:
         args["max_depth"] = 1
 
 
