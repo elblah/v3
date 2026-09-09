@@ -1,6 +1,11 @@
 """
 Over Plugin - Radio protocol: detect cut-off AI responses via [OVER] tag
 
+Why this exists: AI sometimes stops mid-work and silently hands the prompt
+back to the user. [OVER] is the radio hand-back signal — the AI only emits
+it when its turn is genuinely complete. Missing tag = assumed cut-off =
+auto-continue ("like radio: no OVER means transmission dropped, keep listening").
+
 When enabled, appends a system-reminder to every user message telling the AI
 to end with [OVER]. After AI responds, checks for [OVER]. If missing (cut-off),
 auto-retries with "continue" prompt (like empty_retry pattern).
@@ -23,10 +28,13 @@ OVER_TAG = "[OVER]"
 OVER_MAX_NUDGES = int(os.environ.get("OVER_MAX_NUDGES", "3"))
 OVER_INSTRUCTION = (
     "\n\n<system-reminder>\n"
-    "IMPORTANT: YOUR RESPONSE MUST CONTAIN [OVER] SOMEWHERE.\n"
+    "RADIO PROTOCOL: End every response with [OVER] — the radio hand-back\n"
+    "signal meaning 'my turn is complete, back to you'.\n"
+    "Emit [OVER] ONLY when your response is genuinely finished.\n"
+    "NEVER emit it while work remains or when announcing you will continue later —\n"
+    "a false [OVER] hides unfinished work from the retry system.\n"
     "Any line, any position — just have [OVER] in the text.\n"
-    "If missing, system assumes response was cut off and will retry.\n"
-    "THIS IS A RADIO PROTOCOL. DO NOT FORGET.\n"
+    "If missing, system assumes response was cut off and will retry with 'continue'.\n"
     "</system-reminder>"
 )
 CONTINUE_PROMPT = (
@@ -75,6 +83,9 @@ class OverCommand:
             count = OverService.get_retry_count()
             return (
                 f"[OVER] protocol: {status}, retries: {count}\n\n"
+                "Why: prevents the AI silently stopping mid-work. The AI must end\n"
+                "every response with [OVER] (turn complete). Missing tag = assumed\n"
+                "cut-off = auto-continue.\n\n"
                 "Commands: /over 1|true|on | /over 0|false|off | /over status"
             )
 
