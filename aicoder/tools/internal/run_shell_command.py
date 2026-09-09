@@ -12,6 +12,7 @@ import time
 from typing import Dict, Any, List, Optional
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.utils.num_utils import coerce_int
 
 # Plugin system reference (set at startup by ToolManager)
 _plugin_system = None
@@ -311,10 +312,7 @@ def _format_duration(seconds: float) -> str:
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute shell command with timeout"""
     command = args.get("command")
-    try:
-        timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
-    except ValueError:
-        raise Exception("timeout must be an integer, got: " + str(args.get("timeout")))
+    timeout = coerce_int(args.get("timeout"), "timeout", DEFAULT_TIMEOUT)
     cwd = args.get("cwd")
     live_output = args.get("live_output", False)
 
@@ -421,10 +419,7 @@ TOOL_DEFINITION = {
 def format_arguments(args):
     """Format arguments for display"""
     command = args.get("command")
-    try:
-        timeout = int(args.get("timeout", DEFAULT_TIMEOUT))
-    except ValueError:
-        raise Exception("timeout must be an integer, got: " + str(args.get("timeout")))
+    timeout = coerce_int(args.get("timeout"), "timeout", DEFAULT_TIMEOUT)
 
     lines = []
     if command:

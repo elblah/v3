@@ -11,6 +11,7 @@ from aicoder.core.config import Config
 from aicoder.tools.internal.run_shell_command import resolve_command
 from aicoder.utils.file_utils import check_sandbox, sandbox_denial_message
 from aicoder.utils.log import LogUtils
+from aicoder.utils.num_utils import coerce_int
 
 # Configuration
 DEFAULT_MAX_RESULTS = Config.default_grep_max_results()
@@ -27,8 +28,8 @@ def formatArguments(args: Dict[str, Any]) -> str:
     """Format arguments for approval display"""
     text = args.get("text", "")
     path = args.get("path", ".")
-    max_results = args.get("max_results", DEFAULT_MAX_RESULTS)
-    context = args.get("context", 2)
+    max_results = coerce_int(args.get("max_results"), "max_results", DEFAULT_MAX_RESULTS)
+    context = coerce_int(args.get("context"), "context", 2)
 
     parts = [f'Text: "{text}"']
     if path and path != ".":
@@ -45,8 +46,8 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search for text in files using ripgrep or grep"""
     text = args.get("text")
     path = args.get("path", ".")
-    max_results = args.get("max_results", DEFAULT_MAX_RESULTS)
-    context = args.get("context", 2)
+    max_results = coerce_int(args.get("max_results"), "max_results", DEFAULT_MAX_RESULTS)
+    context = coerce_int(args.get("context"), "context", 2)
 
     if not text:
         raise Exception("Text is required")

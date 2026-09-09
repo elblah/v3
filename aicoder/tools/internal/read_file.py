@@ -9,6 +9,7 @@ from aicoder.core.config import Config
 from aicoder.core.file_access_tracker import FileAccessTracker
 from aicoder.utils.file_utils import file_exists, read_file_verified as file_read, check_sandbox, sandbox_denial_message
 from aicoder.utils.log import LogUtils
+from aicoder.utils.num_utils import coerce_int
 
 # Configuration
 DEFAULT_READ_LIMIT = Config.default_read_limit()
@@ -81,15 +82,8 @@ def _paginate(path: str, offset: int, limit: int, content: str) -> Dict[str, Any
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     """Read file with pagination"""
     path = args.get("path")
-    try:
-        offset = int(args.get("offset", 0))
-    except ValueError:
-        raise Exception("offset must be an integer, got: " + str(args.get("offset")))
-    
-    try:
-        limit = int(args.get("limit", DEFAULT_READ_LIMIT))
-    except ValueError:
-        raise Exception("limit must be an integer, got: " + str(args.get("limit")))
+    offset = coerce_int(args.get("offset"), "offset", 0)
+    limit = coerce_int(args.get("limit"), "limit", DEFAULT_READ_LIMIT)
 
     if not path:
         raise Exception("Path is required")
