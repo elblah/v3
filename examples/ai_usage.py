@@ -307,6 +307,13 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
         # when active; cost seeded only when provider reports one. Null-tolerant:
         # some legacy entries carry "cost": null.
         entry_cost = entry.get("cost") or 0.0
+        # Provider cost may be a dict (hyper.charm.land reports
+        # {"usd": …, "hypercredits": …}) — split it into currency + credits.
+        raw_cost = parsed["cost"] or entry_cost
+        hc = 0.0
+        if isinstance(raw_cost, dict):
+            hc = float(raw_cost.get("hypercredits") or 0.0)
+            raw_cost = raw_cost.get("usd") or 0.0
         return {
             "ts": entry["ts"],
             "url": entry.get("url", ""),
@@ -318,7 +325,8 @@ def _parse_line(line: str, start: datetime | None, end: datetime | None) -> dict
             "cache_read": parsed["cache_read"],
             "cache_miss": parsed["cache_miss"],
             "cache_write": parsed["cache_write"],
-            "cost": parsed["cost"] or entry_cost,
+            "cost": float(raw_cost),
+            "hc": hc,
             "est": float(entry.get("cost_estimate") or 0.0),
         }
     except (json.JSONDecodeError, KeyError, ValueError):
@@ -571,6 +579,7 @@ def main():
     # subset; used by the BUDGET projection so priceless entries can't dilute it)
     agg: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {
         "n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0,
+        "hc": 0.0,
         "rc": _new_billed(), "ec": _new_billed(),
     }))
     for e in entries:
@@ -588,6 +597,7 @@ def main():
             cost = cost.get("usd", 0.0)
         d["cost"] += cost
         d["est"] += e["est"]
+        d["hc"] += e["hc"]
         sub, price = None, 0.0
         if cost > 0:
             sub, price = d["rc"], cost
@@ -623,7 +633,8 @@ def main():
         print(f"  Now:      {now.strftime('%Y-%m-%d %H:%M:%S')} (TZ={tz_name})")
         print(f"  Range:    {start.strftime('%Y-%m-%d %H:%M:%S')} → {end.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}\n")
-    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0}
+    total = {"n": 0, "p": 0, "c": 0, "t": 0.0, "cr": 0, "cm": 0, "cost": 0.0, "est": 0.0,
+             "hc": 0.0}
 
     for url in sorted(agg):
         print(url)
@@ -650,6 +661,8 @@ def main():
                 if d["cost"] > 0:
                     diff = f" ({(d['cost'] - d['est']) / d['est'] * 100:+.3f}%)"
                 print(f"        Est Cost:       ${d['est']:.6f}{diff}")
+            if d["hc"] > 0:
+                print(f"        Hyper Credits:  {d['hc']:.4f}")
             print(f"        Avg Req Time:   {avg:.2f}s")
             print(f"        Output tok/s:   {tps:.1f}")
             if budget > 0:
@@ -677,6 +690,7 @@ def main():
             total["cm"] += d["cm"]
             total["cost"] += d["cost"]
             total["est"] += d["est"]
+            total["hc"] += d["hc"]
 
     n = total["n"]
     total_input_cache = total['cr'] + total['cm']
@@ -705,6 +719,8 @@ def main():
         print(f"    Total Cost:          ${total['cost']:.6f}")
     if total["est"] > 0:
         print(f"    Total Est Cost:      ${total['est']:.6f}")
+    if total["hc"] > 0:
+        print(f"    Total Hyper Credits: {total['hc']:.4f}")
     if total["cost"] > 0 or total["est"] > 0:
         print()
     if env_flag("SESSION_DELTA"):
