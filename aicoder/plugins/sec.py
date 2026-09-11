@@ -24,7 +24,10 @@ and /sec allow ro|rw <path> (generic dir binds) are the runtime escape hatches.
 Sealed shells run with bwrap --clearenv: only a keep-list survives
 (PATH/HOME/TERM/SHELL/LANG/LC_ALL/LC_*/TMUX_PANE — host-neutral or
 needed for vet); host-service vars and anything else (API keys, tokens)
-are absent until a recipe restores them. /sec allow env re-injects the
+are absent until a recipe restores them. SECPASSENVVARS (comma-separated
+var names, set in the launcher env) names extra vars preserved across the
+seal like the keep-list (e.g. Go toolchain vars).
+/sec allow env re-injects the
 full launcher env captured at plugin load, minus the strip vars (those
 have purpose-built recipes) and minus the forever-blocked cleared vars
 (AICODER_SHELL_CLEAR_VARS from the launcher, substring-matched on the name —
@@ -101,9 +104,9 @@ _CLEAR_SUBSTRINGS = tuple(
 
 def _hidden(name: str) -> bool:
     """True if env var `name` must stay out of the sealed shell forever."""
-    # The clear-list var itself is always hidden — the list is a
-    # config detail, nobody inside the seal needs to see it.
-    if name == "AICODER_SHELL_CLEAR_VARS":
+    # Config vars themselves are always hidden — config details, nobody
+    # inside the seal needs to see them.
+    if name in ("AICODER_SHELL_CLEAR_VARS", "SECPASSENVVARS"):
         return True
     return any(s in name for s in _CLEAR_SUBSTRINGS)
 
@@ -111,6 +114,17 @@ def _hidden(name: str) -> bool:
 # Filtered at capture — hidden vars never enter the snapshot, so no
 # recipe (/sec allow env, keep-list, restores) can re-inject them.
 _CAPTURED_ENV = {k: v for k, v in os.environ.items() if not _hidden(k)}
+
+# Vars preserved across the seal BY NAME, user-set in the launcher env
+# (SECPASSENVVARS="GOCACHE,GOMODCACHE,GOROOT"). Captured at load — the
+# sealed shell can't inject values here (same property as _DTX_EXTRA).
+# Values come from _CAPTURED_ENV, so a name matching a clear-list
+# substring (secret) never passes.
+_PASS_VARS = tuple(
+    v.strip()
+    for v in os.environ.get("SECPASSENVVARS", "").split(",")
+    if v.strip()
+)
 
 # adb server spec: explicit env wins; else the canonical localfilesystem
 # default (host .bashrc sets TMPDIR=$XDG_RUNTIME_DIR/tmp, socket adb.sock).
@@ -249,6 +263,13 @@ def _build_argv(command: str) -> list[str]:
     for k, val in os.environ.items():
         if k.startswith("LC_"):
             argv += ["--setenv", k, val]
+
+    # SECPASSENVVARS: named vars survive --clearenv like the keep-list.
+    # Hidden names never entered _CAPTURED_ENV, so secrets in the list
+    # are silently skipped.
+    for v in _PASS_VARS:
+        if v in _CAPTURED_ENV:
+            argv += ["--setenv", v, _CAPTURED_ENV[v]]
 
     # /sec allow env: full launcher env back, minus the host-service
     # strip vars (those have purpose-built recipes: tmux/dtx/dbus/x11/adb)
