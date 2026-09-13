@@ -160,13 +160,13 @@ class OverCommand:
 
         if count > OVER_MAX_NUDGES:
             LogUtils.warn(
-                f"[OVER] gave up after {OVER_MAX_NUDGES} nudges — "
+                f"[over] gave up after {OVER_MAX_NUDGES} nudges — "
                 "accepting response (may be truncated)"
             )
             OverService.reset_retry()
             return None
 
-        LogUtils.warn(f"[OVER] Response missing [OVER] tag (retry #{count})")
+        LogUtils.warn(f"[over] Response missing [OVER] tag (retry #{count})")
         return CONTINUE_PROMPT
 
 
