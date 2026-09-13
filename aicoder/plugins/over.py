@@ -39,8 +39,9 @@ OVER_INSTRUCTION = (
 )
 CONTINUE_PROMPT = (
     "Your previous response was cut off (missing [OVER] tag). "
-    "Continue exactly where you left off. "
-    "Your response MUST contain [OVER] somewhere — any line, any position."
+    "Two cases: if the stop was unintentional (work or text remains), continue "
+    "exactly where you left off. If the work was actually done and the user "
+    "already has the info, do NOT repeat anything — just send [OVER]."
 )
 
 
