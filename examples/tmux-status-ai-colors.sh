@@ -38,9 +38,9 @@ state_rank() { # higher rank = more important, wins the window
 apply_style() { # wid code
     local wid=$1 code=$2
     case $code in
-        2) tmux set -w -t "$wid" window-status-style 'bg=#00cdcd,fg=#ffffff' ;; # Processing
+        2) tmux set -w -t "$wid" window-status-style 'bg=#00FFFF,fg=#000000' ;; # Processing
         4) tmux set -w -t "$wid" window-status-style 'bg=#ff0000,fg=#ffff00' ;; # Retrying
-        3) tmux set -w -t "$wid" window-status-style 'bg=#cd00cd,fg=#ffff00' ;; # Approval
+        3) tmux set -w -t "$wid" window-status-style 'bg=#ff55ff,fg=#ffff00' ;; # Approval
         *) tmux set -w -u -t "$wid" window-status-style 2>/dev/null ;;
     esac
 }
