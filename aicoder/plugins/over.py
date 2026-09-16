@@ -34,7 +34,9 @@ OVER_INSTRUCTION = (
     "NEVER emit it while work remains or when announcing you will continue later —\n"
     "a false [OVER] hides unfinished work from the retry system.\n"
     "Any line, any position — just have [OVER] in the text.\n"
-    "If missing, system assumes response was cut off and will retry with 'continue'.\n"
+    "Without [OVER] your turn does not end: the request is automatically\n"
+    "re-sent to you and the user never regains control.\n"
+    "[OVER] is the only way to hand the prompt back to the user.\n"
     "</system-reminder>"
 )
 CONTINUE_PROMPT = (
