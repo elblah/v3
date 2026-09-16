@@ -413,6 +413,11 @@ class Config:
         if mode == "default":
             return None
         elif mode == "off":
+            # Some Anthropic-dialect proxies mishandle explicit "disabled" —
+            # omit the block entirely there. Keep "disabled" for other
+            # dialects that may rely on it.
+            if cls.get_reasoning_format() == "anthropic":
+                return None
             return {"thinking": {"type": "disabled"}}
         elif mode == "on":
             fmt = cls.get_reasoning_format()
