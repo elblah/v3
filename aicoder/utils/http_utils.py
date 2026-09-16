@@ -81,8 +81,9 @@ class Response:
         if extension > 0 and remaining <= extension:
             time_since_last_read = time.monotonic() - self._last_read_time
             if time_since_last_read < extension:
-                # Recent activity - extend tolerance
-                remaining += extension
+                # Recent activity - extend tolerance (floor, so a stale
+                # negative remaining can't kill an active stream)
+                remaining = max(remaining + extension, extension)
         
         if remaining <= 0:
             raise socket.timeout("Total timeout exceeded")
