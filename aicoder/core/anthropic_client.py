@@ -138,10 +138,11 @@ class AnthropicClient:
     def _build_headers(self) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
-            "x-api-key": Config.api_key(),
             "anthropic-version": "2023-06-01",
             "User-Agent": "Mozilla/5.0",
         }
+        if Config.api_key():
+            headers["x-api-key"] = Config.api_key()
         # Add custom headers from environment
         headers.update(Config.http_headers())
         return headers
