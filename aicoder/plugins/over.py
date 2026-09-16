@@ -40,7 +40,9 @@ OVER_INSTRUCTION = (
     "</system-reminder>"
 )
 CONTINUE_PROMPT = (
-    "Your previous response was cut off (missing [OVER] tag). "
+    "Your previous response was cut off (missing [OVER] tag). Without [OVER] "
+    "the turn does not end: this request keeps coming back to you again and "
+    "again until you send [OVER]. "
     "Two cases: if the stop was unintentional (work or text remains), continue "
     "exactly where you left off. If the work was actually done and the user "
     "already has the info, do NOT repeat anything — just send [OVER]."
