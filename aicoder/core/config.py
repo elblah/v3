@@ -278,8 +278,14 @@ class Config:
     def get_reasoning_format(cls) -> Optional[str]:
         """
         Get reasoning format (deepseek, glm, etc.)
-        Priority: 1) REASONING_FORMAT env var override, 2) auto-detect from model name
+        Priority: 1) anthropic provider (anthropic dialect always), 2) REASONING_FORMAT env var override, 3) auto-detect from model name
         """
+        # Anthropic provider speaks the anthropic dialect; openai-style overrides
+        # must not apply (they send top-level reasoning_effort which anthropic-style
+        # endpoints reject or burn hidden reasoning tokens on).
+        if os.environ.get("API_PROVIDER", "").lower() == "anthropic":
+            return "anthropic"
+
         # Check env var override first
         env_format = os.environ.get("REASONING_FORMAT", "")
         if env_format:
@@ -425,6 +431,10 @@ class Config:
         """
         mode = cls.thinking()
         if mode != "on":
+            return None
+
+        # Anthropic dialect: no openai-style top-level effort field
+        if cls.get_reasoning_format() == "anthropic":
             return None
 
         fmt = cls.get_reasoning_format()
@@ -1110,7 +1120,8 @@ class Config:
                 fmt = Config.get_reasoning_format()
                 if fmt:
                     override = os.environ.get("REASONING_FORMAT", "")
-                    suffix = ", override" if override else ""
+                    # Override shown only when it actually applies (anthropic provider ignores it)
+                    suffix = ", override" if override and fmt != "anthropic" else ""
                     mode_text += f" (format: {fmt}{suffix})"
             LogUtils.success(mode_text)
 
