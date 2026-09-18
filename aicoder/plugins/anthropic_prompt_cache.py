@@ -2,9 +2,9 @@
 Anthropic Prompt Caching Plugin
 
 Adds cacheControl: {type: "ephemeral"} to messages for Anthropic-compatible
-endpoints that support prompt caching (e.g., opencode-go, AWS Bedrock).
+endpoints that support prompt caching (e.g., AWS Bedrock).
 
-Mirrors opencode's applyCaching() logic:
+Caching strategy:
 - System messages (first 2) + final messages (last 2) get cached
 - Uses providerOptions.cacheControl for anthropic provider
 

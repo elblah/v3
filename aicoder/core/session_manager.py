@@ -169,7 +169,7 @@ class SessionManager:
                 assistant_message["thinking_signature"] = thinking_signature
 
         # Encrypted reasoning items (Responses API) - independent of text
-        # reasoning: muse-spark emits encrypted blobs only, no text.
+        # reasoning: some models emit encrypted blobs only, no text.
         if reasoning_items:
             assistant_message["reasoning_items"] = reasoning_items
 

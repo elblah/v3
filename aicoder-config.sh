@@ -126,10 +126,6 @@ PRESETS[4,name]="Nvidia NIM"
 PRESETS[4,api]="openai"; PRESETS[4,ep]="https://integrate.api.nvidia.com/v1"
 PRESETS[4,model]="meta/llama-3.1-405b-instruct"; PRESETS[4,ctx]="128000"; PRESETS[4,prov]=""
 
-PRESETS[5,name]="Opencode Zen"
-PRESETS[5,api]="openai"; PRESETS[5,ep]="https://api.zen.ci/v1"
-PRESETS[5,model]="gpt-4o-mini"; PRESETS[5,ctx]="128000"; PRESETS[5,prov]=""
-
 # read_edit <label> <default>
 # Sets $EDIT_RESULT. Returns non-zero on Ctrl+C.
 # Uses -i to prefill the field with default for easy editing.
@@ -270,15 +266,15 @@ cmd_create() {
     while true; do
         clear; echo -e "${B}Create launch script${R}"; echo ""
         echo "Select provider:"
-        for i in 1 2 3 4 5 6; do
-            [ "$i" -eq 6 ] && echo -e "  ${G}6${R}  Custom" || echo -e "  ${G}$i${R}  ${PRESETS[$i,name]}"
+        for i in 1 2 3 4 5; do
+            [ "$i" -eq 5 ] && echo -e "  ${G}5${R}  Custom" || echo -e "  ${G}$i${R}  ${PRESETS[$i,name]}"
         done
         echo -e "  ${G}m${R}  Main menu"
         echo ""
-        _read -p "Select (1-6, m=menu): " sel
+        _read -p "Select (1-5, m=menu): " sel
         case "$sel" in
-            1|2|3|4|5) use_preset "$sel" ;;
-            6) custom_provider ;;
+            1|2|3|4) use_preset "$sel" ;;
+            5) custom_provider ;;
             m|q) return ;;
         esac
     done
