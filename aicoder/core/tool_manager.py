@@ -4,7 +4,7 @@ Tool manager for AI Coder - Internal tools only
 """
 
 import json
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any, Optional, List
 
 from aicoder.core.config import Config
 from aicoder.core.stats import Stats
@@ -25,7 +25,6 @@ class ToolManager:
     def __init__(self, stats: Stats):
         self.stats = stats
         self.tools: Dict[str, Dict[str, Any]] = {}
-        self.read_files: Set[str] = set()
         self.plugin_system = None  # Will be set by aicoder
 
         # Register internal tools
@@ -160,10 +159,6 @@ class ToolManager:
                 raise Exception(f"Tool {name} has no execute method")
 
             tool_output = execute_func(args_obj)
-
-            # Track that we read this file (special case for read_file)
-            if name == "read_file" and "path" in args_obj:
-                self.read_files.add(args_obj["path"])
 
             return tool_output
 

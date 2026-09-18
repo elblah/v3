@@ -7,6 +7,7 @@ Features:
 - Show detailed information about a specific tool
 - Disable tools (temporarily remove from tool definitions)
 - Enable tools (restore disabled tools)
+- Rename tools (change the name the AI sees and calls)
 - Bulk enable/disable all tools
 
 Commands:
@@ -15,11 +16,13 @@ Commands:
 - /tools show <tool_name>         - Show detailed information about a tool
 - /tools disable <tool_name>      - Disable a tool
 - /tools enable <tool_name>       - Enable a previously disabled tool
+- /tools rename <old> <new>       - Rename a tool
 - /tools disable-all              - Disable all tools (use with caution!)
 - /tools enable-all               - Enable all disabled tools
 - /tools help                     - Show help message
 """
 
+import re
 from typing import Dict, Any, Set
 
 from aicoder.core.config import Config
@@ -286,6 +289,35 @@ def create_plugin(ctx):
 
         return f"Successfully re-enabled {count} tools\n\nTotal available tools: {len(tools)}"
 
+    def rename_tool(old_name: str, new_name: str) -> str:
+        """Rename a tool by changing its key in tool_manager.tools"""
+        old_name = old_name.strip()
+        new_name = new_name.strip()
+
+        if not old_name or not new_name:
+            return "Error: Both names are required\nUsage: /tools rename <current_name> <new_name>"
+
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", new_name):
+            return f"Error: Invalid tool name '{new_name}'\nAllowed: letters, digits, underscore, hyphen (max 64 chars)"
+
+        if old_name == new_name:
+            return f"Tool '{old_name}' is already named '{new_name}'"
+
+        tools = get_all_tools()
+
+        if old_name not in tools and old_name not in disabled_tools:
+            return f"Error: Tool '{old_name}' not found\n\nUse /tools list to see all available tools"
+
+        if new_name in tools or new_name in disabled_tools:
+            return f"Error: A tool named '{new_name}' already exists"
+
+        if old_name in disabled_tools:
+            disabled_tools[new_name] = disabled_tools.pop(old_name)
+            return f"Disabled tool '{old_name}' renamed to '{new_name}'"
+
+        tools[new_name] = tools.pop(old_name)
+        return f"Tool '{old_name}' renamed to '{new_name}'\n\nThe AI will now see and call it as '{new_name}'."
+
     def handle_tools_command(args_str: str) -> str:
         """
         Handle /tools command
@@ -296,6 +328,7 @@ def create_plugin(ctx):
             /tools show <tool_name>          - Show detailed information about a tool
             /tools disable <tool_name>       - Disable a tool
             /tools enable <tool_name>        - Enable a previously disabled tool
+            /tools rename <old> <new>        - Rename a tool (name the AI sees and calls)
             /tools disable-all               - Disable all tools (use with caution!)
             /tools enable-all                - Enable all disabled tools
             /tools help                      - Show help message
@@ -328,6 +361,12 @@ def create_plugin(ctx):
                 # /tools enable all
                 return enable_all_tools()
             return enable_tool(rest.strip())
+
+        elif command == "rename":
+            name_args = rest.split()
+            if len(name_args) != 2:
+                return "Error: Exactly two names required\nUsage: /tools rename <current_name> <new_name>"
+            return rename_tool(name_args[0], name_args[1])
 
         elif command == "disable-all":
             return disable_all_tools()
