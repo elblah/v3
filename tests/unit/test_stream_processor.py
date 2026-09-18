@@ -572,8 +572,8 @@ class TestAccumulateToolCall:
         self.processor.accumulate_tool_call(tool_call, accumulated)
         assert accumulated["call_1"]["function"]["name"] == ""
 
-    def test_zen_proxy_parallel_calls_same_index(self):
-        """Regression: opencode zen sends index=0 on every chunk. Parallel
+    def test_proxy_parallel_calls_same_index(self):
+        """Regression: some proxies send index=0 on every chunk. Parallel
         calls must key by id, not index, or args concatenate into one call."""
         chunks = [
             {"index": 0, "id": "fc_tmp_a", "type": "function", "function": {"name": "grep", "arguments": ""}},

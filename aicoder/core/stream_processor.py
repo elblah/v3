@@ -22,7 +22,7 @@ class StreamProcessor:
     def __init__(self, streaming_client):
         self.streaming_client = streaming_client
         # Maps tool_calls[] index -> call id for this stream. Some proxies
-        # (opencode zen) send index=0 on every chunk; id is the reliable key.
+        # send index=0 on every chunk; id is the reliable key.
         self._index_to_tool_id: Dict[Any, str] = {}
         self._spin_active = False
         self._spin_idx = 0
@@ -237,8 +237,8 @@ class StreamProcessor:
 
         Keying: tool-call id when present; else a name-bearing chunk starts a
         new call; else (pure args delta) route via the index map, falling back
-        to the most recently touched call. Some proxies (opencode zen) send
-        index=0 on every chunk — index alone cannot distinguish parallel calls.
+        to the most recently touched call. Some proxies send index=0 on
+        every chunk — index alone cannot distinguish parallel calls.
         """
         # Handle case where tool_call might not be a dict (unexpected API format)
         if not isinstance(tool_call, dict):

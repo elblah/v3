@@ -3,14 +3,14 @@
 Duplicated from streaming_client.py intentionally - core must stay stable.
 Only import when API_PROVIDER=responses is set.
 
-Targets OpenCode Zen /v1/responses (e.g. free muse-spark model). Keyless
+Targets /v1/responses endpoints (e.g. free-tier models). Keyless
 endpoints are supported: Authorization header is only sent when an API key
 is configured.
 
 Chunks yielded are chat-completions-shaped so stream_processor.py works
-unchanged. Zen usage ({input_tokens,...}) is mapped to the chat shape
-({prompt_tokens,...}) before stats updates and the after_usage_data hook,
-so plugins need no per-provider logic.
+unchanged. Responses-API usage ({input_tokens,...}) is mapped to the chat
+shape ({prompt_tokens,...}) before stats updates and the after_usage_data
+hook, so plugins need no per-provider logic.
 """
 
 import json
