@@ -163,3 +163,9 @@ def create_plugin(ctx):
     ctx.register_hook("before_user_prompt", feed_next)
     ctx.register_command("autoexec", cmd_autoexec, "Manage autoexec commands")
     ctx.register_command("ae", cmd_autoexec, "Alias for /autoexec")
+
+    def cmd_aee(args: str) -> str:
+        """Alias for /autoexec edit"""
+        return cmd_autoexec("edit")
+
+    ctx.register_command("aee", cmd_aee, "Alias for /autoexec edit")
