@@ -39,14 +39,32 @@ OVER_INSTRUCTION = (
     "[OVER] is the only way to hand the prompt back to the user.\n"
     "</system-reminder>"
 )
-CONTINUE_PROMPT = (
-    "Your previous response was cut off (missing [OVER] tag). Without [OVER] "
-    "the turn does not end: this request keeps coming back to you again and "
-    "again until you send [OVER]. "
-    "Two cases: if the stop was unintentional (work or text remains), continue "
-    "exactly where you left off. If the work was actually done and the user "
-    "already has the info, do NOT repeat anything — just send [OVER]."
+CONTINUE_PROMPT_PREFIX = (
+    "Your previous response did not end with [OVER]. [OVER] is how you hand "
+    "the turn back — without it the turn does not end: this request keeps "
+    "coming back to you again and again until you send [OVER]."
 )
+CONTINUE_PROMPT_CASES = (
+    "\n\nTwo cases: if the stop was unintentional (work or text remains), "
+    "continue exactly where you left off. If the work was actually done and "
+    "the user already has the info, do NOT repeat anything — just send "
+    "[OVER].\n\nSend [OVER] now."
+)
+CONTINUE_PROMPT = CONTINUE_PROMPT_PREFIX + CONTINUE_PROMPT_CASES
+
+
+def _continue_prompt(retry_count: int) -> str:
+    """User-voice retry demand, escalating on repeat non-compliance.
+
+    Reminder-voice nudges are ignored by some models (see cache_compact);
+    plain user text with an escalating DEMAND head is the voice that gets
+    obeyed. Escalation sits after the fixed prefix so the on_user_prompt
+    retry-reset guard (startswith on the prefix) keeps matching every variant.
+    """
+    if retry_count <= 1:
+        return CONTINUE_PROMPT
+    demand = f" DEMAND #{retry_count}: you did NOT comply. This is not optional."
+    return CONTINUE_PROMPT_PREFIX + demand + CONTINUE_PROMPT_CASES
 
 
 class OverService:
@@ -117,7 +135,7 @@ class OverCommand:
         if user_input.strip().startswith("/"):
             return None
         # Reset nudge cap on real user prompts; own injected retry must not reset it
-        if not user_input.startswith(CONTINUE_PROMPT):
+        if not user_input.startswith(CONTINUE_PROMPT_PREFIX):
             OverService.reset_retry()
         return user_input + OVER_INSTRUCTION
 
@@ -171,7 +189,7 @@ class OverCommand:
             return None
 
         LogUtils.warn(f"[over] Response missing [OVER] tag (retry #{count})")
-        return CONTINUE_PROMPT
+        return _continue_prompt(count)
 
 
 def create_plugin(ctx):
