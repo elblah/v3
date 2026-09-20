@@ -364,9 +364,9 @@ Prioritize:
             full_response = ""
             for chunk in self.streaming_client.stream_request(
                 summary_messages,
-                stream=False,
+                stream=Config.compaction_stream(),
                 throw_on_error=True,
-                send_tools=False
+                send_tools=Config.compaction_send_tools(),
             ):
                 choices = chunk.get("choices") or []
                 if choices:
