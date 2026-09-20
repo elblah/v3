@@ -3,8 +3,10 @@ cache_compact.py - Cache-aware compaction
 
 One injection path: after_assistant_message_added.
 - [COMPACT_SUMMARY] tag detected -> compact.
-- No tag + context past threshold -> inject standalone <system-reminder> into
-  history; re-injected on every non-complying reply. AI must comply.
+- No tag + context past threshold -> inject an EMERGENCY user-voice nudge into
+  history; re-injected (escalating) on every non-complying reply. AI must
+  comply. User voice is deliberate: reminder-voice <system-reminder> nudges
+  get deprioritized by the model and were ignored in practice.
 - Continuation turn after a fulfilled compaction -> guard cleared, no re-inject.
 
 User command:
@@ -35,7 +37,7 @@ _RE_COMPACT_TAG_LEADING = re.compile(r"^[*_`#\s]*(\[COMPACT_SUMMARY\])")
 _RE_SYSTEM_REMINDER = re.compile(r"\n\n<system-reminder>.*?</system-reminder>", re.DOTALL)
 
 _INSTRUCTION_BODY = (
-    "You MUST comply:\n"
+    "Your next message must BE the compaction summary:\n"
     "1. Do NOT call any tools\n"
     "2. Begin your VISIBLE reply with [COMPACT_SUMMARY] — never put the tag or "
     "summary inside your reasoning/thinking block; the visible message must "
@@ -48,14 +50,25 @@ _INSTRUCTION_BODY = (
 )
 
 FORCE_COMPACT_INSTRUCTION = (
-    "⚠ SYSTEM REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
-    "Context limit approaching. " + _INSTRUCTION_BODY
+    "EMERGENCY: context is almost full. YOU MUST COMPACT NOW.\n\n"
+    + _INSTRUCTION_BODY
 )
+
+
+def _force_compact_instruction(remind_count: int) -> str:
+    """Escalating demand: every ignored reminder comes back louder."""
+    if remind_count <= 1:
+        return FORCE_COMPACT_INSTRUCTION
+    return (
+        f"EMERGENCY — DEMAND #{remind_count}: you did NOT comply. "
+        "YOU MUST COMPACT NOW. This is not optional.\n\n" + _INSTRUCTION_BODY
+    )
+
 
 # Manual route (/ccr): same demand, but sourced from the user, not the threshold.
 USER_COMPACT_INSTRUCTION = (
-    "⚠ USER REQUEST — NOT OPTIONAL. COMPACTION REQUIRED NOW. ⚠\n"
-    "The user explicitly asked for a compaction summary. " + _INSTRUCTION_BODY
+    "COMPACT NOW — direct user command. This is not optional.\n\n"
+    + _INSTRUCTION_BODY
 )
 
 
@@ -81,16 +94,18 @@ def _content_str(content):
 
 
 def _is_compaction_request(msg) -> bool:
-    """True for plugin-injected compaction requests: user messages that are a
-    bare <system-reminder>. Kept out of the recent window so a fulfilled request
-    isn't re-executed every turn.
+    """True for plugin-injected compaction requests: a standalone wrapped
+    <system-reminder> or a user-voice nudge ending in the marker. Kept out of
+    the recent window so a fulfilled request isn't re-executed every turn.
     """
     if msg.get("role") != "user":
         return False
     content = msg.get("content")
     if not isinstance(content, str):
         return False
-    return content.strip().startswith("<system-reminder>")
+    if content.strip().startswith("<system-reminder>"):
+        return True
+    return content.rstrip().endswith("[NUDGE:COMPACTION]")
 
 
 def _find_compact_tag(text: str) -> int:
@@ -209,6 +224,7 @@ def _compact(messages, app, state, keep_percent=0, from_reasoning=False):
         "</system-reminder>"
     )
     state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
+    state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     source = " (from reasoning)" if from_reasoning else ""
@@ -264,6 +280,7 @@ def _compact_keep_assistant(
         "</system-reminder>"
     )
     state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
+    state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     source = " (from reasoning)" if from_reasoning else ""
@@ -282,7 +299,7 @@ def create_plugin(ctx):
         "keep_percent": int(os.environ.get("CACHE_COMPACT_KEEP_PERCENT", "15")),
     }
 
-    state = {"cont_prompt": False}
+    state = {"cont_prompt": False, "remind_count": 0}
 
     def _on_after_compaction():
         """Any compaction (compact_strategy, core auto-compact, /compact)
@@ -292,6 +309,7 @@ def create_plugin(ctx):
         dropped, and the next normal reply clears the guard without injecting."""
         clear_nudges(app, "COMPACTION")
         state["cont_prompt"] = True
+        state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
 
     def _on_system_prompt_append():
         if cfg["threshold"] > 0:
@@ -386,13 +404,19 @@ def create_plugin(ctx):
             if pct < cfg["threshold"]:
                 return
 
-            add_nudge(app, "COMPACTION", FORCE_COMPACT_INSTRUCTION)
+            state["remind_count"] += 1
+            add_nudge(
+                app, "COMPACTION",
+                _force_compact_instruction(state["remind_count"]),
+                user_voice=True,
+            )
             state["cont_prompt"] = False  # new compaction cycle — reset loop guard
             if os.environ.get("CACHE_COMPACT_DEBUG"):
                 c = Config.colors
                 LogUtils.print(
                     f"{c['bold']}{c['cyan']}[cache_compact] {pct:.0f}% context "
-                    f"-> injected compaction request{c['reset']}"
+                    f"-> injected compaction request "
+                    f"(demand #{state['remind_count']}){c['reset']}"
                 )
 
     def _on_ccr_command(args: str) -> str:
@@ -412,6 +436,7 @@ def create_plugin(ctx):
         # A summary asked for right after a fulfilled compaction would otherwise
         # be refused as re-compaction junk — the guard is the caller's intent now.
         state["cont_prompt"] = False
+        state["remind_count"] = 0  # /ccr starts a fresh cycle
         return (
             f"{c['bold']}[ccr] compaction requested{c['reset']} "
             f"({pct:.0f}% of context) — the AI must reply with [COMPACT_SUMMARY] "

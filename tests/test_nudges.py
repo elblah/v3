@@ -5,7 +5,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aicoder.core.nudges import NUDGE_TAG_RE, add_nudge, clear_nudges, wrap
+from aicoder.core.nudges import (
+    NUDGE_TAG_RE,
+    add_nudge,
+    clear_nudges,
+    is_standalone_nudge,
+    wrap,
+)
 
 
 class MockHistory:
@@ -73,3 +79,46 @@ def test_clear_nudges_noop_when_none():
 def test_tag_re_matches():
     assert NUDGE_TAG_RE.search("[NUDGE:COMPACTION]").group(1) == "COMPACTION"
     assert NUDGE_TAG_RE.search("plain") is None
+
+
+def test_add_nudge_user_voice_format():
+    app = MockApp()
+    add_nudge(app, "COMPACTION", "do it", user_voice=True)
+    assert app.message_history.messages[-1]["content"] == "do it\n\n[NUDGE:COMPACTION]"
+
+
+def test_clear_nudges_removes_user_voice():
+    app = MockApp()
+    add_nudge(app, "COMPACTION", "compact now", user_voice=True)
+    app.message_history.add_user_message("real question")
+
+    clear_nudges(app, "COMPACTION")
+
+    contents = [m["content"] for m in app.message_history.messages]
+    assert not any("compact now" in c for c in contents)
+    assert "real question" in contents
+
+
+def test_clear_nudges_keeps_other_category_user_voice():
+    app = MockApp()
+    add_nudge(app, "COMPACTION", "compact now", user_voice=True)
+    add_nudge(app, "REMINDER", "weekly", user_voice=True)
+
+    clear_nudges(app, "COMPACTION")
+
+    contents = [m["content"] for m in app.message_history.messages]
+    assert not any("[NUDGE:COMPACTION]" in c for c in contents)
+    assert any("[NUDGE:REMINDER]" in c for c in contents)
+
+
+def test_is_standalone_nudge():
+    wrapped = wrap("COMPACTION", "do it")
+    user_voice = "do it\n\n[NUDGE:COMPACTION]"
+    assert is_standalone_nudge({"role": "user", "content": wrapped}, "COMPACTION")
+    assert is_standalone_nudge({"role": "user", "content": user_voice}, "COMPACTION")
+    # Appended to real user content (reminder voice) — never standalone.
+    assert not is_standalone_nudge(
+        {"role": "user", "content": "question\n\n" + wrapped}, "COMPACTION"
+    )
+    assert not is_standalone_nudge({"role": "assistant", "content": wrapped}, "COMPACTION")
+    assert not is_standalone_nudge({"role": "user", "content": "plain"}, "COMPACTION")

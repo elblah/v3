@@ -2,8 +2,9 @@
 
 Injection lives entirely in after_assistant_message_added:
 - [COMPACT_SUMMARY] tag -> compact.
-- No tag + context past threshold -> standalone <system-reminder> injected into
-  history; re-injected on every non-complying reply (no stand-down).
+- No tag + context past threshold -> EMERGENCY user-voice nudge injected into
+  history; re-injected (escalating DEMAND #N) on every non-complying reply.
+  User voice is deliberate: reminder-voice nudges were ignored by the model.
 - Guards: below threshold, continuation turn (cont_prompt) never re-injects.
 - Refusal: summary right after a fulfilled compaction is dropped.
 """
@@ -16,6 +17,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from aicoder.core.nudges import is_standalone_nudge
 
 PLUGIN_PATH = Path(__file__).parent.parent / "aicoder" / "plugins" / "cache_compact.py"
 
@@ -107,9 +110,7 @@ def _assistant_turn(ps, content, pct_tokens, tool_calls=False):
 
 def _reminders(ps):
     return [m for m in ps.app.message_history.get_messages()
-            if m["role"] == "user"
-            and isinstance(m.get("content"), str)
-            and m["content"].startswith("<system-reminder>")]
+            if is_standalone_nudge(m, "COMPACTION")]
 
 
 def _pct(ps, pct):
@@ -118,14 +119,23 @@ def _pct(ps, pct):
 
 
 def test_is_compaction_request_only_standalone(ps):
-    """Standalone reminders filtered; other messages pass through."""
+    """Standalone requests (wrapped or user-voice) filtered; others pass."""
     standalone = {"role": "user", "content": "<system-reminder>\nSYSTEM: COMPACTION REQUIRED.\n</system-reminder>"}
+    user_voice = {"role": "user", "content": "COMPACT NOW\n\n[NUDGE:COMPACTION]"}
     appended = {"role": "user", "content": "Q\n\n<system-reminder>\nSYSTEM: x\n</system-reminder>"}
     assistant = {"role": "assistant", "content": "reply"}
 
     assert ps.module._is_compaction_request(standalone)
+    assert ps.module._is_compaction_request(user_voice)
     assert not ps.module._is_compaction_request(appended)
     assert not ps.module._is_compaction_request(assistant)
+
+
+def test_is_compaction_request_user_voice(ps):
+    """/ccr-style user-voice request is excluded from the kept recent window."""
+    _seed(ps)
+    req = {"role": "user", "content": "body\n\n[NUDGE:COMPACTION]"}
+    assert ps.module._is_compaction_request(req)
 
 
 def test_no_injection_below_threshold(ps):
@@ -136,19 +146,55 @@ def test_no_injection_below_threshold(ps):
 
 
 def test_injection_above_threshold(ps):
-    """Reply at 78%: standalone reminder injected into history."""
+    """Reply at 78%: EMERGENCY user-voice nudge injected into history."""
     _seed(ps)
     _assistant_turn(ps, "plain reply", _pct(ps, 78))
     reminders = _reminders(ps)
     assert len(reminders) == 1
-    assert "COMPACTION REQUIRED" in reminders[0]["content"]
+    assert "YOU MUST COMPACT NOW" in reminders[0]["content"]
+
+
+def test_nudge_is_user_voice(ps):
+    """Injected nudge is plain user text with a trailing marker — not a wrapped
+    system-reminder (those were deprioritized and ignored by the model)."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    nudge = _reminders(ps)[0]
+    assert nudge["role"] == "user"
+    assert not nudge["content"].startswith("<system-reminder>")
+    assert nudge["content"].rstrip().endswith("[NUDGE:COMPACTION]")
+
+
+def test_nudge_escalates_on_non_compliance(ps):
+    """Each ignored reminder returns with a louder DEMAND #N head."""
+    _seed(ps)
+    _assistant_turn(ps, "reply 1", _pct(ps, 78))
+    _assistant_turn(ps, "reply 2", _pct(ps, 78))
+    reminders = _reminders(ps)
+    assert len(reminders) == 2
+    assert "DEMAND #" not in reminders[0]["content"]
+    assert "DEMAND #2" in reminders[1]["content"]
+
+
+def test_escalation_resets_after_compaction(ps):
+    """A fulfilled compaction resets the demand counter: fresh cycle starts
+    with the plain EMERGENCY head again."""
+    _seed(ps)
+    _assistant_turn(ps, "reply 1", _pct(ps, 78))
+    _assistant_turn(ps, "reply 2", _pct(ps, 78))
+    _assistant_turn(ps, "[COMPACT_SUMMARY] done", _pct(ps, 78))
+    _assistant_turn(ps, "resuming", _pct(ps, 78))  # continuation — no inject
+    _assistant_turn(ps, "new work", _pct(ps, 78))  # fresh cycle
+    reminders = _reminders(ps)
+    assert len(reminders) == 1
+    assert "DEMAND #" not in reminders[0]["content"]
 
 
 def test_injection_uses_forced_instruction(ps):
-    """Injection always uses the NOT OPTIONAL instruction (no soft variant)."""
+    """Injection always uses the demanding instruction (no soft variant)."""
     _seed(ps)
     _assistant_turn(ps, "plain reply", _pct(ps, 78))
-    assert "NOT OPTIONAL" in _reminders(ps)[0]["content"]
+    assert "COMPLY NOW" in _reminders(ps)[0]["content"]
 
 
 def test_injection_past_defer_zone(ps):
@@ -344,9 +390,9 @@ def test_ccr_injects_request_below_threshold(ps):
     reminders = _reminders(ps)
     assert len(reminders) == 1
     assert "[NUDGE:COMPACTION]" in reminders[0]["content"]
-    assert "USER REQUEST" in reminders[0]["content"]
-    assert "NOT OPTIONAL" in reminders[0]["content"]
-    assert "COMPACTION REQUIRED" in reminders[0]["content"]
+    assert "direct user command" in reminders[0]["content"]
+    assert "not optional" in reminders[0]["content"]
+    assert "COMPLY NOW" in reminders[0]["content"]
     assert out  # handler prints a confirmation
 
 
@@ -357,7 +403,7 @@ def test_ccr_replaces_pending_nudge(ps):
     _ccr(ps)
     reminders = _reminders(ps)
     assert len(reminders) == 1
-    assert "USER REQUEST" in reminders[0]["content"]
+    assert "direct user command" in reminders[0]["content"]
 
 
 def test_ccr_unlocks_summary_after_compaction(ps):
