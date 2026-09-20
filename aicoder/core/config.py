@@ -895,6 +895,26 @@ class Config:
         return int(os.environ.get("COMPACT_PROTECT_ROUNDS", "2"))
 
     @staticmethod
+    def compaction_send_tools() -> bool:
+        """
+        Get whether tool definitions are included in compaction summarizer requests.
+
+        Set AICODER_COMPACTION_SEND_TOOLS=1 to include tool definitions.
+        Default (unset): disabled.
+        """
+        return env_bool("AICODER_COMPACTION_SEND_TOOLS", default=False)
+
+    @staticmethod
+    def compaction_stream() -> bool:
+        """
+        Get whether the compaction summarizer request uses streaming.
+
+        Set AICODER_COMPACTION_STREAM=1 for gateways that reject
+        non-streaming requests. Default (unset): non-streaming.
+        """
+        return env_bool("AICODER_COMPACTION_STREAM", default=False)
+
+    @staticmethod
     def min_summary_length() -> int:
         """
         Get minimum summary length
