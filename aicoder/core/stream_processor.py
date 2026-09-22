@@ -19,8 +19,11 @@ _SPINNER = "\\|/-"
 class StreamProcessor:
     """Handles streaming response processing and chunk accumulation"""
 
-    def __init__(self, streaming_client):
+    def __init__(self, streaming_client, plugin_system=None):
         self.streaming_client = streaming_client
+        self.plugin_system = plugin_system
+        # Set by _emit_stream_text when a plugin wants the stream stopped.
+        self.stream_aborted = False
         # Maps tool_calls[] index -> call id for this stream. Some proxies
         # send index=0 on every chunk; id is the reliable key.
         self._index_to_tool_id: Dict[Any, str] = {}
@@ -54,6 +57,20 @@ class StreamProcessor:
         sys.stdout.flush()
         self._spin_active = False
 
+    def _emit_stream_text(self, channel: str, text: str) -> None:
+        """Forward live generated text to plugins.
+
+        Sets self.stream_aborted when a plugin asks to stop the stream
+        (e.g. loop detection). A flag, not a return value: the tool-call path
+        reaches this method through the process_chunk_callback, whose return
+        value belongs to the caller, not to us.
+        """
+        if not self.plugin_system:
+            return
+        results = self.plugin_system.call_hooks("on_stream_text", channel, text)
+        if results and any(results):
+            self.stream_aborted = True
+
     def process_stream(
         self,
         messages: List[Dict[str, Any]],
@@ -68,6 +85,7 @@ class StreamProcessor:
         reasoning_detected = False
         reasoning_printed = False
         detected_model = None
+        self.stream_aborted = False
 
         # Debug: show thinking configuration at start of stream
         if Config.debug():
@@ -85,6 +103,10 @@ class StreamProcessor:
         thinking_signature = ""
         # Responses-API encrypted reasoning items (replayed next turn)
         reasoning_items = []
+
+        # Plugins reset their per-response stream state here
+        if self.plugin_system:
+            self.plugin_system.call_hooks("on_stream_start")
 
         try:
             for chunk in self.streaming_client.stream_request(messages, send_tools=True):
@@ -139,7 +161,11 @@ class StreamProcessor:
                                 if reasoning_field_name is None:
                                     reasoning_field_name = field
                                 self._spin_tick()
+                                self._emit_stream_text("reasoning", reasoning)
                                 break
+
+                        if self.stream_aborted:
+                            break
 
                     # Capture thinking signature for Anthropic-style APIs
                     if delta.get("thinking_signature"):
@@ -178,18 +204,34 @@ class StreamProcessor:
                         full_response += content
                         colored_content = self.streaming_client.process_with_colorization(content)
                         builtins.print(colored_content, end="", flush=True)
+                        self._emit_stream_text("content", content)
+                        if self.stream_aborted:
+                            break
 
                 # Tool calls
                 if "delta" in choice and choice["delta"].get("tool_calls"):
                     for tool_call in choice["delta"]["tool_calls"]:
                         self._spin_tick()
                         process_chunk_callback(tool_call, accumulated_tool_calls)
+                        if self.stream_aborted:
+                            break
+                    if self.stream_aborted:
+                        break
 
                 # Finish reason
                 if choice.get("finish_reason") == "tool_calls":
                     pass
 
             self._spin_stop()
+
+            if self.stream_aborted:
+                return {
+                    "should_continue": False,
+                    "full_response": full_response,
+                    "reasoning_content": accumulated_reasoning,
+                    "reasoning_field": reasoning_field_name,
+                    "accumulated_tool_calls": accumulated_tool_calls,
+                }
 
             # Reasoning not yet printed (e.g. tool-call-only turn, reasoning after
             # last content chunk) — print it now before the stream ends.
@@ -257,6 +299,9 @@ class StreamProcessor:
                 f"*** accumulate_tool_call: index={index}, name={name or 'unknown'}, "
                 f"args={args[:50]!r}"
             )
+
+        if args:
+            self._emit_stream_text("tool_args", args)
 
         # Determine which accumulated call this chunk belongs to.
         if tool_id:
