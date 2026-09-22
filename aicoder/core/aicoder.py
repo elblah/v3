@@ -304,7 +304,19 @@ class AICoder:
             user_input = read_stdin_as_string()
             if Config.debug():
                 LogUtils.debug(f"*** got stdin input: {repr(user_input[:50])}")
-            if not user_input:
+
+            # Startup prompt feeders (autoexec, initial_prompt) register on
+            # before_user_prompt, which only fires in the interactive loop.
+            # Drain them here so piped sessions get the same startup lines.
+            startup_lines = []
+            self.plugin_system.call_hooks("before_user_prompt")
+            guard = 0
+            while self.has_next_prompt() and guard < 1000:
+                startup_lines.append(self.get_next_prompt())
+                self.plugin_system.call_hooks("before_user_prompt")
+                guard += 1
+
+            if not user_input and not startup_lines:
                 if Config.debug():
                     LogUtils.debug("*** no stdin input, returning")
                 return
@@ -313,7 +325,7 @@ class AICoder:
             initial_message_count = len(self.message_history.get_messages())
 
             # Process each line for commands
-            lines = user_input.strip().split("\n")
+            lines = startup_lines + user_input.strip().split("\n")
             for line in lines:
                 line = line.strip()
                 if not line:
