@@ -66,7 +66,7 @@ class AICoder:
 
         # Extracted components (need to be initialized after core services)
         self.tool_executor = ToolExecutor(self.tool_manager, self.message_history, self.plugin_system)
-        self.stream_processor = StreamProcessor(self.streaming_client)
+        self.stream_processor = StreamProcessor(self.streaming_client, self.plugin_system)
         self.session_manager = SessionManager(self)
 
         # Command system
