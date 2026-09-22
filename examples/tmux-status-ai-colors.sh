@@ -24,6 +24,7 @@ declare -A pane_window_id
 declare -A pane_state
 declare -A win_code         # wid -> aggregated state for windows holding aicoders
 declare -A aicoder_panes
+declare -A pane_pid         # pane_id -> pid of the pane's first process
 
 state_rank() { # higher rank = more important, wins the window
     case $1 in
@@ -45,6 +46,23 @@ apply_style() { # wid code
     esac
 }
 
+# true if pid still runs under the pane's process tree. orphaned children
+# (bg jobs, daemons) inherit AICODER_TMUX_PANE but outlive aicoder, so an
+# env match alone keeps the window colored after you leave aicoder.
+is_under_pane() { # pid pane_id
+    local pid=$1 root=${pane_pid[$2]:-} stat ppid
+    [[ -z $pid || -z $root ]] && return 1
+    while [[ -n $pid && $pid -gt 1 ]]; do
+        [[ $pid == "$root" ]] && return 0
+        # comm may contain spaces/parens: fields start after last ') '
+        stat=$(cat "/proc/$pid/stat" 2>/dev/null) || return 1
+        stat=${stat##*) }
+        read -r _ ppid _ <<<"$stat"
+        pid=$ppid
+    done
+    return 1
+}
+
 if [[ -r $STATE_FILE ]]; then
     while read -r kind key value; do
         case $kind in
@@ -58,18 +76,24 @@ fi
 # list-panes pass below (overlaps the tmux round trip).
 exec 9< <(grep -aozH 'AICODER_TMUX_PANE=[^[:cntrl:]]*' /proc/[0-9]*/environ 2>/dev/null)
 
-# single pass: window_id, pane_id
-while read -r window_id pane_id _; do
+# single pass: window_id, pane_id, pane_pid
+while read -r window_id pane_id ppid _; do
     pane_window_id[$pane_id]="$window_id"
-done < <(tmux list-panes -a -F '#{window_id} #{pane_id}')
+    pane_pid[$pane_id]="$ppid"
+done < <(tmux list-panes -a -F '#{window_id} #{pane_id} #{pane_pid}')
 
 # discover aicoder panes via AICODER_TMUX_PANE, set by the launcher in the
 # agent env (plain TMUX_PANE is inherited by every pane shell, so it cannot
 # discriminate). the value is the pane id; subprocesses inherit the var,
-# the assoc array dedups.
+# the assoc array dedups. a hit counts only while it still runs under the
+# pane's process tree — after aicoder exits its orphans keep the var but
+# must not hold the window colored.
 while IFS= read -r -d '' hit <&9; do
     pane=${hit##*=}
-    [[ -n $pane ]] && aicoder_panes[$pane]=1
+    [[ -z $pane ]] && continue
+    pid=${hit#/proc/}
+    pid=${pid%%/*}
+    is_under_pane "$pid" "$pane" && aicoder_panes[$pane]=1
 done
 exec 9<&-
 

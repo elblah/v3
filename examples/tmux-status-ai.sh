@@ -6,25 +6,49 @@ declare -A aicoders_window_status
 declare -A tmux_pane_window_id
 declare -A windows_names
 declare -A aicoder_panes
+declare -A pane_pid           # pane_id -> pid of pane's first process
+
+# true if pid still runs under the pane's process tree. orphaned children
+# (bg jobs, daemons) inherit AICODER_TMUX_PANE but outlive aicoder, so an
+# env match alone keeps the window emoji after you leave aicoder.
+is_under_pane() { # pid pane_id
+    local pid=$1 root=${pane_pid[$2]:-} stat ppid
+    [[ -z $pid || -z $root ]] && return 1
+    while [[ -n $pid && $pid -gt 1 ]]; do
+        [[ $pid == "$root" ]] && return 0
+        # comm may contain spaces/parens: fields start after last ') '
+        stat=$(cat "/proc/$pid/stat" 2>/dev/null) || return 1
+        stat=${stat##*) }
+        read -r _ ppid _ <<<"$stat"
+        pid=$ppid
+    done
+    return 1
+}
 
 # env scan starts immediately in parallel; results drained after the
 # list-panes pass below (overlaps the tmux round trip).
 exec 9< <(grep -aozH 'AICODER_TMUX_PANE=[^[:cntrl:]]*' /proc/[0-9]*/environ 2>/dev/null)
 
-# single pass: window_id, pane_id, window_name
-while read -r window_id pane_id window_title; do
+# single pass: window_id, pane_id, pane_pid, window_name
+while read -r window_id pane_id ppid window_title; do
     tmux_pane_window_id[$pane_id]="$window_id"
+    pane_pid[$pane_id]="$ppid"
     aicoders_window_status[$window_id]=0
     windows_names[$window_id]="$window_title"
-done < <(tmux list-panes -a -F '#{window_id} #{pane_id} #{window_name}')
+done < <(tmux list-panes -a -F '#{window_id} #{pane_id} #{pane_pid} #{window_name}')
 
 # discover aicoder panes via AICODER_TMUX_PANE, set by the launcher in the
 # agent env (plain TMUX_PANE is inherited by every pane shell, so it cannot
 # discriminate). the value is the pane id; subprocesses inherit the var,
-# the assoc array dedups.
+# the assoc array dedups. a hit counts only while it still runs under the
+# pane's process tree — after aicoder exits its orphans keep the var but
+# must not hold the window emoji.
 while IFS= read -r -d '' hit <&9; do
     pane=${hit##*=}
-    [[ -n $pane ]] && aicoder_panes[$pane]=1
+    [[ -z $pane ]] && continue
+    pid=${hit#/proc/}
+    pid=${pid%%/*}
+    is_under_pane "$pid" "$pane" && aicoder_panes[$pane]=1
 done
 exec 9<&-
 
