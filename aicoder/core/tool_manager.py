@@ -106,6 +106,19 @@ class ToolManager:
         name = func.get("name")
         args = func.get("arguments", "{}")
 
+        # Execution gate (TOOLS_EXECUTE). Checked before validation and
+        # before any tool body runs, so nothing upstream can bypass it.
+        if name and not self._is_execution_allowed(name):
+            return {
+                "tool": name,
+                "friendly": f"✗ Tool execution disabled: {name}",
+                "detailed": (
+                    f"ERROR: Tool execution is disabled for '{name}' in this session; "
+                    "DO NOT TRY TO CALL IT AGAIN!"
+                ),
+                "success": False,
+            }
+
         try:
             tool_def = self._validate_tool(name)
             args_obj = self._parse_arguments(args)
@@ -202,10 +215,20 @@ class ToolManager:
 
     def needs_approval(self, tool_name: str) -> bool:
         """Check if a tool needs approval"""
+        if not self._is_execution_allowed(tool_name):
+            # Never prompt for a call that is refused at execution time anyway.
+            return False
         tool_def = self.tools.get(tool_name)
         if not tool_def:
             return True
         return not tool_def.get("auto_approved", False)
+
+    def _is_execution_allowed(self, tool_name: Optional[str]) -> bool:
+        """Check TOOLS_EXECUTE for a tool name (None = all allowed)"""
+        allowed = Config.tools_execute()
+        if allowed is None:
+            return True
+        return tool_name in allowed
 
     def execute_tool_with_args(self, execution_args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute tool with ToolExecutionArgs (compatibility method)"""

@@ -628,6 +628,37 @@ class Config:
         return set()
 
     @staticmethod
+    def tools_execute() -> Optional[Set[str]]:
+        """
+        Get tool names allowed to actually EXECUTE from TOOLS_EXECUTE.
+
+        Independent of TOOLS_ALLOW: TOOLS_ALLOW controls which tools are
+        ADVERTISED to the model, TOOLS_EXECUTE controls which of them may
+        really run. A tool that is advertised but not executable still appears
+        in the API request and returns an error result when called.
+
+        The execution check happens at the single point where a tool body is
+        invoked, so it cannot be bypassed by YOLO mode, auto-approved tools or
+        the approval hooks.
+
+        Format: comma-separated list of tool names.
+        TOOLS_EXECUTE="none" (case-insensitive) means no tool may execute.
+
+        Example: TOOLS_EXECUTE="read_file,grep,list_directory" (read-only)
+        TOOLS_EXECUTE="none" (tools are listed but never run)
+
+        Returns:
+            Set of executable tool names, empty set if "none",
+            or None if not set (all tools may execute)
+        """
+        env_val = os.environ.get("TOOLS_EXECUTE", "").strip()
+        if env_val.lower() == "none":
+            return set()
+        if env_val:
+            return set(name.strip() for name in env_val.split(",") if name.strip())
+        return None
+
+    @staticmethod
     def tools_not_found_relist() -> bool:
         """
         Whether a tool-not-found error relists the available tool names.
