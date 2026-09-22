@@ -29,6 +29,18 @@ from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 
 
+def _tag_lines(text: str) -> str:
+    """Prefix every non-empty line with a gold [tools_manager] tag.
+
+    Makes all /tools output greppable and filterable (e.g. grep -v 'tools_manager').
+    """
+    colors = Config.colors
+    tag = f"{colors['bold']}{colors['yellow']}[tools_manager]{colors['reset']}"
+    return "\n".join(
+        f"{tag} {line}" if line.strip() else line for line in text.split("\n")
+    )
+
+
 def create_plugin(ctx):
     """Tools manager plugin"""
 
@@ -318,7 +330,7 @@ def create_plugin(ctx):
         tools[new_name] = tools.pop(old_name)
         return f"Tool '{old_name}' renamed to '{new_name}'\n\nThe AI will now see and call it as '{new_name}'."
 
-    def handle_tools_command(args_str: str) -> str:
+    def _dispatch_tools_command(args_str: str) -> str:
         """
         Handle /tools command
 
@@ -411,6 +423,10 @@ Notes:
                 return show_tool(command)
             else:
                 return f"Unknown command: {command}\n\nUse /tools help for usage information"
+
+    def handle_tools_command(args_str: str) -> str:
+        """Handle /tools command, tagging every output line for easy filtering"""
+        return _tag_lines(_dispatch_tools_command(args_str))
 
     # Register the /tools command
     ctx.register_command("/tools", handle_tools_command, description="Manage available tools")
