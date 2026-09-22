@@ -163,6 +163,34 @@ class ResponsesClient:
         headers.update(Config.http_headers())
         return headers
 
+    @staticmethod
+    def _content_to_responses_parts(content: List[Any]) -> Any:
+        """Convert chat-completions content parts to Responses API input parts.
+
+        Returns a Responses content array when image parts are present,
+        otherwise a plain string (text-only messages keep the old shape).
+        """
+        parts = []
+        has_image = False
+        for block in content:
+            if not isinstance(block, dict):
+                parts.append({"type": "input_text", "text": str(block)})
+                continue
+            btype = block.get("type")
+            if btype == "image_url":
+                image_url = block.get("image_url") or {}
+                url = image_url.get("url", "") if isinstance(image_url, dict) else str(image_url)
+                if url:
+                    parts.append({"type": "input_image", "image_url": url})
+                    has_image = True
+            else:
+                text = block.get("text", "")
+                if text:
+                    parts.append({"type": "input_text", "text": text})
+        if has_image:
+            return parts
+        return "".join(p["text"] for p in parts)
+
     def _prepare_request_data(self, messages: List[Dict[str, Any]], send_tools: bool, stream: bool) -> Dict[str, Any]:
         system_parts = []
         input_items = []
@@ -198,10 +226,8 @@ class ResponsesClient:
             else:
                 content = msg.get("content", "")
                 if isinstance(content, list):
-                    content = "".join(
-                        block.get("text", "") if isinstance(block, dict) else str(block)
-                        for block in content
-                    )
+                    converted = self._content_to_responses_parts(content)
+                    content = converted
                 input_items.append({"role": role or "user", "content": content})
 
         request_data: Dict[str, Any] = {
