@@ -122,10 +122,14 @@ def transform_user_input(user_input: str) -> Optional[Any]:
             content.append({
                 "type": "text",
                 "text": (
-                    f"[AUDIO CONTENT — {path} follows as an audio data part, "
-                    "not text. Listen to it directly: it may be speech in any "
-                    "language, music, or sound; the audible content is what "
-                    "matters, not this filename.]"
+                    f"[AUDIO CONTENT — {path} is attached to this message as "
+                    "an audio data part, not text. The audio itself is the "
+                    "source of truth: it may be speech in any language, "
+                    "music, sound effects — anything audible. If it reaches "
+                    "you rendered as garbled or partial text, that text is a "
+                    "lossy machine transcript of the audio, not literal "
+                    "words — do not answer about the garbled text; answer "
+                    "about what the audio actually contains.]"
                 ),
             })
             content.append(create_audio_content_part(path))
