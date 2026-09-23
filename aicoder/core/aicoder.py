@@ -52,6 +52,9 @@ class AICoder:
         # Core components
         self.stats = Stats()
         self.message_history = MessageHistory(self.stats)
+        # Set when a plugin already injected this prompt into history as a
+        # multimodal message; the raw prompt must not be re-added after it.
+        self._plugin_prompt_consumed = False
         self.tool_manager = ToolManager(self.stats)
         self.streaming_client = ApiClient(self.stats, self.tool_manager)
         self.context_bar = ContextBar()
@@ -255,6 +258,7 @@ class AICoder:
                     continue
 
                 # Apply plugin transformations (aliases, snippets, etc.)
+                self._plugin_prompt_consumed = False
                 user_input = self.plugin_system.call_hooks_with_return("after_user_prompt", user_input) or user_input
 
                 # Handle commands
@@ -273,7 +277,14 @@ class AICoder:
                     if result.message:
                         self.add_user_input(result.message)
                 else:
-                    self.add_user_input(user_input)
+                    if self._plugin_prompt_consumed:
+                        # Plugin already added the multimodal message; adding
+                        # the raw prompt too would duplicate the text after
+                        # the media part. Keep it in prompt history only.
+                        from aicoder.core import prompt_history
+                        prompt_history.save_prompt(user_input.strip())
+                    else:
+                        self.add_user_input(user_input)
 
                 # Process with AI
                 self.session_manager.process_with_ai()
@@ -415,6 +426,7 @@ class AICoder:
         """Add a message from plugins to conversation"""
         self.message_history.add_user_message(message)
         self.stats.increment_user_interactions()
+        self._plugin_prompt_consumed = True
 
     def handle_test_message(self, message: Dict[str, Any]) -> list:
         """
