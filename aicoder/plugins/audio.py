@@ -129,7 +129,10 @@ def transform_user_input(user_input: str) -> Optional[Any]:
                     "you rendered as garbled or partial text, that text is a "
                     "lossy machine transcript of the audio, not literal "
                     "words — do not answer about the garbled text; answer "
-                    "about what the audio actually contains.]"
+                    "about what the audio actually contains. Answer directly "
+                    "from what you received — do NOT call tools to read, "
+                    "decode, or transcribe the file; you have no audio tools, "
+                    "the message content IS the audio as delivered to you.]"
                 ),
             })
             content.append(create_audio_content_part(path))
