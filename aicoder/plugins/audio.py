@@ -116,6 +116,18 @@ def transform_user_input(user_input: str) -> Optional[Any]:
     content = [{"type": "text", "text": clean_text}] if clean_text else []
     for path in valid:
         try:
+            # Marker text part: some models render the following input_audio
+            # part as garbled text and would treat it as literal words.
+            # Content unknown: speech, music, effects, any language.
+            content.append({
+                "type": "text",
+                "text": (
+                    f"[AUDIO CONTENT — {path} follows as an audio data part, "
+                    "not text. Listen to it directly: it may be speech in any "
+                    "language, music, or sound; the audible content is what "
+                    "matters, not this filename.]"
+                ),
+            })
             content.append(create_audio_content_part(path))
         except Exception as e:
             content.append({"type": "text", "text": f"[Error loading audio {path}: {e}]"})
