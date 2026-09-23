@@ -167,11 +167,12 @@ class ResponsesClient:
     def _content_to_responses_parts(content: List[Any]) -> Any:
         """Convert chat-completions content parts to Responses API input parts.
 
-        Returns a Responses content array when image parts are present,
-        otherwise a plain string (text-only messages keep the old shape).
+        Returns a Responses content array when image or audio parts are
+        present, otherwise a plain string (text-only messages keep the old
+        shape).
         """
         parts = []
-        has_image = False
+        has_media = False
         for block in content:
             if not isinstance(block, dict):
                 parts.append({"type": "input_text", "text": str(block)})
@@ -182,12 +183,21 @@ class ResponsesClient:
                 url = image_url.get("url", "") if isinstance(image_url, dict) else str(image_url)
                 if url:
                     parts.append({"type": "input_image", "image_url": url})
-                    has_image = True
+                    has_media = True
+            elif btype == "input_audio":
+                audio = block.get("input_audio") or {}
+                data = audio.get("data", "")
+                if data:
+                    parts.append({
+                        "type": "input_audio",
+                        "input_audio": {"data": data, "format": audio.get("format") or "wav"},
+                    })
+                    has_media = True
             else:
                 text = block.get("text", "")
                 if text:
                     parts.append({"type": "input_text", "text": text})
-        if has_image:
+        if has_media:
             return parts
         return "".join(p["text"] for p in parts)
 
