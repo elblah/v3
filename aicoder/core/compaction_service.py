@@ -38,14 +38,14 @@ class CompactionService:
 
     @staticmethod
     def _is_image_part(item: Any) -> bool:
-        return isinstance(item, dict) and item.get("type") in ("image_url", "image")
+        return isinstance(item, dict) and item.get("type") in ("image_url", "image", "input_audio")
 
     @staticmethod
     def _get_content_as_string(content: Any) -> Optional[str]:
         """Safely get message content as string (handles both string and list types).
-        Returns None if content contains images (should be filtered out)."""
+        Returns None if content contains images or audio (should be filtered out)."""
         if isinstance(content, list):
-            # For multi-modal messages, check for images
+            # For multi-modal messages, check for images or audio
             for item in content:
                 if CompactionService._is_image_part(item):
                     return None  # Discard messages with images

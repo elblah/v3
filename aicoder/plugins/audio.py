@@ -2,7 +2,15 @@
 Audio Plugin for AI Coder v3
 
 Enables audio input via @/path/to/audio.mp3 syntax.
-Supports: MP3, WAV, OGG, FLAC, AAC, M4A
+Supports: MP3, WAV, OGG, FLAC, AAC, M4A, OPUS
+
+Provider wire formats:
+- Default (chat completions): OpenAI `input_audio` content part.
+- API_PROVIDER=responses: same part; responses_client converts it into a
+  Responses API input_audio item.
+- API_PROVIDER=anthropic: Anthropic-format input_audio block with base64
+  source (accepted by Anthropic-format endpoints/proxies; the official
+  Anthropic Messages API does not accept audio input yet).
 
 Usage:
     @song.mp3 What's this song?
@@ -14,7 +22,7 @@ import os
 import re
 from typing import Dict, Any, List, Optional
 
-
+# Supported audio formats
 SUPPORTED_FORMATS = {
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
@@ -24,6 +32,13 @@ SUPPORTED_FORMATS = {
     ".m4a": "audio/mp4",
     ".opus": "audio/opus",
 }
+
+# Refuse files bigger than this (base64 inflates payload ~33%). Override in MB.
+MAX_AUDIO_MB = float(os.environ.get("AICODER_AUDIO_MAX_MB", "25"))
+
+
+def _is_anthropic_provider() -> bool:
+    return os.environ.get("API_PROVIDER", "").lower() == "anthropic"
 
 
 def is_supported_audio(file_path: str) -> bool:
@@ -37,37 +52,42 @@ def encode_audio(file_path: str) -> str:
 
 
 def create_audio_content_part(file_path: str) -> Dict[str, Any]:
+    """Create an audio content part shaped for the active API provider."""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Audio not found: {file_path}")
     if not is_supported_audio(file_path):
         raise ValueError(f"Unsupported format: {file_path}")
 
+    size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    if size_mb > MAX_AUDIO_MB:
+        raise ValueError(
+            f"Audio too large: {size_mb:.1f} MB > {MAX_AUDIO_MB:g} MB cap "
+            "(AICODER_AUDIO_MAX_MB)"
+        )
+
     ext = os.path.splitext(file_path)[1].lower()
     media_type = SUPPORTED_FORMATS[ext]
     data = encode_audio(file_path)
 
-    # Anthropic format vs OpenAI format
-    if os.environ.get("API_PROVIDER", "").lower() == "anthropic":
-        # NOTE: Anthropic Messages API does NOT officially support audio input.
-        # This format is based on GitHub issue #1198 feature request (Feb 2026).
-        # May not work until Anthropic adds official support.
+    if _is_anthropic_provider():
+        # Anthropic-format block: base64 source, mirrors image block layout.
         return {
-            "type": "audio",
+            "type": "input_audio",
             "source": {
                 "type": "base64",
                 "media_type": media_type,
                 "data": data,
             },
         }
-    else:
-        # OpenAI and compatible providers (verified working)
-        return {
-            "type": "input_audio",
-            "input_audio": {
-                "data": data,
-                "format": ext.lstrip("."),
-            },
-        }
+
+    # OpenAI chat completions (and Responses input via responses_client).
+    return {
+        "type": "input_audio",
+        "input_audio": {
+            "data": data,
+            "format": ext.lstrip("."),
+        },
+    }
 
 
 def parse_audio_references(text: str) -> tuple[str, List[str]]:
@@ -79,7 +99,9 @@ def parse_audio_references(text: str) -> tuple[str, List[str]]:
 
 def transform_user_input(user_input: str) -> Optional[Any]:
     """Transform user input containing @audio references.
-    Returns dict (multimodal message) or None (no audio found).
+
+    Returns dict (multimodal message), string (error text), or None (no
+    audio found, let other hooks handle the input).
     """
     clean_text, audio_paths = parse_audio_references(user_input)
     if not audio_paths:
@@ -89,7 +111,6 @@ def transform_user_input(user_input: str) -> Optional[Any]:
     missing = [p for p in audio_paths if not os.path.exists(p)]
 
     if not valid:
-        # Return error text as string
         return f"{clean_text} {' '.join(f'[Audio not found: {p}]' for p in missing)}".strip()
 
     content = [{"type": "text", "text": clean_text}] if clean_text else []
@@ -112,12 +133,14 @@ def create_plugin(ctx) -> Dict[str, Any]:
         if result is None:
             return None  # No audio, use normal processing
 
-        # If result is a dict (multimodal message), add it and suppress original
+        # Multimodal message: inject it, then return None (NOT ""). The prompt
+        # chain passes each hook's return value to the next hook, so returning
+        # "" here would starve the vision hook of the original @image text.
         if isinstance(result, dict):
             ctx.app.add_plugin_message(result)
-            return ""  # Suppress original input
+            return None
 
-        # If result is a string (error), return it
+        # Error text (missing/unsupported files)
         return result
 
     ctx.register_hook("after_user_prompt", after_user_prompt_hook)
