@@ -9,7 +9,9 @@ Computes per-request cost live from the usage object using prices from env:
   PRICE_OUTPUT      $ per 1M output tokens            (required)
   PEAK_MULT         peak-hour price multiplier; feature on only when > 1.0
   PEAK_HOURS        UTC peak windows "01:00-04:00,06:00-10:00" (comma-separated,
-                    wrap-around aware, e.g. "22:00-01:00")
+                    wrap-around aware, e.g. "22:00-01:00"). Optional day prefix
+                    "@Mon-Fri 08:00-00:00" restricts a window to those days
+                    (no prefix = every day).
 
 Shows session cost in the context bar (dollars only, no cents). Inactive
 unless PRICE_INPUT/PRICE_OUTPUT are set. Handles OpenAI-style and
@@ -91,23 +93,48 @@ def _load_peak():
 
 
 def _parse_windows(raw):
-    """Parse '01:00-04:00,06:00-10:00' into (start, end) minute-of-day tuples.
+    """Parse '01:00-04:00,@Mon-Fri 08:00-00:00' into (start, end, days) tuples.
 
-    Wrap-around aware: '22:00-01:00' -> (1320, 60). Malformed tokens are
-    skipped. End is exclusive.
+    Wrap-around aware: '22:00-01:00' -> (1320, 60). Optional day prefix '@Mon-Fri',
+    '@Sat', '@Sun-Mon' restricts the window to those weekdays (Monday=0); no
+    prefix means every day. '@' marks the day prefix so day tokens can't be
+    confused with prefix-less windows. Malformed tokens are skipped. End is exclusive.
     """
     windows = []
     for token in raw.split(","):
         token = token.strip()
         if "-" not in token:
             continue
+        days = None
+        if token.startswith("@"):
+            head, _, rest = token[1:].partition(" ")
+            if not rest:
+                continue
+            days = _parse_days(head)
+            if days is None:
+                continue
+            token = rest
         start_s, end_s = token.split("-", 1)
         start = _to_minutes(start_s.strip())
         end = _to_minutes(end_s.strip())
         if start is None or end is None or start == end:
             continue
-        windows.append((start, end))
+        windows.append((start, end, days))
     return windows
+
+
+def _parse_days(token):
+    """'Mon-Fri' | 'Sat' -> set of weekday ints (Monday=0), or None if not a day token."""
+    names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    parts = token.lower().split("-")
+    if not (1 <= len(parts) <= 2) or any(p not in names for p in parts):
+        return None
+    if len(parts) == 1:
+        return {names.index(parts[0])}
+    a, b = names.index(parts[0]), names.index(parts[1])
+    if a <= b:
+        return set(range(a, b + 1))
+    return set(range(a, 7)) | set(range(0, b + 1))
 
 
 def _to_minutes(hhmm):
@@ -128,11 +155,14 @@ def _minute_of_day(dt):
 
 
 def _in_peak():
-    """True if current UTC minute falls in any peak window."""
+    """True if current UTC time falls in any peak window (day + minute)."""
     if _PEAK is None:
         return False
-    t = _minute_of_day(datetime.now(timezone.utc))
-    for start, end in _PEAK["windows"]:
+    now = datetime.now(timezone.utc)
+    t = _minute_of_day(now)
+    for start, end, days in _PEAK["windows"]:
+        if days is not None and now.weekday() not in days:
+            continue
         if start <= end:
             if start <= t < end:
                 return True
