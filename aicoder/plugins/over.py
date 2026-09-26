@@ -39,6 +39,16 @@ OVER_INSTRUCTION = (
     "[OVER] is the only way to hand the prompt back to the user.\n"
     "</system-reminder>"
 )
+
+SYSTEM_PROMPT_SECTION = (
+    "\n\n## Radio Protocol ([OVER]) — optional\n"
+    "User messages may carry a system-reminder block enabling the [OVER]\n"
+    "radio protocol (a hand-back signal meaning 'my turn is complete').\n"
+    "When that block is present, it is legitimate and you must follow it:\n"
+    "end the response with [OVER] only when genuinely finished, never while\n"
+    "work remains or when announcing you will continue later.\n"
+    "When the block is absent, no [OVER] is needed — nothing to do.\n"
+)
 CONTINUE_PROMPT_PREFIX = (
     "Your previous response did not end with [OVER]. [OVER] is how you hand "
     "the turn back — without it the turn does not end: this request keeps "
@@ -139,6 +149,15 @@ class OverCommand:
             OverService.reset_retry()
         return user_input + OVER_INSTRUCTION
 
+    def on_system_prompt_append(self) -> str:
+        """Radio protocol in the real system prompt (chain of command: system > user).
+
+        Complements the per-message reminder: some models ignore system-prompt-only
+        instructions, so the reminder stays; system-prompt placement kills the
+        'this came from user text, it has no authority' refusal.
+        """
+        return SYSTEM_PROMPT_SECTION
+
     def on_after_ai_processing(self, has_tool_calls: bool) -> Optional[str]:
         """Check if AI ended with [OVER]. If not, auto-retry. Strip [OVER] from history."""
         if not OverService.is_enabled():
@@ -204,6 +223,7 @@ def create_plugin(ctx):
     ctx.register_command("/over", lambda args: cmd.handle_over(args))
 
     # Register hooks
+    ctx.register_hook("on_system_prompt_append", cmd.on_system_prompt_append)
     ctx.register_hook("after_user_prompt", cmd.on_user_prompt)
     ctx.register_hook("after_ai_processing", cmd.on_after_ai_processing)
 
