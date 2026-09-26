@@ -99,25 +99,23 @@ def create_plugin(ctx):
     lines = []
     started = False
 
-    def feed_next():
+    def ensure_loaded():
+        """Read the autoexec file once; idempotent, safe from any hook."""
         nonlocal lines, started
 
-        if not started:
-            # First call: read file and set first prompt
-            started = True
-            lines.extend(_read_autoexec())
-            if not lines:
-                return
-
+        if started:
+            return
+        started = True
+        lines.extend(_read_autoexec())
+        if lines:
             c = Config.colors
             print(f"\n{c['cyan']}[autoexec] {len(lines)} line(s){c['reset']}")
 
-            next_line = lines.pop(0)
-            print(f"\n{c['cyan']}[autoexec] {next_line}{c['reset']}")
-            app.set_next_prompt(next_line)
-            return
+    def feed_next():
+        nonlocal lines
 
-        # Subsequent calls: feed next line if any
+        ensure_loaded()
+
         if not lines:
             return
 
@@ -125,6 +123,12 @@ def create_plugin(ctx):
         next_line = lines.pop(0)
         print(f"\n{c['cyan']}[autoexec] {next_line}{c['reset']}")
         app.set_next_prompt(next_line)
+
+    def veto_compaction_while_pending():
+        """Skip auto-compaction until queued lines are consumed: a queued
+        command (e.g. /cs) must resize context before any compaction."""
+        ensure_loaded()
+        return bool(lines)
 
     def cmd_autoexec(args: str) -> str:
         """Handle /autoexec subcommands"""
@@ -161,6 +165,7 @@ def create_plugin(ctx):
             return f"Unknown subcommand: {sub}\nUsage: /autoexec help"
 
     ctx.register_hook("before_user_prompt", feed_next)
+    ctx.register_hook("before_auto_compaction", veto_compaction_while_pending)
     ctx.register_command("autoexec", cmd_autoexec, "Manage autoexec commands")
     ctx.register_command("ae", cmd_autoexec, "Alias for /autoexec")
 
