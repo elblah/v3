@@ -17,11 +17,13 @@ Commands:
 - /tools disable <tool_name>      - Disable a tool
 - /tools enable <tool_name>       - Enable a previously disabled tool
 - /tools rename <old> <new>       - Rename a tool
+- /tools cap [bytes|default]      - Show or change the tool-result output cap
 - /tools disable-all              - Disable all tools (use with caution!)
 - /tools enable-all               - Enable all disabled tools
 - /tools help                     - Show help message
 """
 
+import os
 import re
 from typing import Dict, Any, Set
 
@@ -330,6 +332,52 @@ def create_plugin(ctx):
         tools[new_name] = tools.pop(old_name)
         return f"Tool '{old_name}' renamed to '{new_name}'\n\nThe AI will now see and call it as '{new_name}'."
 
+    CAP_ENV = "MAX_TOOL_RESULT_SIZE"
+
+    def read_cap() -> tuple:
+        """Return (value, source) for the tool-result output cap."""
+        raw = os.environ.get(CAP_ENV)
+        if raw is None:
+            return Config.max_tool_result_size(), "default"
+        try:
+            return int(raw), "session override"
+        except ValueError:
+            return None, f"invalid env value '{raw}'"
+
+    def cap_command(rest: str) -> str:
+        """Show or change the tool-result output cap (MAX_TOOL_RESULT_SIZE)"""
+        rest = rest.strip()
+        value, source = read_cap()
+
+        if not rest:
+            shown = f"{value} bytes" if value is not None else "unusable"
+            return (
+                f"Tool output cap: {shown} ({source})\n"
+                f"Env var: {CAP_ENV}\n"
+                "\n"
+                "Usage:\n"
+                f"  /tools cap <bytes>   - set cap for this session\n"
+                "  /tools cap default   - reset to default (20000 bytes)\n"
+                "\n"
+                "Applies from the next tool call (value is read per tool result).\n"
+                "Affects the AI-facing result only, not on-screen output."
+            )
+
+        if rest.lower() in ("default", "reset", "off"):
+            os.environ.pop(CAP_ENV, None)
+            return f"Tool output cap reset to default ({Config.max_tool_result_size()} bytes)"
+
+        if not rest.isdigit() or int(rest) <= 0:
+            return f"Error: expected a positive integer byte count, got '{rest}'\nUsage: /tools cap <bytes>"
+
+        old = f"{value}" if value is not None else "unusable"
+        os.environ[CAP_ENV] = rest
+        return (
+            f"Tool output cap set to {int(rest)} bytes (was {old})\n"
+            "Session-only - set the env var before launch to persist.\n"
+            "Higher cap = more tokens per tool result = context fills faster."
+        )
+
     def _dispatch_tools_command(args_str: str) -> str:
         """
         Handle /tools command
@@ -341,6 +389,7 @@ def create_plugin(ctx):
             /tools disable <tool_name>       - Disable a tool
             /tools enable <tool_name>        - Enable a previously disabled tool
             /tools rename <old> <new>        - Rename a tool (name the AI sees and calls)
+            /tools cap [<bytes>|default]     - Show or change the tool-result output cap
             /tools disable-all               - Disable all tools (use with caution!)
             /tools enable-all                - Enable all disabled tools
             /tools help                      - Show help message
@@ -380,6 +429,9 @@ def create_plugin(ctx):
                 return "Error: Exactly two names required\nUsage: /tools rename <current_name> <new_name>"
             return rename_tool(name_args[0], name_args[1])
 
+        elif command == "cap":
+            return cap_command(rest)
+
         elif command == "disable-all":
             return disable_all_tools()
 
@@ -397,6 +449,7 @@ Commands:
     /tools show <tool_name>          - Show detailed information about a tool
     /tools disable <tool_name>       - Disable a tool (temporarily remove it)
     /tools enable <tool_name>        - Enable a previously disabled tool
+    /tools cap [<bytes>|default]     - Show or change the tool-result output cap
     /tools disable-all               - Disable ALL tools (use with caution!)
     /tools enable-all                - Enable ALL disabled tools
     /tools help                      - Show this help message
@@ -406,6 +459,8 @@ Examples:
     /tools show read_file            - Show details about read_file tool
     /tools disable web_search        - Disable web_search tool
     /tools enable web_search         - Enable web_search tool again
+    /tools cap 50000                 - Raise the tool-result cap to 50000 bytes
+    /tools cap default               - Reset the cap to the default (20000 bytes)
     /tools disable-all               - Disable all tools at once
     /tools enable-all                - Re-enable all disabled tools
 
@@ -414,6 +469,7 @@ Notes:
     - Disabled tools are stored internally and can be re-enabled at any time
     - The AI cannot use disabled tools until they are re-enabled
     - Internal tools and plugin tools are both managed the same way
+    - /tools cap is session-only and takes effect on the next tool call
     - Use disable-all / enable-all with caution
 """
 
