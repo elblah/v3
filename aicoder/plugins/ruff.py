@@ -16,11 +16,12 @@ Commands:
 """
 
 import os
-import subprocess
+import shutil
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
 from aicoder.utils.bool_utils import TRUTHY, FALSY
+from aicoder.tools.internal.run_shell_command import safe_subprocess_run
 
 
 def create_plugin(ctx):
@@ -50,22 +51,13 @@ def create_plugin(ctx):
             return None
 
         # Check if ruff exists
-        try:
-            result = subprocess.run(
-                ["which", "ruff"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if "not found" in result.stdout.lower() or result.stdout.strip() == "":
-                return None  # ruff not installed, silently skip
-        except:
-            return None
+        if shutil.which("ruff") is None:
+            return None  # ruff not installed, silently skip
 
         args = get_effective_args()
         cmd = ["ruff", "check"] + args.split() + [filepath]
 
-        result = subprocess.run(
+        result = safe_subprocess_run(
             cmd,
             capture_output=True,
             text=True,
