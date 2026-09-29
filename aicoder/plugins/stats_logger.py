@@ -21,6 +21,8 @@ or stub sl._write_to_central.
 
 import json
 import os
+import shlex
+import subprocess
 import sys
 from datetime import datetime
 from aicoder.core.config import Config
@@ -82,8 +84,13 @@ def _write_to_central(line):
         else:
             err_msg = f"central server responded: {response}"
             print(f"\n[stats_logger] {err_msg}\n  line: {line.strip()}", file=sys.stderr)
+            # dunstify needs the desktop session (dbus) -> deliberately
+            # unsealed; err_msg shlex-quoted so it can't break out.
             if env_bool("STATS_ERROR_DUNSTIFY"):
-                os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
+                subprocess.run(
+                    f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' {shlex.quote(err_msg)} &",
+                    shell=True,
+                )
             return False
     except FileNotFoundError:
         # Socket doesn't exist - server not running
@@ -91,8 +98,13 @@ def _write_to_central(line):
     except (socket.timeout, ConnectionRefusedError, OSError) as e:
         err_msg = f"central write failed: {e}"
         print(f"\n[stats_logger] {err_msg}\n  line: {line.strip()}", file=sys.stderr)
+        # dunstify needs the desktop session (dbus) -> deliberately
+        # unsealed; err_msg shlex-quoted so it can't break out.
         if env_bool("STATS_ERROR_DUNSTIFY"):
-            os.system(f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' '{err_msg}' &")
+            subprocess.run(
+                f"timeout -k 2 5s dunstify -t 3000 'stats_logger error' {shlex.quote(err_msg)} &",
+                shell=True,
+            )
         return False
 
 
