@@ -8,12 +8,12 @@ Usage:
 """
 
 import os
-import subprocess
 import shutil
 from typing import Optional
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
+from aicoder.tools.internal.run_shell_command import safe_subprocess_run
 
 
 def create_plugin(ctx):
@@ -42,7 +42,7 @@ def create_plugin(ctx):
         
         if shutil.which("glow"):
             try:
-                result = subprocess.run(
+                result = safe_subprocess_run(
                     ["glow", "-p", "-w", str(width)],
                     input=content,
                     capture_output=True,
