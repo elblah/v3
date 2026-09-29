@@ -12,6 +12,7 @@ Commands:
 import os
 
 from aicoder.core.config import Config
+from aicoder.tools.internal.run_shell_command import safe_subprocess_run
 
 _subprocess = None
 
@@ -25,6 +26,46 @@ def _get_subprocess():
 # None = not loaded yet, str = branch name, "" = failed to load
 _cached_git_branch = None
 
+# Repo-local .git/config is attacker-writable (proven escape vector), so treat
+# it as untrusted. Exec-capable keys get forced via -c (CLI config wins over
+# repo config): fsmonitor runs a command on status; pager runs if a tty ever
+# appears; no builtin hook runs on status/log/diff/branch but gc/locks are
+# side effects worth killing. Aliases can't shadow builtins, so "status",
+# "log", "diff", "branch" are safe.
+_REPO_CONFIG_OVERRIDES = [
+    "-c", "core.fsmonitor=false",
+    "-c", "core.pager=cat",
+    "-c", "gc.auto=0",
+]
+_REPO_CONFIG_ENV = {
+    "GIT_CONFIG_NOSYSTEM": "1",  # ignore /etc/gitconfig (same-user untrusted)
+    "GIT_TERMINAL_PROMPT": "0",
+}
+
+
+def _spawn_git(args, timeout=10):
+    """Run git with all repo-controlled exec paths neutralized"""
+    base = ["git", "--no-pager", "--no-optional-locks"] + _REPO_CONFIG_OVERRIDES
+    if args and args[0] == "diff":
+        # External diff drivers / textconv = arbitrary code exec from .gitattributes
+        # (flags go after subcommand, git rejects them at top level)
+        base += ["diff", "--no-ext-diff", "--no-textconv"]
+        args = args[1:]
+    try:
+        # safe_subprocess_run routes through the /sec bwrap seal (fail-open:
+        # no hook / bwrap absent -> runs argv unwrapped). Env hardening vars
+        # are stripped by --clearenv inside the seal; the -c overrides above
+        # (argv) carry the real defense either way.
+        return safe_subprocess_run(
+            base + args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={**os.environ, **_REPO_CONFIG_ENV},
+        )
+    except (_get_subprocess().TimeoutExpired, FileNotFoundError, _get_subprocess().SubprocessError):
+        return None
+
 
 def _is_git_repo():
     """Fast check using .git/HEAD — no subprocess, works for worktrees too"""
@@ -34,15 +75,10 @@ def _is_git_repo():
 def _get_git_branch():
     """Get current git branch, returns None if not a git repo"""
     try:
-        result = _get_subprocess().run(
-            ["git", "branch", "--show-current"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
+        result = _spawn_git(["branch", "--show-current"], timeout=5)
+        if result is not None and result.returncode == 0:
             return result.stdout.strip()
-    except (_get_subprocess().TimeoutExpired, FileNotFoundError, _get_subprocess().SubprocessError):
+    except (_get_subprocess().SubprocessError):
         pass
     return None
 
@@ -72,29 +108,13 @@ def create_plugin(ctx):
         """Check if repo has uncommitted changes"""
         if not is_git:
             return False
-        try:
-            result = _get_subprocess().run(
-                ["git", "status", "--porcelain"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return result.returncode == 0 and result.stdout.strip()
-        except:
-            return False
+        result = _spawn_git(["status", "--porcelain"], timeout=5)
+        return result is not None and result.returncode == 0 and result.stdout.strip()
 
     def _run_git(args):
-        """Run a git command and return output"""
-        try:
-            result = _get_subprocess().run(
-                ["git"] + args,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            return result.stdout.strip() if result.returncode == 0 else ""
-        except:
-            return ""
+        """Run git command with exec paths neutralized, return output"""
+        result = _spawn_git(args)
+        return result.stdout.strip() if result is not None and result.returncode == 0 else ""
 
     def _gather_commit_info():
         """Gather all git info needed for AI commit"""
