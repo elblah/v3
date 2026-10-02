@@ -49,7 +49,8 @@ def _run(mode, pane_text):
     """Run _restore_session with mocked capture/editor; return (ctx, editor_calls)."""
     ctx = FakeCtx()
     editor_mock = MagicMock(return_value=True)
-    with patch.object(tmux.subprocess, "run", _fake_run(pane_text)), \
+    with patch.dict(os.environ, {"TMUX_PANE": "%7"}), \
+         patch.object(tmux.subprocess, "run", _fake_run(pane_text)), \
          patch("aicoder.utils.tmux_edit_utils.tmux_open_editor", editor_mock):
         tmux._restore_session(ctx, mode)
     return ctx, editor_mock
@@ -59,7 +60,8 @@ def _run_full(pane_text):
     """mode='full' path: no editor; capture injected prompt and editor calls."""
     ctx = FakeCtx()
     editor_mock = MagicMock(return_value=True)
-    with patch.object(tmux.subprocess, "run", _fake_run(pane_text)):
+    with patch.dict(os.environ, {"TMUX_PANE": "%7"}), \
+         patch.object(tmux.subprocess, "run", _fake_run(pane_text)):
         tmux._restore_session(ctx, "full")
     return ctx, editor_mock
 
@@ -172,6 +174,7 @@ def _load(tmp_path, monkeypatch, override=None):
     """Load plugin in isolated cwd with (optionally) the override env set."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("TMUX", "/tmp/tmux-sock,1,1")
+    monkeypatch.setenv("TMUX_PANE", "%7")
     if override is None:
         monkeypatch.delenv(tmux.OVERRIDE_ENV, raising=False)
     else:
@@ -195,7 +198,7 @@ def test_override_applies_at_startup_without_file(tmp_path, monkeypatch):
     with patch.object(tmux.subprocess, "Popen", popen):
         _startup(ctx)
     assert popen.called, "expected override title applied at startup"
-    assert 'rename-window "ovr title"' in popen.call_args[0][0]
+    assert 'rename-window -t %7 "ovr title"' in popen.call_args[0][0]
 
 
 def test_override_beats_active_and_disabled_files(tmp_path, monkeypatch):
@@ -209,7 +212,7 @@ def test_override_beats_active_and_disabled_files(tmp_path, monkeypatch):
     with patch.object(tmux.subprocess, "Popen", popen):
         _startup(ctx)
     script = popen.call_args[0][0]
-    assert 'rename-window "ovr"' in script
+    assert 'rename-window -t %7 "ovr"' in script
     assert "file name" not in script
 
 
@@ -244,7 +247,7 @@ def test_no_override_keeps_file_control(tmp_path, monkeypatch):
     popen = MagicMock()
     with patch.object(tmux.subprocess, "Popen", popen):
         _startup(ctx)
-    assert 'rename-window "myname"' in popen.call_args[0][0]
+    assert 'rename-window -t %7 "myname"' in popen.call_args[0][0]
 
 
 def test_invalid_override_value_falls_back(tmp_path, monkeypatch):

@@ -18,6 +18,7 @@ import signal
 import shlex
 import time
 import atexit
+import threading
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -55,6 +56,15 @@ def create_plugin(ctx):
     notify_enabled = env_bool("BG_JOBS_NOTIFY", default=True)
     # Archived jobs awaiting one batched nudge at the next context bar
     pending_notifications: list = []
+    # Guards all mutation + iteration of storage above (reaper thread runs concurrently)
+    _jobs_lock = threading.RLock()
+    _reaper = None
+
+    def _emit_running_count() -> None:
+        """Fire on_bg_jobs_changed with the running-job count (wintitle tap)."""
+        system = getattr(ctx.app, "plugin_system", None)
+        if system:
+            system.call_hooks("on_bg_jobs_changed", len(jobs))
 
     def start_background_job(name: str, command: str, notify: bool = True) -> int:
         """Start a background job with proper process group handling"""
@@ -71,22 +81,24 @@ def create_plugin(ctx):
         )
 
         # Store job info
-        jobs[process.pid] = {
-            "name": name,
-            "process": process,
-            "command": command,
-            "started_at": datetime.now(),
-            "notify": notify,
-        }
-
+        with _jobs_lock:
+            jobs[process.pid] = {
+                "name": name,
+                "process": process,
+                "command": command,
+                "started_at": datetime.now(),
+                "notify": notify,
+            }
+            _ensure_reaper()
+            _emit_running_count()
         return process.pid
 
     def kill_job(pid: int, timeout: float = 2.0) -> bool:
         """Kill a background job and its entire process group"""
-        if pid not in jobs:
-            return False
-
-        job = jobs[pid]
+        with _jobs_lock:
+            if pid not in jobs:
+                return False
+            job = jobs[pid]
 
         try:
             # Kill entire process group (like run_shell_command does)
@@ -107,15 +119,17 @@ def create_plugin(ctx):
             pass
 
         # Mark as killed so completion notification stays silent
-        job["killed"] = True
-
-        # Remove from jobs dict and archive
-        archive_job(pid)
+        with _jobs_lock:
+            if pid not in jobs:
+                return False  # archived concurrently: job died before the kill
+            job["killed"] = True
+            archive_job(pid)
         return True
 
     def kill_all_jobs(timeout: float = 2.0) -> int:
         """Kill all background jobs"""
-        pids = list(jobs.keys())
+        with _jobs_lock:
+            pids = list(jobs.keys())
         killed = 0
         for pid in pids:
             if kill_job(pid, timeout=timeout):
@@ -124,34 +138,60 @@ def create_plugin(ctx):
 
     def archive_job(pid: int) -> None:
         """Move a finished job from running to completed history"""
-        if pid not in jobs:
-            return
-        job = jobs[pid]
-        ended_at = datetime.now()
-        duration = int((ended_at - job["started_at"]).total_seconds())
-        record = {
-            "name": job["name"],
-            "command": job["command"],
-            "started_at": job["started_at"],
-            "ended_at": ended_at,
-            "duration_seconds": duration,
-            "pid": pid,
-            "exit_code": job["process"].returncode,
-            "killed": job.get("killed", False),
-            "notify": job.get("notify", True),
-        }
-        completed_jobs.append(record)
-        pending_notifications.append(record)
-        del jobs[pid]
+        with _jobs_lock:
+            if pid not in jobs:
+                return
+            job = jobs[pid]
+            ended_at = datetime.now()
+            duration = int((ended_at - job["started_at"]).total_seconds())
+            record = {
+                "name": job["name"],
+                "command": job["command"],
+                "started_at": job["started_at"],
+                "ended_at": ended_at,
+                "duration_seconds": duration,
+                "pid": pid,
+                "exit_code": job["process"].returncode,
+                "killed": job.get("killed", False),
+                "notify": job.get("notify", True),
+            }
+            completed_jobs.append(record)
+            pending_notifications.append(record)
+            del jobs[pid]
+            _emit_running_count()
 
     def cleanup_dead_jobs() -> None:
         """Move dead jobs from running to history"""
-        dead_pids = []
-        for pid, job in jobs.items():
-            if job["process"].poll() is not None:
-                dead_pids.append(pid)
+        with _jobs_lock:
+            dead_pids = [
+                pid for pid, job in jobs.items()
+                if job["process"].poll() is not None
+            ]
         for pid in dead_pids:
             archive_job(pid)
+
+    _REAP_INTERVAL = float(os.environ.get("BG_JOBS_REAP_INTERVAL", "30"))
+
+    def _reaper_loop() -> None:
+        """Sweep dead jobs periodically while any job runs; exits when idle."""
+        nonlocal _reaper
+        while True:
+            time.sleep(_REAP_INTERVAL)
+            cleanup_dead_jobs()
+            with _jobs_lock:
+                if not jobs:
+                    _reaper = None  # release ownership: next start re-spawns
+                    return
+
+    def _ensure_reaper() -> None:
+        """Start the reaper thread once; next job start re-spawns it after exit."""
+        nonlocal _reaper
+        with _jobs_lock:
+            if _reaper is not None:
+                return
+            _reaper = threading.Thread(
+                target=_reaper_loop, name="bg-jobs-reaper", daemon=True)
+            _reaper.start()
 
     def format_duration(seconds: int) -> str:
         """Format a duration in seconds to human-readable string"""
@@ -241,7 +281,10 @@ def create_plugin(ctx):
             # Clean up dead jobs first
             cleanup_dead_jobs()
 
-            if not jobs:
+            with _jobs_lock:
+                job_snapshot = list(jobs.items())
+
+            if not job_snapshot:
                 return {
                     "tool": "bg_jobs",
                     "friendly": "No background jobs running",
@@ -249,15 +292,15 @@ def create_plugin(ctx):
                 }
 
             job_list = []
-            for idx, (pid, job) in enumerate(jobs.items(), 1):
+            for idx, (pid, job) in enumerate(job_snapshot, 1):
                 uptime = int((datetime.now() - job["started_at"]).total_seconds())
                 job_list.append(f"{idx}) {job['name']:<20} (pid: {pid}) — running {format_duration(uptime)}")
 
             job_info = "\n".join(job_list)
             return {
                 "tool": "bg_jobs",
-                "friendly": f"Found {len(jobs)} running background job(s)",
-                "detailed": f"Background Jobs ({len(jobs)} running):\n\n{job_info}"
+                "friendly": f"Found {len(job_snapshot)} running background job(s)",
+                "detailed": f"Background Jobs ({len(job_snapshot)} running):\n\n{job_info}"
             }
 
         elif action == "kill":
@@ -283,14 +326,14 @@ def create_plugin(ctx):
             # Clean up dead jobs first
             cleanup_dead_jobs()
 
-            if pid not in jobs:
-                return {
-                    "tool": "bg_jobs",
-                    "friendly": f"Error: No running job with pid: {pid}",
-                    "detailed": f"Cannot find running job with pid: {pid}"
-                }
-
-            job_name = jobs[pid]["name"]
+            with _jobs_lock:
+                if pid not in jobs:
+                    return {
+                        "tool": "bg_jobs",
+                        "friendly": f"Error: No running job with pid: {pid}",
+                        "detailed": f"Cannot find running job with pid: {pid}"
+                    }
+                job_name = jobs[pid]["name"]
             if kill_job(pid):
                 return {
                     "tool": "bg_jobs",
@@ -409,10 +452,13 @@ def create_plugin(ctx):
         if not identifier:
             return None
 
+        with _jobs_lock:
+            job_by_pid = dict(jobs)
+
         # Try as a PID directly
         try:
             pid = int(identifier)
-            if pid in jobs:
+            if pid in job_by_pid:
                 return pid
         except ValueError:
             pass
@@ -420,10 +466,9 @@ def create_plugin(ctx):
         # Try as a sequence number (1-indexed)
         try:
             seq = int(identifier)
-            if 1 <= seq <= len(jobs):
+            if 1 <= seq <= len(job_by_pid):
                 # Get the pid at this sequence position
-                job_list = list(jobs.items())
-                return job_list[seq - 1][0]
+                return list(job_by_pid)[seq - 1]
         except ValueError:
             pass
 
@@ -460,11 +505,13 @@ Examples:
         cleanup_dead_jobs()
 
         if action == "list":
-            if not jobs:
+            with _jobs_lock:
+                job_snapshot = list(jobs.items())
+            if not job_snapshot:
                 warn("No background jobs running")
             else:
-                success(f"Background Jobs ({len(jobs)} running):")
-                for idx, (pid, job) in enumerate(jobs.items(), 1):
+                success(f"Background Jobs ({len(job_snapshot)} running):")
+                for idx, (pid, job) in enumerate(job_snapshot, 1):
                     uptime = int((datetime.now() - job["started_at"]).total_seconds())
                     print(f"  [{idx}] {job['name']:<20} (pid: {pid}) — running {format_duration(uptime)}")
 
@@ -476,11 +523,19 @@ Examples:
             identifier = args[1]
             pid = parse_pid_or_seq(identifier)
 
-            if pid is None or pid not in jobs:
+            if pid is None:
                 warn(f"No running job found: {identifier}")
                 return
 
-            job = jobs[pid]
+            with _jobs_lock:
+                if pid not in jobs:
+                    warn(f"No running job found: {identifier}")
+                    return
+                job = {
+                    "name": jobs[pid]["name"],
+                    "command": jobs[pid]["command"],
+                    "started_at": jobs[pid]["started_at"],
+                }
             uptime = int((datetime.now() - job["started_at"]).total_seconds())
             info(f"""
 Job: {job['name']}
@@ -498,11 +553,11 @@ Started: {format_time(job['started_at'])}
             identifier = args[1]
             pid = parse_pid_or_seq(identifier)
 
-            if pid is None or pid not in jobs:
-                warn(f"No running job found: {identifier}")
-                return
-
-            job_name = jobs[pid]["name"]
+            with _jobs_lock:
+                if pid is None or pid not in jobs:
+                    warn(f"No running job found: {identifier}")
+                    return
+                job_name = jobs[pid]["name"]
             if kill_job(pid):
                 success(f"Killed job: {job_name} (pid: {pid})")
             else:
@@ -550,10 +605,13 @@ Started: {format_time(job['started_at'])}
         """Hook: show running job count in context bar"""
         cleanup_dead_jobs()  # prune finished jobs (cheap poll, no subprocess)
         # One batched completion nudge per turn for jobs archived since last bar
-        if pending_notifications:
+        with _jobs_lock:
+            notifications = list(pending_notifications)
+            pending_notifications.clear()
+        if notifications:
             lines = []
             if notify_enabled:
-                for rec in pending_notifications:
+                for rec in notifications:
                     if _should_notify(killed=rec["killed"], notify=rec["notify"]):
                         code = rec["exit_code"]
                         if code is None:
@@ -568,11 +626,14 @@ Started: {format_time(job['started_at'])}
                             f"- {rec['name']} (pid {rec['pid']}): {status} "
                             f"after {format_duration(rec['duration_seconds'])}"
                         )
-            pending_notifications.clear()
             if lines:
                 add_nudge(ctx.app, NOTIFY_TAG,
                           "The following background job(s) finished:\n\n"
                           + "\n".join(lines))
+        # Self-heal the wintitle on every bar render: fixes stale suffix when
+        # a push event (reaper emit) had no effect while parked at the input.
+        with _jobs_lock:
+            _emit_running_count()
         if not jobs:
             return None
         return f"{Config.colors['yellow']}{Config.colors['bold']}bg:{len(jobs)}{Config.colors['reset']}"
@@ -596,6 +657,7 @@ Started: {format_time(job['started_at'])}
         LogUtils.print("    - bg_jobs tool")
         LogUtils.print("    - /bg-jobs command")
         LogUtils.print("    - on_context_bar hook (running job count)")
+        LogUtils.print("    - on_bg_jobs_changed event (count changes → tmux wintitle)")
 
     # Return cleanup handler (for plugin system integration)
     return {"cleanup": cleanup_all_jobs}
