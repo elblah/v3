@@ -28,6 +28,19 @@ WINTITLE_SAFE_CHARS = set(
 _MARKER_LOADED = False
 
 
+def _pane_target():
+    """Validated TMUX_PANE ('%' + digits) of this aicoder pane, '' if absent.
+
+    Every tmux command run by this plugin must carry an explicit -t target.
+    Without one, tmux resolves the focused window — which may belong to a
+    different project. Callers must treat '' as "refuse to touch tmux".
+    """
+    pane = os.environ.get("TMUX_PANE", "")
+    if pane.startswith("%") and pane[1:].isdigit():
+        return pane
+    return ""
+
+
 def create_plugin(ctx):
     """Load tmux plugin - only activates inside a tmux session"""
     if not os.environ.get("TMUX"):
@@ -67,15 +80,25 @@ def create_plugin(ctx):
             f"[tmux] {OVERRIDE_ENV} set but contains no safe chars — override ignored" )
 
     def _apply_title(name):
-        """Rename window if single pane and name differs. Fully async."""
+        """Rename window if single pane and name differs. Fully async.
+
+        Hard rule: tmux is only ever touched with an explicit -t TMUX_PANE
+        target. Without a valid pane id we do nothing — never the focused
+        window (it may belong to a different project)."""
         name = _safe_title(name)
+        pane = _pane_target()
+        if not pane:
+            return
+        target = f"-t {pane}"
         # Explicit bash — /bin/sh may be dash (no <<< support)
+        # Capture name and pane count separately: window names may contain
+        # spaces, which breaks word-splitting in a single `read` capture.
         script = (
-            f'read cur_name cur_count <<< $(tmux display-message -p '
-            f'"#{{window_name}} #{{window_panes}}" 2>/dev/null); '
+            f'cur_name=$(tmux display-message {target} -p "#{{window_name}}" 2>/dev/null); '
+            f'cur_count=$(tmux display-message {target} -p "#{{window_panes}}" 2>/dev/null); '
             f'if [ -n "$cur_count" ] && [ "$cur_count" -le 1 ] '
             f'&& [ "$cur_name" != "{name}" ]; then '
-            f'tmux rename-window "{name}"; '
+            f'tmux rename-window {target} "{name}"; '
             f'fi'
         )
         subprocess.Popen(script, executable='/bin/bash', shell=True,
@@ -105,18 +128,45 @@ def create_plugin(ctx):
             name = os.path.basename(os.path.abspath(os.getcwd()))
         _apply_title(name)
 
+    # Background-job count suffix in wintitle. The bg_jobs plugin emits
+    # on_bg_jobs_changed(new_count) whenever the running-job count changes;
+    # we own the title and translate events into renames here.
+    _last_bg_title = None
+
+    def _on_bg_jobs_changed(count: int) -> None:
+        """Append ' (bg:N)' to the wintitle while background jobs run."""
+        nonlocal _last_bg_title
+        if override_active or not os.path.isfile(_wintitle_filepath()):
+            _last_bg_title = None
+            return
+        name = _read_title_file(_wintitle_filepath())
+        if name is None:
+            name = os.path.basename(os.path.abspath(os.getcwd()))
+        name = _safe_title(name)
+        title = name if count <= 0 else f"{name} (bg:{count})"
+        if title == _last_bg_title:
+            return
+        _last_bg_title = title
+        _apply_title(title)
+
     def _handle_wintitle(parts):
+        nonlocal _last_bg_title
         active = _wintitle_filepath()
         disabled = _wintitle_filepath_disabled()
 
         if not parts or parts[0] == "show":
-            # Show current window name
-            try:
-                r = subprocess.run(["tmux", "display-message", "-p", "#W"],
-                                   capture_output=True, text=True, timeout=3)
-                cur = r.stdout.strip()
-            except Exception:
-                cur = "(unknown)"
+            # Show current window name — our pane only, never the focused one
+            pane = _pane_target()
+            if pane:
+                try:
+                    r = subprocess.run(
+                        ["tmux", "display-message", "-t", pane, "-p", "#W"],
+                        capture_output=True, text=True, timeout=3)
+                    cur = r.stdout.strip()
+                except Exception:
+                    cur = "(unknown)"
+            else:
+                cur = "(unknown: TMUX_PANE not set)"
             exists = "active" if os.path.isfile(active) else (
                 "saved (off)" if os.path.isfile(disabled) else "off (no file)"
             )
@@ -132,6 +182,9 @@ def create_plugin(ctx):
                     "the env var to control the title from this command.")
 
         cmd = parts[0]
+        # Manual wintitle change — drop suffix cache so the next bg event
+        # reapplies cleanly against the new base name.
+        _last_bg_title = None
 
         if cmd in TRUTHY:
             # Restore disabled file if exists, otherwise create
@@ -198,6 +251,7 @@ def create_plugin(ctx):
                 "  wintitle off             - Disable wintitle (saves name)\n"
                 "  wintitle reset           - Reset to current directory name\n"
                 "  wintitle <custom name>   - Set custom window title\n"
+                "  note: while bg jobs run, title gains ' (bg:N)' suffix\n"
                 f"  note: {OVERRIDE_ENV} env var, when set, overrides all of the above\n"
                 "  help                     - Show this help"
             )
@@ -205,6 +259,8 @@ def create_plugin(ctx):
             return f"Unknown subcommand: {cmd}. Try /tmux help"
 
     ctx.register_command("tmux", handle_tmux, "Tmux session management (restore-session, wintitle)")
+    # bg_jobs (producer) emits the running-job count; this plugin owns the rename.
+    ctx.register_hook("on_bg_jobs_changed", _on_bg_jobs_changed)
 
     # Apply wintitle on startup — fire-and-forget. Env override beats all files.
     if override_active:
@@ -234,10 +290,15 @@ def _restore_session(ctx, mode=None):
     reset = colors.get("reset", "")
     dim = colors.get("dim", "")
 
-    # Capture full tmux pane scrollback
+    # Capture full tmux pane scrollback — only OUR pane, explicit target.
+    # Without TMUX_PANE the focused pane could be captured: refuse outright.
+    pane = _pane_target()
+    if not pane:
+        LogUtils.error("TMUX_PANE not set — cannot identify this pane, aborting capture.")
+        return
     try:
         result = subprocess.run(
-            ["tmux", "capture-pane", "-p", "-S", "-"],
+            ["tmux", "capture-pane", "-t", pane, "-p", "-S", "-"],
             capture_output=True, text=True, timeout=5,
         )
         if result.returncode != 0:
