@@ -148,11 +148,11 @@ TOOL_DEFINITION = {
     "approval_excludes_arguments": False,
     "approval_key_exclude_arguments": [],
     "hide_results": False,
-    "description": "Search text in files using ripgrep with line numbers. Path defaults to current directory.",
+    "description": "Search text in files using ripgrep with line numbers. The text is a regular expression (ripgrep syntax) - escape metacharacters like ( ) [ ] | to match them literally. Path defaults to current directory.",
     "parameters": {
         "type": "object",
         "properties": {
-            "text": {"type": "string", "description": "Text to search for."},
+            "text": {"type": "string", "description": "Text to search for (regular expression - escape metacharacters to match literally)."},
             "path": {
                 "type": "string",
                 "description": "Directory path to search in (defaults to current directory).",
