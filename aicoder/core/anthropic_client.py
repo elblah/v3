@@ -182,17 +182,17 @@ class AnthropicClient:
                         "type": "thinking",
                         "thinking": msg.get("thinking")
                     })
+                if msg.get("content"):
+                    content_blocks.append({
+                        "type": "text",
+                        "text": msg.get("content")
+                    })
                 for tc in msg.get("tool_calls", []):
                     content_blocks.append({
                         "type": "tool_use",
                         "id": tc.get("id", ""),
                         "name": tc.get("function", {}).get("name", ""),
                         "input": json.loads(tc.get("function", {}).get("arguments", "{}") or "{}")
-                    })
-                if msg.get("content"):
-                    content_blocks.append({
-                        "type": "text",
-                        "text": msg.get("content")
                     })
                 conversation.append({
                     "role": "assistant",
