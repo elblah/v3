@@ -402,6 +402,18 @@ class Config:
                 pass
         return 16000
 
+    @staticmethod
+    def anthropic_thinking_style() -> str:
+        """
+        Get the thinking payload style for Anthropic-style endpoints from
+        ANTHROPIC_THINKING_STYLE env var:
+          - "legacy" (default): thinking.type=enabled + budget_tokens (Claude <= 4.6)
+          - "adaptive": thinking.type=adaptive + output_config.effort (Claude 4.7+)
+        Unknown values fall back to "legacy".
+        """
+        val = os.environ.get("ANTHROPIC_THINKING_STYLE", "").strip().lower()
+        return "adaptive" if val == "adaptive" else "legacy"
+
     @classmethod
     def thinking_extra_body(cls) -> Optional[dict]:
         """

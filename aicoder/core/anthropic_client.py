@@ -223,7 +223,13 @@ class AnthropicClient:
                     "content": content_blocks
                 })
             else:
-                conversation.append(msg)
+                # Plain text messages: keep only Anthropic-valid keys. History
+                # may carry OpenAI-only extras (e.g. an empty "tool_calls")
+                # that the endpoint rejects with HTTP 400.
+                conversation.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content", ""),
+                })
 
         request_data = {
             "model": Config.model(),
@@ -254,15 +260,27 @@ class AnthropicClient:
         if self._plugin_system:
             request_data = self._plugin_system.call_hooks_with_return("transform_request", request_data) or request_data
 
-        # Add thinking config for Anthropic
-        thinking_extra = Config.thinking_extra_body()
-        if thinking_extra:
-            request_data.update(thinking_extra)
+        # Thinking config for Anthropic-style endpoints. Two shapes exist:
+        # - legacy (Claude <= 4.6): thinking.type=enabled + budget_tokens
+        # - adaptive (Claude 4.7+): thinking.type=adaptive + top-level
+        #   output_config.effort; the legacy shape is rejected with HTTP 400.
+        # Style is chosen per model via ANTHROPIC_THINKING_STYLE (default legacy).
+        if Config.anthropic_thinking_style() == "adaptive":
+            if Config.thinking() == "on":
+                request_data["thinking"] = {"type": "adaptive"}
+                effort = (Config.reasoning_effort() or "").lower()
+                if effort in ("low", "medium", "high", "xhigh", "max"):
+                    request_data["output_config"] = {"effort": effort}
+        else:
+            # Add thinking config for Anthropic
+            thinking_extra = Config.thinking_extra_body()
+            if thinking_extra:
+                request_data.update(thinking_extra)
 
-        # Add top-level thinking params (e.g., reasoning_effort)
-        thinking_params = Config.thinking_params()
-        if thinking_params:
-            request_data.update(thinking_params)
+            # Add top-level thinking params (e.g., reasoning_effort)
+            thinking_params = Config.thinking_params()
+            if thinking_params:
+                request_data.update(thinking_params)
 
         return request_data
 
