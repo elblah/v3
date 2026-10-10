@@ -298,6 +298,8 @@ class AnthropicClient:
 
         def _show_thinking():
             nonlocal thinking_printed
+            if not Config.show_thinking():
+                return
             if not thinking_printed:
                 sys.stdout.write(f"{Config.colors['dim']}thinking...{Config.colors['reset']}")
                 sys.stdout.flush()

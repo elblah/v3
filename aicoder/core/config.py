@@ -159,6 +159,22 @@ class Config:
         """Set show_ai_prefix state"""
         cls._show_ai_prefix = value
 
+    # Show thinking indicator - initialize from env var ONCE at module load time
+    # AICODER_SHOW_THINKING=0 disables printing the "thinking..." indicator
+    # Default (unset): enabled; invalid values raise ValueError
+    # show_thinking() is dynamic: also false when stdout is not a tty
+    _show_thinking = env_bool("AICODER_SHOW_THINKING", default=True)
+
+    @staticmethod
+    def show_thinking() -> bool:
+        """Get show_thinking state (true=print "thinking..." indicator, false=suppress)"""
+        return Config._show_thinking and sys.stdout.isatty()
+
+    @classmethod
+    def set_show_thinking(cls, value: bool) -> None:
+        """Set show_thinking state"""
+        cls._show_thinking = value
+
     # AI prefix text - initialize from env var ONCE at module load time
     # AICODER_AI_PREFIX="Sage: " replaces the default "AI: " marker
     # Default (unset): "AI: "
