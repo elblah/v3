@@ -294,6 +294,7 @@ class AnthropicClient:
         current_tool_input = ""
         thinking_printed = False
         message_usage = None
+        stop_reason = ""
         self._thinking_signature = ""
 
         def _show_thinking():
@@ -420,9 +421,23 @@ class AnthropicClient:
                                         current_tool_input += partial
                             
                             elif dtype == "message_delta":
-                                # Capture usage when available (at top level of data, not inside delta)
+                                # Capture usage when available (at top level of data, not inside delta).
+                                # Merge, never replace: message_start carries input/cache counts,
+                                # message_delta carries the final output_tokens. Replacing lost the
+                                # input/cache fields for the usage hook and stats.
                                 if "usage" in data:
-                                    message_usage = data["usage"]
+                                    if (isinstance(message_usage, dict)
+                                            and isinstance(data["usage"], dict)):
+                                        message_usage.update(data["usage"])
+                                    else:
+                                        message_usage = data["usage"]
+
+                                # Capture stop_reason (lives inside delta) for truncation warning
+                                delta_obj = data.get("delta")
+                                if isinstance(delta_obj, dict):
+                                    sr = delta_obj.get("stop_reason")
+                                    if sr:
+                                        stop_reason = sr
                                 
                                 if current_block_type == "tool_use" and current_tool_id:
                                     accumulated_tool_calls[current_tool_id] = {
@@ -466,6 +481,10 @@ class AnthropicClient:
             if resp_log:
                 resp_log.close()
 
+        if stop_reason == "max_tokens" and sys.stdout.isatty():
+            print("[WARN] Truncated: stop_reason=max_tokens (output budget exhausted; "
+                  "thinking tokens count toward max_tokens). Consider raising MAX_TOKENS.", flush=True)
+
         # Update stats on success
         if self.stats:
             log_debug(f"*** streaming stats: increment_api_success, add_api_time")
@@ -476,7 +495,8 @@ class AnthropicClient:
                 input_tokens = message_usage.get("input_tokens") or 0
                 output_tokens = message_usage.get("output_tokens") or 0
                 cache_read = message_usage.get("cache_read_input_tokens") or 0
-                total_prompt = input_tokens + cache_read
+                cache_creation = message_usage.get("cache_creation_input_tokens") or 0
+                total_prompt = input_tokens + cache_read + cache_creation
                 if total_prompt or output_tokens:
                     self.stats.add_prompt_tokens(total_prompt)
                     self.stats.add_completion_tokens(output_tokens)
@@ -542,7 +562,8 @@ class AnthropicClient:
                 input_tokens = usage.get("input_tokens") or 0
                 output_tokens = usage.get("output_tokens") or 0
                 cache_read = usage.get("cache_read_input_tokens") or 0
-                total_prompt = input_tokens + cache_read
+                cache_creation = usage.get("cache_creation_input_tokens") or 0
+                total_prompt = input_tokens + cache_read + cache_creation
                 if total_prompt or output_tokens:
                     self.stats.add_prompt_tokens(total_prompt)
                     self.stats.add_completion_tokens(output_tokens)
@@ -551,6 +572,10 @@ class AnthropicClient:
         usage = data.get("usage")
         if usage and self._plugin_system:
             self._plugin_system.call_hooks("after_usage_data", usage)
+
+        if data.get("stop_reason") == "max_tokens" and sys.stdout.isatty():
+            print("[WARN] Truncated: stop_reason=max_tokens (output budget exhausted; "
+                  "thinking tokens count toward max_tokens). Consider raising MAX_TOKENS.", flush=True)
 
         # Yield same format as streaming content chunks (with choices wrapper)
         # Convert tool_calls to list with numeric index for stream_processor compatibility
