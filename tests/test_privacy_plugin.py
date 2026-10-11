@@ -84,8 +84,11 @@ def test_status_lists_registry(env):
     out = handler("")
     assert ".aicoder/history" in out
     assert "[x]" in out
-    assert ".aicoder/memory" in out
+    assert ".aicoder/errors.log" in out  # other registry entries listed
     assert f"1/{len(privacy.REGISTRY)} present" in out
+    assert "never touched" in out  # memory + stats logs exemption note
+    listed = [ln for ln in out.splitlines() if ln.strip().startswith("[")]
+    assert not any(".aicoder/memory" in ln for ln in listed)
 
 
 def test_unknown_arg_shows_usage(env):
@@ -122,7 +125,8 @@ def test_clear_all_deletes_registry_and_contributions(env, answers, capsys):
     captured = capsys.readouterr().out
 
     assert result == ""
-    assert not (root / "memory").exists()
+    assert (root / "memory").exists()  # AI memory dir is never touched
+    assert (root / "memory" / "index.md").exists()
     assert not (root / "current-session.jsonl").exists()
     assert not (root / "history").exists()
     assert (root / "stats.log").exists()  # stats logs are never cleared
@@ -130,7 +134,7 @@ def test_clear_all_deletes_registry_and_contributions(env, answers, capsys):
     assert not (extra / "notes.txt").exists()
     assert extra.exists()  # contributed dir itself untouched
     assert "captured dumps" in captured
-    assert "deleted 5, kept 0, failed 0" in captured
+    assert "deleted 4, kept 0, failed 0" in captured
     assert ("on_privacy_clear", ("clear-all",)) in ctx.app.plugin_system.calls
     assert len(answers.prompts) == 1  # only the /new prompt, no per-item prompts
 
