@@ -37,13 +37,13 @@ REGISTRY = [
     ".aicoder/last-response.log",        # debug: raw response dump
     ".aicoder/last-response.json",       # debug: raw response dump
     ".aicoder/last-session.json",        # core autosave (when SESSION_FILE is unset)
-    ".aicoder/memory",                   # AI memory notes + archive
     ".aicoder/errors.log",               # tracebacks (may embed payloads)
     ".aicoder/occapture",                # third-party capture dumps
     ".aicoder/.aicoder",                 # stale nested state dir
 ]
-# Never in registry: .aicoder/stats.log and ~/.aicoder/central_stats.log
-# (metadata only, user wants usage/cost history kept).
+# Never in registry:
+# - .aicoder/memory (AI working state; wiped via its own flow, never wholesale)
+# - .aicoder/stats.log + ~/.aicoder/central_stats.log (metadata only, kept)
 
 SESSION_FILE = ".aicoder/current-session.jsonl"
 EVENT = "on_privacy_clear"
@@ -200,6 +200,10 @@ def create_plugin(ctx):
         lines.append(
             "Note: the running session keeps its own in-memory copy; after the wipe "
             "you are asked whether to reset it too (same as /new)."
+        )
+        lines.append(
+            "Note: .aicoder/memory (AI notes) and the stats logs are never touched "
+            "by this plugin."
         )
         return "\n".join(lines)
 
