@@ -103,7 +103,7 @@ class CommandRegistry:
         for command in commands:
             self.register_command(command)
 
-        # Shorthand reasoning-effort commands: /+ /- /++ /--
+        # Shorthand reasoning-effort commands: /+ /- /= /++ /--
         # Mirror the /! precedent: real commands, not aliases. Each delegates to
         # `/thinking effort <symbol>` (reuses validation + status print).
         def _effort_shortcut(_args: str, symbol: str) -> str:
@@ -113,6 +113,7 @@ class CommandRegistry:
         for sym, desc in (
             ("+", "Reasoning effort: max (highest valid level)"),
             ("-", "Reasoning effort: min (lowest valid level)"),
+            ("=", "Reasoning effort: middle (midpoint of valid levels)"),
             ("++", "Reasoning effort: step up one level"),
             ("--", "Reasoning effort: step down one level"),
         ):

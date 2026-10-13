@@ -234,6 +234,8 @@ class Config:
         Supports positional symbols requiring REASONING_EFFORT_VALID (ordered list):
           '+' → last position (highest)
           '-' → first position (lowest)
+          '=' → middle position (lower of the two middles when the list
+                length is even, e.g. medium for low,medium,high,xhigh)
           '++' → one step up from current
           '--' → one step down from current
         force=True bypasses the valid-values check (accepts any literal level).
@@ -245,13 +247,15 @@ class Config:
         val = effort.lower()
         valid_values = cls._get_valid_reasoning_efforts()
 
-        if val in ("+", "-", "++", "--") and not valid_values:
+        if val in ("+", "-", "=", "++", "--") and not valid_values:
             raise ValueError("REASONING_EFFORT_VALID not set — cannot use positional symbols")
 
         if val == "+":
             cls._reasoning_effort = valid_values[-1]
         elif val == "-":
             cls._reasoning_effort = valid_values[0]
+        elif val == "=":
+            cls._reasoning_effort = valid_values[(len(valid_values) - 1) // 2]
         elif val == "++":
             current = cls._reasoning_effort
             if current not in valid_values:
