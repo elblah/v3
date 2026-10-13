@@ -184,7 +184,7 @@ class ThinkingCommand(BaseCommand):
                 LogUtils.dim("No REASONING_EFFORT_VALID set — no validation")
         except ValueError as e:
             LogUtils.printc(f"[*] {e}", color="red", stderr=True)
-            if value.strip() not in ("+", "-", "++", "--"):
+            if value.strip() not in ("+", "-", "=", "++", "--"):
                 LogUtils.dim("Tip: append --force to set it anyway, e.g. /thinking effort <level> --force")
 
     def _show_clear_thinking(self, clear_thinking: Optional[bool]) -> None:
@@ -218,7 +218,7 @@ class ThinkingCommand(BaseCommand):
 
         help_text = """Usage:
   /thinking [on|off|default]      Set thinking mode
-  /thinking effort <level>        Set reasoning effort level (or +/++/-/--, see below)
+  /thinking effort <level>        Set reasoning effort level (symbols: + - = ++ --, see below)
   /thinking effort                Show current effort level
   /thinking                       Show current status
   /thinking toggle                Toggle between on/off
@@ -230,6 +230,8 @@ Examples:
   /thinking effort <level> --force  Set any effort level, bypassing the valid list
   /thinking effort +              Set reasoning effort to max (last in REASONING_EFFORT_VALID)
   /thinking effort -              Set reasoning effort to min (first in REASONING_EFFORT_VALID)
+  /thinking effort =              Set reasoning effort to the middle level (even-length list:
+                                 the lower of the two middles, e.g. medium for low,medium,high,xhigh)
   /thinking effort ++             Step up one level from current
   /thinking effort --             Step down one level from current
 
