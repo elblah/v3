@@ -1,20 +1,29 @@
 """
-asian_char_nudge.py - Nudge AI when it outputs non-Latin characters
+asian_char_nudge.py - Auto re-ask when the AI outputs non-Latin characters
 
 Detects CJK, Arabic, Devanagari, Thai, and other non-Latin scripts in AI
-responses. When found, silently injects a <system-reminder> into history
-telling the AI the user can't read those characters.
+responses. When found, triggers an immediate new AI turn (set_next_prompt)
+asking it to make itself comprehensible in the user's language — the user
+does not have to type anything. Prints a yellow status line so the user can
+see the nudge happened.
+
+Once the retry limit is hit for consecutive offending replies, it stops
+auto-asking and falls back to a silent reminder message.
 
 Env:
-    ASIAN_NUDGE=0       disable (default: enabled)
+    ASIAN_NUDGE=1       enable at startup (default: disabled)
     ASIAN_NUDGE_DEBUG=1 verbose logging
+
+Commands:
+    /asian-nudge        show status
+    /asian-nudge on|off session toggle (env var is the persistent setting)
 """
 
 import re
 import time
 
 from aicoder.core.config import Config
-from aicoder.utils.bool_utils import env_bool
+from aicoder.utils.bool_utils import TRUTHY, FALSY, env_bool
 from aicoder.utils.log import LogUtils
 
 # Unicode ranges covering CJK, Arabic, Indic, Thai, etc.
@@ -61,6 +70,10 @@ _NON_LATIN_RE = re.compile(
     ']'
 )
 
+# Consecutive offending replies we auto-re-ask before giving up and just
+# leaving a reminder. Prevents an endless auto-retry loop (and its cost).
+_MAX_AUTO_RETRIES = 2
+
 NUDGE_MESSAGE = (
     "<system-reminder>\n"
     "Your previous response contained characters from a language the user "
@@ -90,31 +103,34 @@ def _extract_text(msg: dict) -> str:
 def create_plugin(ctx):
     app = ctx.app
 
-    enabled = env_bool("ASIAN_NUDGE")
     debug = env_bool("ASIAN_NUDGE_DEBUG")
 
-    if not enabled:
-        return
+    state = {
+        "enabled": env_bool("ASIAN_NUDGE"),
+        "count": 0,
+        "streak": 0,
+        "last_reminder": 0.0,
+    }
+    cooldown = 30  # seconds between reminder-only fallbacks
 
-    state = {"count": 0, "last_nudge": 0.0}
-    cooldown = 30  # seconds between nudges
+    def _status(msg):
+        c = Config.colors
+        tag = f"{c['bold']}{c['yellow']}[asian_char_nudge]{c['reset']}"
+        LogUtils.print(f"\n\n{tag} {msg}")
 
     def _on_assistant_message_added(message: dict) -> None:
+        if not state["enabled"]:
+            return
+
         text = _extract_text(message)
         if not text:
             return
 
         if not _NON_LATIN_RE.search(text):
-            return
-
-        now = time.time()
-        if now - state["last_nudge"] < cooldown:
+            state["streak"] = 0  # clean reply ends the retry streak
             return
 
         state["count"] += 1
-        state["last_nudge"] = now
-
-        app.message_history.add_user_message(NUDGE_MESSAGE)
 
         if debug:
             c = Config.colors
@@ -126,7 +142,54 @@ def create_plugin(ctx):
                 f"sample: {sample}){c['reset']}"
             )
 
+        if state["streak"] < _MAX_AUTO_RETRIES:
+            state["streak"] += 1
+            app.set_next_prompt(NUDGE_MESSAGE)
+            _status(
+                f"non-Latin chars in reply — auto re-asking in your language "
+                f"({state['streak']}/{_MAX_AUTO_RETRIES})"
+            )
+            return
+
+        # Retry limit hit — leave a silent reminder instead of another turn
+        now = time.time()
+        if now - state["last_reminder"] < cooldown:
+            return
+        state["last_reminder"] = now
+        state["streak"] = 0
+        app.message_history.add_user_message(NUDGE_MESSAGE)
+        _status("non-Latin chars in reply — retry limit hit, reminder only")
+
+    def _handle_command(args_str: str) -> str:
+        parts = args_str.strip().split() if args_str else []
+
+        if not parts:
+            on_off = "enabled" if state["enabled"] else "disabled"
+            return (
+                f"Asian char nudge: {on_off}\n"
+                f"\n"
+                f"- non-Latin chars seen this session: {state['count']}\n"
+                f"- auto re-asks before falling back to a reminder: {_MAX_AUTO_RETRIES}\n"
+                f"\n"
+                f"Commands:\n"
+                f"- /asian-nudge on|off - toggle for this session\n"
+                f"- ASIAN_NUDGE=1 in the environment - persistent setting\n"
+            )
+
+        if parts[0] in TRUTHY:
+            state["enabled"] = True
+            return "Asian char nudge enabled (this session)"
+        if parts[0] in FALSY:
+            state["enabled"] = False
+            state["streak"] = 0
+            return "Asian char nudge disabled (this session)"
+
+        return "Usage: /asian-nudge [on|off]"
+
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
+    ctx.register_command(
+        "/asian-nudge", _handle_command, description="Re-ask when replies contain non-Latin characters"
+    )
 
     if debug:
-        LogUtils.print(f"[asian-nudge] loaded (enabled={enabled})")
+        LogUtils.print(f"[asian-nudge] loaded (enabled={state['enabled']})")
