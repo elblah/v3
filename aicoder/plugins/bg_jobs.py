@@ -7,6 +7,7 @@ Provides both AI tool (bg_jobs) and user command (/bg-jobs) interfaces.
 Features:
 - Start background jobs with friendly names
 - List running jobs
+- Wait (blocking, with required timeout) for a job to finish
 - Kill individual jobs or all jobs
 - Auto-cleanup on AI Coder exit
 - Process group management to prevent orphans
@@ -26,6 +27,7 @@ from aicoder.core.config import Config
 from aicoder.core.nudges import add_nudge
 from aicoder.tools.internal.run_shell_command import resolve_command
 from aicoder.utils.bool_utils import env_bool
+from aicoder.utils.num_utils import coerce_int
 from aicoder.utils.log import LogUtils, info, dim, warn, success, print
 
 # Completion notification (env-gated: BG_JOBS_NOTIFY, default ON)
@@ -246,8 +248,52 @@ def create_plugin(ctx):
         elif action == "kill":
             pid = args.get("pid", "")
             lines.append(f"PID: {pid}")
+        elif action == "wait":
+            lines.append(f"PID: {args.get('pid', '')}")
+            if args.get("timeout") is not None:
+                lines.append(f"Timeout: {args['timeout']}s")
         
         return "\n".join(lines)
+
+    def find_completed_job(pid: int) -> Optional[Dict[str, Any]]:
+        """Most recent completed-job record for pid (None if unknown)."""
+        with _jobs_lock:
+            for record in reversed(completed_jobs):
+                if record["pid"] == pid:
+                    return record
+        return None
+
+    def job_exit_summary(record: Dict[str, Any]) -> str:
+        """Human status text for a finished job record."""
+        code = record["exit_code"]
+        if record.get("killed"):
+            return "killed"
+        if code is None:
+            return "ended (exit code unknown)"
+        if code < 0:
+            return f"killed by signal {-code}"
+        if code == 0:
+            return "finished"
+        return f"exited with code {code}"
+
+    def finished_job_result(record: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool result for a job that has ended"""
+        duration = format_duration(record["duration_seconds"])
+        return {
+            "tool": "bg_jobs",
+            "friendly": (
+                f"Job {record['name']} (pid {record['pid']}) "
+                f"{job_exit_summary(record)} after {duration}"
+            ),
+            "detailed": (
+                "Background job finished\n"
+                f"Name: {record['name']}\n"
+                f"PID: {record['pid']}\n"
+                f"Exit code: {record['exit_code']}\n"
+                f"Duration: {duration}\n"
+                f"Command: {record['command']}"
+            ),
+        }
 
     # ==================== Tool: bg_jobs ====================
 
@@ -302,6 +348,110 @@ def create_plugin(ctx):
                 "friendly": f"Found {len(job_snapshot)} running background job(s)",
                 "detailed": f"Background Jobs ({len(job_snapshot)} running):\n\n{job_info}"
             }
+
+        elif action == "wait":
+            pid = args.get("pid")
+
+            if pid is None:
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": "Error: 'wait' action requires 'pid'",
+                    "detailed": "Missing required parameter 'pid' for 'wait' action"
+                }
+
+            try:
+                pid = int(pid)
+            except (ValueError, TypeError):
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": f"Error: Invalid pid: {pid}",
+                    "detailed": f"PID must be a number, got: {pid}"
+                }
+
+            if args.get("timeout") is None:
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": "Error: 'wait' action requires 'timeout' in seconds (no default)",
+                    "detailed": (
+                        "Pass an explicit timeout in seconds (e.g. 60 for a quick task, "
+                        "600-3600 for builds/installs on slow hardware). The job is left "
+                        "running if the timeout expires."
+                    )
+                }
+            try:
+                timeout = coerce_int(args.get("timeout"), "timeout", None)
+            except Exception as e:
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": f"Error: {e}",
+                    "detailed": str(e)
+                }
+            if timeout <= 0:
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": f"Error: 'timeout' must be a positive number of seconds, got: {timeout}",
+                    "detailed": "'timeout' must be > 0 seconds"
+                }
+
+            # Archive anything already dead so the pid lookup sees history too
+            cleanup_dead_jobs()
+
+            with _jobs_lock:
+                job = jobs.get(pid)
+
+            if job is None:
+                # Already finished (or cleaned up by the reaper) before the wait
+                record = find_completed_job(pid)
+                if record is None:
+                    return {
+                        "tool": "bg_jobs",
+                        "friendly": f"Error: No background job with pid: {pid}",
+                        "detailed": f"pid {pid} is not running and not in job history"
+                    }
+                return finished_job_result(record)
+
+            process = job["process"]
+            deadline = time.monotonic() + timeout
+            try:
+                while process.poll() is None:
+                    if time.monotonic() >= deadline:
+                        uptime = int((datetime.now() - job["started_at"]).total_seconds())
+                        return {
+                            "tool": "bg_jobs",
+                            "friendly": (
+                                f"Job {job['name']} (pid {pid}) still running after "
+                                f"{format_duration(timeout)} (job untouched)"
+                            ),
+                            "detailed": (
+                                "Background job still running (wait timeout expired)\n"
+                                f"Name: {job['name']}\n"
+                                f"PID: {pid}\n"
+                                f"Running for: {format_duration(uptime)}\n"
+                                f"Command: {job['command']}\n\n"
+                                "The job was NOT killed. You can wait again with a longer "
+                                "timeout, keep working, or kill it."
+                            ),
+                        }
+                    time.sleep(0.2)
+            except KeyboardInterrupt:
+                # Ctrl+C aborts only the wait; the job has its own process group
+                warn(f"Wait cancelled — job {job['name']} (pid {pid}) still running")
+                raise
+
+            # Job exited: move to history (no-op if the reaper archived it first)
+            archive_job(pid)
+            record = find_completed_job(pid)
+            if record is None:
+                # Defensive: record missing should not happen
+                return {
+                    "tool": "bg_jobs",
+                    "friendly": f"Job {job['name']} (pid {pid}) exited (exit code: {process.returncode})",
+                    "detailed": (
+                        f"Background job finished\nName: {job['name']}\n"
+                        f"PID: {pid}\nExit code: {process.returncode}"
+                    )
+                }
+            return finished_job_result(record)
 
         elif action == "kill":
             pid = args.get("pid")
@@ -381,7 +531,7 @@ def create_plugin(ctx):
             return {
                 "tool": "bg_jobs",
                 "friendly": f"Error: Unknown action: {action}",
-                "detailed": f"Valid actions are: run, list, kill, kill_all, history"
+                "detailed": "Valid actions are: run, list, wait, kill, kill_all, history"
             }
 
     # Register the bg_jobs tool
@@ -390,7 +540,7 @@ def create_plugin(ctx):
     tool_properties = {
         "action": {
             "type": "string",
-            "enum": ["run", "list", "kill", "kill_all", "history"],
+            "enum": ["run", "list", "wait", "kill", "kill_all", "history"],
             "description": "Action to perform"
         },
         "name": {
@@ -407,7 +557,17 @@ def create_plugin(ctx):
         },
         "pid": {
             "type": "integer",
-            "description": "Process ID to kill (required for 'kill' action)"
+            "description": "Process ID (required for 'kill' and 'wait' actions)"
+        },
+        "timeout": {
+            "type": "integer",
+            "description": (
+                "Wait timeout in seconds (required for 'wait' action; "
+                "there is NO default, always pass one explicitly). "
+                "'wait' returns the moment the job ends, or when the "
+                "timeout expires (the job keeps running then: wait again, "
+                "keep working, or kill it)."
+            )
         },
     }
     if notify_enabled:
@@ -422,6 +582,9 @@ def create_plugin(ctx):
     tool_description = (
         "Manage background long-running processes (web servers, databases, etc.). "
         "Use 'list' to see running jobs with uptime, 'history' to see finished jobs. "
+        "Use 'wait' (with pid and an explicit timeout in seconds) to block until a "
+        "job finishes — use it instead of 'run_shell_command sleep N' when waiting "
+        "for a compilation or build; it returns the moment the job exits. "
         "IMPORTANT: stdout and stderr are discarded (sent to /dev/null). "
         "If you need to read the output, redirect it to files in the command, "
         "e.g.: 'mycommand > output.log 2>&1', then read the file later."
@@ -613,17 +776,8 @@ Started: {format_time(job['started_at'])}
             if notify_enabled:
                 for rec in notifications:
                     if _should_notify(killed=rec["killed"], notify=rec["notify"]):
-                        code = rec["exit_code"]
-                        if code is None:
-                            status = "ended"
-                        elif code < 0:
-                            status = f"killed by signal {-code}"
-                        elif code == 0:
-                            status = "finished"
-                        else:
-                            status = f"exited with code {code}"
                         lines.append(
-                            f"- {rec['name']} (pid {rec['pid']}): {status} "
+                            f"- {rec['name']} (pid {rec['pid']}): {job_exit_summary(rec)} "
                             f"after {format_duration(rec['duration_seconds'])}"
                         )
             if lines:
