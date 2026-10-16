@@ -17,13 +17,14 @@ The plugin prints the abort notice itself; the core only honors the request
 and returns the prompt.
 
 Disable:
+  - command /loop-detector off (session override; on|off, no args shows status)
   - env AICODER_LOOP_DETECTOR=0 (0/false/no/off/disable/...)
   - NVIDIA NIM (free tier): a runaway model costs nothing there, so the
     detector stays off by default.
 """
 
 from aicoder.core.config import Config
-from aicoder.utils.bool_utils import env_bool
+from aicoder.utils.bool_utils import TRUTHY, FALSY, env_bool
 from aicoder.utils.log import LogUtils
 
 WINDOW_WORDS = 200        # rolling history kept per channel
@@ -45,22 +46,41 @@ def _repeats(words) -> bool:
     return " ".join(words).count(needle) >= MIN_REPEATS
 
 
-def _detector_enabled() -> bool:
+def _detector_state() -> tuple[bool, str]:
+    """Decide whether the detector runs now: (enabled, reason).
+
+    Re-read per response so a mid-session model switch is honored; the reason
+    string is only shown by /loop-detector.
+    """
     if not env_bool("AICODER_LOOP_DETECTOR", True):
-        return False
+        return False, "AICODER_LOOP_DETECTOR=0"
     # NVIDIA NIM is a free tier: a looping model there costs nothing.
-    return "nvidia" not in Config.base_url().lower()
+    if "nvidia" in Config.base_url().lower():
+        return False, "off by default on NVIDIA NIM (free tier)"
+    return True, "default"
 
 
 def create_plugin(ctx):
     pending = {}
     window = {}
     enabled = True
+    reason = "default"
+    override = None  # None = env/default rules; True/False = forced via command
+
+    def _refresh():
+        """Recompute enabled/reason; drop buffers when the detector is off."""
+        nonlocal enabled, reason
+        if override is None:
+            enabled, reason = _detector_state()
+        else:
+            enabled, reason = override, "session override"
+        if not enabled:
+            pending.clear()
+            window.clear()
 
     def _on_stream_start():
         # Re-evaluated per response: the model/base URL can change mid-session.
-        nonlocal enabled
-        enabled = _detector_enabled()
+        _refresh()
         pending.clear()
         window.clear()
 
@@ -93,5 +113,31 @@ def create_plugin(ctx):
         pending[channel] = buf
         return False
 
+    def _handle_command(args_str: str) -> str:
+        nonlocal override
+        parts = args_str.strip().split() if args_str else []
+
+        if parts:
+            if parts[0] in TRUTHY:
+                override = True
+            elif parts[0] in FALSY:
+                override = False
+            else:
+                return "Usage: /loop-detector [on|off]"
+
+        _refresh()
+        return (
+            f"Loop detector: {'enabled' if enabled else 'disabled'} ({reason})\n"
+            f"- trips when the last {NEEDLE_WORDS} words repeat {MIN_REPEATS}x "
+            f"inside a {WINDOW_WORDS}-word window\n"
+            f"- /loop-detector on|off - override for this session\n"
+            f"- AICODER_LOOP_DETECTOR=0 in the environment - persistent off\n"
+        )
+
     ctx.register_hook("on_stream_start", _on_stream_start)
     ctx.register_hook("on_stream_text", _on_stream_text)
+    ctx.register_command(
+        "/loop-detector",
+        _handle_command,
+        description="Loop detector: status / on / off",
+    )
