@@ -287,7 +287,7 @@ validate_output() {
         echo "WARNING: File too small: $file"
     fi
     
-    if ! grep -q "AI:" "$file" 2>/dev/null; then
+    if ! grep -qE "AI:|AI \(" "$file" 2>/dev/null; then
         echo "WARNING: No AI response found in: $file"
     fi
     

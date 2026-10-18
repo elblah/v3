@@ -216,7 +216,7 @@ validate_result() {
         return 1
     fi
     
-    if ! grep -q "AI:" "$file"; then
+    if ! grep -qE "AI:|AI \(" "$file"; then
         echo "WARNING: No AI response found in output"
         return 1
     fi

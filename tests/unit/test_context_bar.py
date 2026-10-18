@@ -24,13 +24,12 @@ class TestContextBar:
         mock_stats.current_prompt_size = 0
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             result = self.context_bar.format_context_bar(mock_stats, None)
 
             assert "Context:" in result
             assert "0%" in result
-            assert "@gpt-4" in result
+            assert "gpt-4" not in result  # model shown on the AI prefix line, not here
 
     def test_format_context_bar_partial_tokens(self):
         """Test context bar with partial tokens."""
@@ -38,8 +37,7 @@ class TestContextBar:
         mock_stats.current_prompt_size = 50000  # 50% of 100k
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             result = self.context_bar.format_context_bar(mock_stats, None)
 
             assert "50" in result
@@ -50,35 +48,10 @@ class TestContextBar:
         mock_stats.current_prompt_size = 90000  # 90% of 100k
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             result = self.context_bar.format_context_bar(mock_stats, None)
 
             assert "90" in result or "9" in result
-
-    def test_format_context_bar_with_model_name(self):
-        """Test context bar shows model name."""
-        mock_stats = Mock()
-        mock_stats.current_prompt_size = 1000
-        mock_stats.last_api_time = 0
-
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
-            result = self.context_bar.format_context_bar(mock_stats, None)
-
-            assert "gpt-4" in result
-
-    def test_format_context_bar_model_with_slash(self):
-        """Test context bar with model name containing slash."""
-        mock_stats = Mock()
-        mock_stats.current_prompt_size = 1000
-        mock_stats.last_api_time = 0
-
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="openai/gpt-4"):
-            result = self.context_bar.format_context_bar(mock_stats, None)
-            # Should use short name (gpt-4)
-            assert "gpt-4" in result
 
     def test_format_context_bar_large_numbers_k(self):
         """Test context bar formats large numbers with k."""
@@ -86,8 +59,7 @@ class TestContextBar:
         mock_stats.current_prompt_size = 50000  # 50k
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             result = self.context_bar.format_context_bar(mock_stats, None)
 
             # Should show k notation
@@ -99,8 +71,7 @@ class TestContextBar:
         mock_stats.current_prompt_size = 500
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             result = self.context_bar.format_context_bar(mock_stats, None)
 
             assert "500" in result
@@ -172,8 +143,7 @@ class TestPrintContextBar:
         mock_stats.current_prompt_size = 1000
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             self.context_bar.print_context_bar(mock_stats, None)
 
             captured = capsys.readouterr()
@@ -185,8 +155,7 @@ class TestPrintContextBar:
         mock_stats.current_prompt_size = 1000
         mock_stats.last_api_time = 0
 
-        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000), \
-             patch('aicoder.core.context_bar.Config.model', return_value="gpt-4"):
+        with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             self.context_bar.print_context_bar_for_user(mock_stats, None)
 
             captured = capsys.readouterr()

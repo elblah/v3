@@ -344,7 +344,7 @@ run_resilient_agent() {
         
         if echo "$task" | python main.py > "$output_file" 2>/dev/null; then
             # Check if output is valid
-            if [ -s "$output_file" ] && grep -q "AI:" "$output_file"; then
+            if [ -s "$output_file" ] && grep -qE "AI:|AI \(" "$output_file"; then
                 echo "✅ Success: $task"
                 return 0
             else

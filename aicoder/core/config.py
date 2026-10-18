@@ -175,15 +175,19 @@ class Config:
         """Set show_thinking state"""
         cls._show_thinking = value
 
-    # AI prefix text - initialize from env var ONCE at module load time
-    # AICODER_AI_PREFIX="Sage: " replaces the default "AI: " marker
-    # Default (unset): "AI: "
-    _ai_prefix = os.environ.get("AICODER_AI_PREFIX", "AI: ")
+    # AI prefix - env override read ONCE at module load time
+    # AICODER_AI_PREFIX="Sage: " replaces the whole marker verbatim
+    # Default (unset): "AI (<model>): " with the model current at print time
+    _ai_prefix_override = os.environ.get("AICODER_AI_PREFIX")
 
     @staticmethod
     def ai_prefix() -> str:
         """Get AI prefix text printed before responses"""
-        return Config._ai_prefix
+        if Config._ai_prefix_override is not None:
+            return Config._ai_prefix_override
+        model = Config.model() or "unknown"
+        model_short = model.split("/")[-1] if "/" in model else model
+        return f"AI ({model_short}): "
 
     # Suppress error body - initialize from env var ONCE at module load time
     # After this, only runtime state is used (env var ignored)
