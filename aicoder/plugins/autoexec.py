@@ -13,6 +13,9 @@ the file lines:
   AICODER_AUTOEXEC='/verbose on
   /detail off' aicoder
 
+Env var AICODER_AUTOEXEC_SILENT=1 suppresses all plugin output
+(startup banner, per-line echo, /autoexec apply notice).
+
 Commands:
   /autoexec help       - Show usage
   /autoexec show       - Show current autoexec contents
@@ -21,9 +24,25 @@ Commands:
 """
 import os
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils
 
 _AUTOEXEC_FILE = ".aicoder/autoexec"
+_SILENT_ENV = "AICODER_AUTOEXEC_SILENT"
+
+
+def _silent() -> bool:
+    """True when AICODER_AUTOEXEC_SILENT is set truthy: suppress plugin output."""
+    try:
+        return env_bool(_SILENT_ENV)
+    except ValueError:
+        return False
+
+
+def _say(msg: str):
+    """Print a plugin status line unless running silently."""
+    if not _silent():
+        print(msg)
 
 
 def _keep_line(line: str):
@@ -109,7 +128,7 @@ def create_plugin(ctx):
         lines.extend(_read_autoexec())
         if lines:
             c = Config.colors
-            print(f"\n{c['cyan']}[autoexec] {len(lines)} line(s){c['reset']}")
+            _say(f"\n{c['cyan']}[autoexec] {len(lines)} line(s){c['reset']}")
 
     def feed_next():
         nonlocal lines
@@ -121,7 +140,7 @@ def create_plugin(ctx):
 
         c = Config.colors
         next_line = lines.pop(0)
-        print(f"\n{c['cyan']}[autoexec] {next_line}{c['reset']}")
+        _say(f"\n{c['cyan']}[autoexec] {next_line}{c['reset']}")
         app.set_next_prompt(next_line)
 
     def veto_compaction_while_pending():
@@ -143,7 +162,8 @@ def create_plugin(ctx):
                 "  show       Display .aicoder/autoexec contents\n"
                 "  edit       Open $EDITOR in tmux to edit .aicoder/autoexec\n"
                 "  apply      Re-read file and run all lines now\n"
-                "Env: AICODER_AUTOEXEC (newline-separated) runs after file lines"
+                "Env: AICODER_AUTOEXEC (newline-separated) runs after file lines\n"
+                "Env: AICODER_AUTOEXEC_SILENT=1 suppresses plugin output"
             )
         elif sub == "apply":
             new_lines = _read_autoexec()
@@ -153,7 +173,7 @@ def create_plugin(ctx):
             started = True
             lines = new_lines
             c = Config.colors
-            print(f"\n{c['cyan']}[autoexec] applying {len(lines)} line(s){c['reset']}")
+            _say(f"\n{c['cyan']}[autoexec] applying {len(lines)} line(s){c['reset']}")
             return ""
         elif sub == "edit":
             _edit_autoexec()
