@@ -28,7 +28,18 @@ import re
 from typing import Dict, Any, Set
 
 from aicoder.core.config import Config
+from aicoder.utils.bool_utils import env_bool
 from aicoder.utils.log import LogUtils
+
+_SILENT_ENV = "AICODER_TOOLS_MANAGER_SILENT"
+
+
+def _silent() -> bool:
+    """True when AICODER_TOOLS_MANAGER_SILENT is set truthy: no plugin output."""
+    try:
+        return env_bool(_SILENT_ENV)
+    except ValueError:
+        return False
 
 
 def _tag_lines(text: str) -> str:
@@ -482,10 +493,12 @@ Notes:
 
     def handle_tools_command(args_str: str) -> str:
         """Handle /tools command, tagging every output line for easy filtering"""
+        if _silent():
+            return ""
         return _tag_lines(_dispatch_tools_command(args_str))
 
     # Register the /tools command
     ctx.register_command("/tools", handle_tools_command, description="Manage available tools")
 
-    if Config.debug():
+    if Config.debug() and not _silent():
         LogUtils.print("  - /tools command")
