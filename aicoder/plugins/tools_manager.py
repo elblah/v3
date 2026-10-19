@@ -493,9 +493,11 @@ Notes:
 
     def handle_tools_command(args_str: str) -> str:
         """Handle /tools command, tagging every output line for easy filtering"""
+        # Always execute: silent mode suppresses output only, never the action.
+        result = _dispatch_tools_command(args_str)
         if _silent():
             return ""
-        return _tag_lines(_dispatch_tools_command(args_str))
+        return _tag_lines(result)
 
     # Register the /tools command
     ctx.register_command("/tools", handle_tools_command, description="Manage available tools")
