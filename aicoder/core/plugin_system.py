@@ -28,6 +28,51 @@ if TYPE_CHECKING:
     from aicoder.core.aicoder import AICoder
 
 
+def _first_doc_line(doc: Optional[str]) -> str:
+    """Return the first non-empty line of a module docstring."""
+    if not doc:
+        return ""
+    for line in doc.strip().splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return ""
+
+
+def _read_plugin_metadata(create_fn: Callable, module: Any, plugin_id: str) -> tuple:
+    """
+    Read optional display name/description from create_plugin defaults:
+
+        def create_plugin(ctx, name="...", description="..."):
+
+    The loader never passes these arguments - it only reads their default
+    values, so existing plugins with create_plugin(ctx) keep working unchanged.
+    Name falls back to the filename stem; description to the first docstring line.
+    """
+    name = None
+    description = None
+
+    code = getattr(create_fn, "__code__", None)
+    if code is not None:
+        positional = code.co_varnames[: code.co_argcount]
+        defaults = getattr(create_fn, "__defaults__", None) or ()
+        offset = len(positional) - len(defaults)
+        pairs = [(positional[offset + i], value) for i, value in enumerate(defaults)]
+        pairs += list((getattr(create_fn, "__kwdefaults__", None) or {}).items())
+        for arg, value in pairs:
+            if not isinstance(value, str):
+                continue
+            if arg == "name":
+                name = value
+            elif arg == "description":
+                description = value
+
+    if description is None:
+        description = _first_doc_line(module.__doc__)
+
+    return name or plugin_id, description
+
+
 class PluginContext:
     """
     Context object passed to plugins - minimal API surface
@@ -127,6 +172,8 @@ class PluginSystem:
         )
         self.plugins: List[Any] = []
         self.loaded_plugin_names: Set[str] = set()
+        # Scan metadata for /plugins: one entry per plugin file inspected
+        self.plugin_info: List[Dict[str, Any]] = []
         self.tools: Dict[str, Dict] = {}
         self.commands: Dict[str, Callable] = {}
         self.hooks: Dict[str, List[Callable]] = {}
@@ -253,14 +300,24 @@ class PluginSystem:
                 continue  # Already loaded from higher-priority source
 
             t0 = time.perf_counter()
-            self._load_single_plugin(plugin_path, plugin_name)
+            self._load_single_plugin(plugin_path, plugin_name, source)
             dt = time.perf_counter() - t0
 
             if Config.debug():
                 print(f"[+] Loaded plugin: {plugin_name} ({dt:.3f}s)")
 
-    def _load_single_plugin(self, plugin_path: str, plugin_name: str) -> None:
+    def _load_single_plugin(self, plugin_path: str, plugin_name: str, source: str = "bundled") -> None:
         """Load a single plugin file"""
+        info = {
+            "id": plugin_name,
+            "name": plugin_name,
+            "description": "",
+            "source": source,
+            "path": plugin_path,
+            "error": None,
+        }
+        self.plugin_info.append(info)
+
         try:
             # Fast import using importlib
             spec = importlib.util.spec_from_file_location(
@@ -273,7 +330,11 @@ class PluginSystem:
 
             # Call create_plugin(context) if exists (duck typing)
             if hasattr(module, "create_plugin"):
-                result = module.create_plugin(self.context)
+                create_fn = module.create_plugin
+                info["name"], info["description"] = _read_plugin_metadata(
+                    create_fn, module, plugin_name
+                )
+                result = create_fn(self.context)
 
                 # Track the plugin
                 self.plugins.append(plugin_name)
@@ -282,8 +343,11 @@ class PluginSystem:
                 # Handle cleanup if returned
                 if result and isinstance(result, dict) and "cleanup" in result:
                     self.cleanup_handlers.append(result["cleanup"])
+            else:
+                info["error"] = "no create_plugin()"
 
         except Exception as e:
+            info["error"] = str(e)
             LogUtils.error(f"[!] Failed to load plugin {plugin_path}: {e}")
 
     def get_plugin_tools(self) -> Dict[str, Dict]:

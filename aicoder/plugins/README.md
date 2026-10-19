@@ -12,6 +12,42 @@ Plugins load in priority order (first wins on name collision):
 
 Each plugin is a single `.py` file exporting `create_plugin(context)`. Files starting with `_` are disabled.
 
+## Plugin Metadata (optional)
+
+A plugin may declare a display name and description as defaults on `create_plugin`.
+The loader reads the defaults - it never passes these arguments, so old plugins stay unchanged:
+
+```python
+def create_plugin(ctx, name="Plugin Manager", description="List and inspect loaded plugins"):
+    ...
+```
+
+- `name` defaults to the filename stem.
+- `description` defaults to the first line of the module docstring.
+- The filename stem is the plugin id (used by `PLUGINS_ALLOW`/`PLUGINS_DENY` and `/plugins show <id>`); display names are not unique and are not used for loading.
+
+Inspect loaded plugins:
+
+```bash
+/plugins list       # sections Project/Global/Internal, id + display name, FAILED marker on errors
+/plugins show <id>  # name, id, source, path, description
+```
+
+Example `/plugins list`:
+
+```
+Project:
+  mytool    - My Tool
+
+Internal:
+  alpha      - Alpha One
+  cache_hit
+  gamma      - FAILED: invalid syntax (gamma.py, line 1)
+```
+
+A section appears only when it has plugins; the display name is omitted when it
+equals the plugin id (i.e. when no `name` is declared).
+
 ## Managing Plugins
 
 ### Disabling a Bundled Plugin
