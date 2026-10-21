@@ -120,9 +120,13 @@ def _make_ctx():
     class Ctx:
         def __init__(self):
             self.registered = {}
+            self.hooks = {}
 
         def register_tool(self, name, fn, **kwargs):
             self.registered[name] = {"fn": fn, **kwargs}
+
+        def register_hook(self, name, fn):
+            self.hooks.setdefault(name, []).append(fn)
 
     return Ctx()
 

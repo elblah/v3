@@ -1,4 +1,4 @@
-"""
+r"""
 Web Search Plugin - Ultra-fast using search providers and lynx
 
 Tools:
@@ -14,9 +14,24 @@ Environment Variables:
   If set and resolves to an executable, web_search/get_url_content route through it
   (dtx gobrow, markdown output). If unset/missing, native lynx logic is used.
   Default: None (native behavior)
+- WEB_SEARCH_URL_ALLOW: Optional allowlist for get_url_content. Newline-separated
+  regexes, matched against the full URL with re.search(); a URL is fetched only if
+  at least one pattern matches. Blank lines anywhere (leading, trailing, between
+  entries) and lines starting with '#' are ignored, so the natural shell form
+  works as written:
+    export WEB_SEARCH_URL_ALLOW="
+    ^https://([a-z0-9-]+\.)*github\.com/
+    ^https://raw\.githubusercontent\.com/
+    "
+  Unset, empty or whitespace-only means no restriction. If the variable is set but
+  has no usable regex, every fetch is refused (fail-closed). Patterns are searched
+  anywhere in the URL, so anchor them ('^https://host/'); otherwise a URL such as
+  https://evil.example/?r=https://github.com/ satisfies the github pattern.
+  Default: None (unrestricted)
 """
 
 import os
+import re
 import shutil
 import time
 from typing import Dict, Any, Tuple
@@ -137,6 +152,61 @@ def create_plugin(ctx):
             return result.scheme in ("http", "https") and bool(result.netloc)
         except:
             return False
+
+    # Optional per-project URL allowlist (WEB_SEARCH_URL_ALLOW). Parsed once per
+    # distinct env value so a stale compile can never outlive the env var.
+    _allow_cache: Dict[str, Any] = {"raw": None, "patterns": []}
+
+    def _url_allowlist() -> Tuple[bool, list]:
+        """(configured, compiled patterns) parsed from WEB_SEARCH_URL_ALLOW"""
+        raw = os.environ.get("WEB_SEARCH_URL_ALLOW", "").strip()
+        if _allow_cache["raw"] == raw:
+            return bool(raw), _allow_cache["patterns"]
+        patterns = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                patterns.append(re.compile(line))
+            except re.error as e:
+                LogUtils.print(f"  [!] WEB_SEARCH_URL_ALLOW: invalid regex {line!r}: {e}")
+        _allow_cache["raw"] = raw
+        _allow_cache["patterns"] = patterns
+        return bool(raw), patterns
+
+    def check_url_allowed(url: str):
+        """None when the fetch is allowed, else the refusal message"""
+        configured, patterns = _url_allowlist()
+        if not configured:
+            return None
+        if not patterns:
+            return (
+                f"URL refused: WEB_SEARCH_URL_ALLOW is set but contains no valid regex "
+                f"(all patterns failed to compile) - refusing every fetch.\nURL: {url}"
+            )
+        if any(p.search(url) for p in patterns):
+            return None
+        listed = "\n".join(f"  - {p.pattern}" for p in patterns)
+        return (
+            f"URL refused by project allowlist (WEB_SEARCH_URL_ALLOW): {url}\n"
+            f"No pattern matches this URL. Allowed patterns:\n{listed}"
+        )
+
+    def _on_before_approval_prompt(tool_name: str, arguments: Dict[str, Any]):
+        """Skip the approval prompt for URLs the allowlist forbids.
+
+        Returning the refusal text (not just False) means the model gets the
+        pattern list as the tool result instead of a generic "cancelled by
+        user", and the user is never asked about a fetch that cannot happen.
+        Allowed URLs and the unset-allowlist case return None: normal prompt.
+        """
+        if tool_name != "get_url_content" or not _url_allowlist()[0]:
+            return None
+        url = (arguments or {}).get("url", "").strip()
+        if not url:
+            return None
+        return check_url_allowed(url)
 
     # Generic blocking indicators - provider-agnostic
     BLOCKING_INDICATORS = (
@@ -365,6 +435,15 @@ def create_plugin(ctx):
                 "detailed": "Invalid URL format",
             }
 
+        # Project allowlist gate - runs before any fetcher (gateway included).
+        refusal = check_url_allowed(url)
+        if refusal:
+            return {
+                "tool": "get_url_content",
+                "friendly": "Error: URL not allowed by project allowlist",
+                "detailed": refusal,
+            }
+
         # Optional gateway for text fetch (native path handles raw HTML).
         if not raw:
             gw = _run_gateway("fetch", url)
@@ -513,6 +592,9 @@ def create_plugin(ctx):
         auto_approved=False,
         format_arguments=format_get_url_content
     )
+
+    # Denied URLs never reach the prompt; the hook returns the refusal text.
+    ctx.register_hook("before_approval_prompt", _on_before_approval_prompt)
 
     if Config.debug():
         LogUtils.print("  - web_search tool (auto-approved)")

@@ -217,7 +217,7 @@ def my_tool(args):
 
 - `before_user_prompt` - Every loop turn before obtaining a prompt (fires even when a plugin feeds the prompt itself via `next_prompt`)
 - `on_prompt_available` - Only when the prompt is genuinely available: right before blocking on real user input (skipped when a plugin set `next_prompt`)
-- `before_approval_prompt` - Before showing tool approval (can return `True`=auto-approve, `False`=auto-deny, `None`=ask user)
+- `before_approval_prompt` - Before showing tool approval (can return `True`=auto-approve, `False`=auto-deny, a `str`=auto-deny and use that text as the tool result for the model, `None`=ask user)
 - `on_tool_preview(tool_name, arguments, preview_result)` - Before displaying a tool preview diff (can return a dict to replace the preview, `False` to suppress it entirely, `None` to keep it)
 - `before_file_write(path, content)` - Before writing file (can return modified content)
 - `after_file_write(path, content)` - After file is written (file exists at this point)
@@ -249,16 +249,18 @@ See the `memory.py` plugin for a real example (replaces memory-dir write diffs w
 
 ### Auto-Approve/Deny with `before_approval_prompt`
 
-Plugins can intercept tool approval by returning a boolean from this hook:
+Plugins can intercept tool approval by returning a boolean, or a string to deny
+with an explanation the model actually sees:
 
 ```python
-def before_approval_prompt(tool_name: str, arguments: dict) -> bool | None:
+def before_approval_prompt(tool_name: str, arguments: dict) -> bool | str | None:
     """
     Called before approval prompt.
 
     Returns:
     - True  -> auto-approve (run the tool)
-    - False -> auto-deny (cancel the tool)
+    - False -> auto-deny (model gets the generic "cancelled by user" result)
+    - str   -> auto-deny, and this text becomes the tool result for the model
     - None  -> ask user (default behavior)
     """
     if tool_name == "read_file":

@@ -246,6 +246,42 @@ class TestToolExecutorPreviewDisplay:
 class TestToolExecutorApproval:
     """Test ToolExecutor approval logic."""
 
+    def test_plugin_string_denial_carries_reason(self):
+        """A hook returning text denies the call and keeps the text."""
+        mock_tool_manager = MagicMock()
+        mock_tool_manager.needs_approval.return_value = True
+        mock_plugin_system = MagicMock()
+        mock_plugin_system.call_hooks.return_value = ["URL refused: not allowed"]
+
+        executor = ToolExecutor(mock_tool_manager, MagicMock(), mock_plugin_system)
+
+        with patch('aicoder.core.tool_executor.Config') as mock_config:
+            mock_config.yolo_mode.return_value = False
+            with patch('aicoder.core.tool_executor.LogUtils'):
+                assert executor._get_tool_approval("get_url_content", {}) is False
+        assert executor._denial_reason == "URL refused: not allowed"
+
+    def test_string_denial_reason_reaches_model(self):
+        """The denial reason replaces the generic cancel message."""
+        mock_tool_manager = MagicMock()
+        mock_tool_manager.needs_approval.return_value = True
+        mock_tool_manager.tools = {"get_url_content": {"parameters": {}}}
+
+        executor = ToolExecutor(mock_tool_manager, MagicMock())
+        executor._denial_reason = "URL refused: not allowed"
+
+        tool_call = {
+            "id": "call_1",
+            "function": {"name": "get_url_content", "arguments": "{}"},
+        }
+        with patch.object(executor, '_get_tool_approval', return_value=False):
+            with patch.object(executor, '_should_show_preview', return_value=False):
+                with patch('aicoder.core.tool_executor.LogUtils'):
+                    result = executor._execute_single_tool_call(tool_call)
+
+        assert result["content"] == "URL refused: not allowed"
+        assert executor._denial_reason is None  # consumed, not leaked to next call
+
     def test_approval_not_needed_when_yolo_mode(self):
         """Test approval skipped in YOLO mode."""
         mock_tool_manager = MagicMock()
