@@ -20,6 +20,9 @@ class ToolExecutor:
         self.message_history = message_history
         self._guidance_mode = False
         self.plugin_system = plugin_system
+        # Set by a plugin returning a string from before_approval_prompt: the
+        # denial text handed to the model instead of the generic cancel message.
+        self._denial_reason = None
         
     def is_guidance_mode(self) -> bool:
         """Check if user requested guidance mode"""
@@ -96,9 +99,11 @@ class ToolExecutor:
 
         # Check approval
         if not self._get_tool_approval(tool_name, arguments):
+            reason = self._denial_reason or "Tool execution cancelled by user"
+            self._denial_reason = None
             return {
                 "tool_call_id": tool_call.get("id", ""),
-                "content": "Tool execution cancelled by user",
+                "content": reason,
             }
 
         # Execute tool
@@ -184,8 +189,10 @@ class ToolExecutor:
     def _get_tool_approval(self, tool_name: str, arguments: dict) -> bool:
         """Get user approval for tool if needed
 
-        Plugins can intercept by returning True (approve) or False (deny)
-        from the before_approval_prompt hook. Arguments are passed as (tool_name, arguments).
+        Plugins can intercept by returning True (approve), False (deny) or a
+        string (deny, and use that string as the tool result for the model)
+        from the before_approval_prompt hook.
+        Arguments are passed as (tool_name, arguments).
 
         Returns: bool indicating if tool was approved
         Note: + modifier is handled at session level for flow control
@@ -193,13 +200,18 @@ class ToolExecutor:
         if not self.tool_manager.needs_approval(tool_name) or Config.yolo_mode():
             return True
 
-        # Call plugin hook with tool info (plugins can return True=approve, False=deny, None=ask user)
+        # Call plugin hook with tool info
+        # (plugins can return True=approve, False=deny, str=deny with reason, None=ask user)
         if self.plugin_system:
             results = self.plugin_system.call_hooks("before_approval_prompt", tool_name, arguments)
             if results:
                 for result in results:
                     if result is False:
                         LogUtils.warn("[auto-deny] Plugin denied this tool")
+                        return False
+                    if isinstance(result, str):
+                        LogUtils.warn(f"[auto-deny] {result.splitlines()[0] if result else ''}")
+                        self._denial_reason = result
                         return False
                 # If any True returned (and no False), auto-approve
                 if any(r is True for r in results):
