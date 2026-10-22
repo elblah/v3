@@ -626,6 +626,27 @@ class TestSandboxDenylist:
             assert check_sandbox(str(secret / "key")) is False
             assert check_sandbox(str(tmp_path / "notes.txt")) is True
 
+    def test_stats_log_blocked_for_read_and_write(self, monkeypatch, tmp_path):
+        """AI usage logs are reserved: no read, no write, regardless of the
+        sandbox flag (they live inside cwd, so containment alone allows them)."""
+        from aicoder.utils.file_utils import sandbox_denial_message
+        monkeypatch.chdir(tmp_path)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            for p in (".aicoder/stats.log", "./.aicoder/stats.log"):
+                assert check_sandbox(p, context="read_file") is False
+                assert check_sandbox(p, context="write_file", write=True) is False
+            assert "reserved AI usage log" in sandbox_denial_message(
+                ".aicoder/stats.log"
+            )
+            # neighbouring files under .aicoder stay accessible
+            assert check_sandbox(".aicoder/memory/index.md") is True
+
+    def test_stats_log_block_env_override(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STATS_LOG_TOOLS_BLOCKED", "0")
+        monkeypatch.chdir(tmp_path)
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox(".aicoder/stats.log") is True
+
     def test_deny_enforced_when_config_import_fails(self, monkeypatch, tmp_path):
         """Round-2 fix: denylist runs before the Config import, so an
         ImportError only skips cwd-containment — hard-denied paths stay

@@ -154,12 +154,46 @@ def _deny_extra_prefixes() -> tuple:
     return tuple(out)
 
 
+# Local AI-usage logs: internal tools must never read or write them. The
+# stats logger owns these files (pure Python, bypasses these tools), and the
+# AI reading them is either pointless or self-polluting (editing usage data).
+# Relative entries resolve against cwd, so every project is covered.
+_BLOCKED_LOCAL_FILES = (".aicoder/stats.log", "~/.aicoder/central_stats.log")
+
+
+def _deny_local_files() -> tuple:
+    """Resolved paths of the local usage logs blocked for internal tools.
+
+    Disable with STATS_LOG_TOOLS_BLOCKED=0.
+    """
+    if not env_bool("STATS_LOG_TOOLS_BLOCKED", default=True):
+        return ()
+    cwd = os.getcwd()
+    out = []
+    for raw in _BLOCKED_LOCAL_FILES:
+        p = os.path.expanduser(raw)
+        if not os.path.isabs(p):
+            p = os.path.join(cwd, p)
+        out.append(os.path.realpath(p))
+    return tuple(out)
+
+
 def _denied_path(resolved: str) -> bool:
-    """True if resolved path sits under a denied system/sensitive prefix."""
-    for denied in (*_deny_base_prefixes(), *_deny_extra_prefixes()):
+    """True if resolved path sits under a denied system/sensitive prefix,
+    or is one of the blocked local usage logs."""
+    for denied in (*_deny_base_prefixes(), *_deny_extra_prefixes(), *_deny_local_files()):
         if resolved == denied or resolved.startswith(denied + "/"):
             return True
     return False
+
+
+def _denial_text(resolved: str) -> str:
+    """Human reason why a resolved path is rejected (usage shown to AI/user)."""
+    if resolved in _deny_local_files():
+        return f'"{resolved}" is a reserved AI usage log (blocked for AI tools)'
+    if _denied_path(resolved):
+        return f'"{resolved}" is a denied system/sensitive path'
+    return f'trying to access "{resolved}" outside current directory "{os.getcwd()}"'
 
 
 def check_sandbox(path: str, context: str = "file operation", print_message: bool = True,
@@ -184,17 +218,18 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
         return True
 
     # Deny first (independent of sandbox flag / bwrap). Relative paths are
-    # resolved against cwd so 'proc/self' isn't a bypass.
-    resolved_path = str(Path(os.path.join(os.getcwd(), path)).resolve())
+    # resolved against cwd so 'proc/self' isn't a bypass; '~' is expanded so
+    # a home-relative spelling can't dodge the denylist.
+    resolved_path = str(Path(os.path.join(os.getcwd(), os.path.expanduser(path))).resolve())
     if _denied_path(resolved_path):
         if print_message:
             try:
                 from aicoder.utils.log import warn
-                warn(f'Sandbox: {context} blocked from denied system directory "{resolved_path}"')
+                warn(f'Sandbox: {context} blocked - {_denial_text(resolved_path)}')
             except ImportError:
                 import sys
                 print(
-                    f'[x] Sandbox: {context} blocked from denied system directory "{path}"',
+                    f'[x] Sandbox: {context} blocked - {_denial_text(resolved_path)}',
                     file=sys.stderr,
                 )
         return False
@@ -213,7 +248,7 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
     # Resolve relative paths AND symlinks (os.path.abspath is NOT enough:
     # a symlink in cwd pointing at / passes a lexical prefix check)
     current_dir = os.getcwd()
-    resolved_path = str(Path(os.path.join(current_dir, path)).resolve())
+    resolved_path = str(Path(os.path.join(current_dir, os.path.expanduser(path))).resolve())
 
     # Check if resolved path is within current directory
     # Must either be exactly current dir or start with current dir + '/'
@@ -250,10 +285,8 @@ def sandbox_denial_message(path: str) -> str:
     misleading) when the path is hard-denied. Resolves exactly like
     check_sandbox (cwd-relative, symlinks followed).
     """
-    resolved = str(Path(os.path.join(os.getcwd(), path)).resolve())
-    if _denied_path(resolved):
-        return f'"{resolved}" is a denied system/sensitive path'
-    return f'trying to access "{resolved}" outside current directory "{os.getcwd()}"'
+    resolved = str(Path(os.path.join(os.getcwd(), os.path.expanduser(path))).resolve())
+    return _denial_text(resolved)
 
 
 def file_exists(path: str) -> bool:
