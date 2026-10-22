@@ -137,9 +137,31 @@ status
   "yolo_enabled": true,
   "detail_enabled": false,
   "sandbox_enabled": true,
+  "debug_enabled": false,
+  "model": "provider/model-name",
   "messages": 25
 }
 ```
+
+#### `model`
+Get the active model (and the endpoint it talks to). Reflects runtime
+model switching performed by plugins (e.g. model rotation), since the
+model is read from the running process environment.
+
+```
+model
+```
+
+**Response (JSON):**
+```json
+{
+  "model": "provider/model-name",
+  "base_url": "https://api.example.com/v1",
+  "context_size": "200000"
+}
+```
+
+`base_url` and `context_size` are omitted when not configured.
 
 #### `stats`
 Get session statistics.
@@ -411,6 +433,12 @@ OK
 ```bash
 echo "is_processing" | nc -U $TMPDIR/aicoder-12345-%1.socket
 # {"processing": false}
+```
+
+### Show the active model in a tmux menu
+```bash
+echo "model" | nc -U $TMPDIR/aicoder-12345-%1.socket
+# {"model": "provider/model-name", "base_url": "https://api.example.com/v1"}
 ```
 
 ### Stop from tmux key binding

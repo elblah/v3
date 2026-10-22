@@ -90,6 +90,19 @@ parse_json() {
     fi
 }
 
+# Parse a field inside the response "data" object (e.g. {"data":{"model":"x"}})
+parse_data_json() {
+    local json="$1"
+    local field="$2"
+
+    if [ -n "$JSON_PARSER" ]; then
+        echo "$json" | $JSON_PARSER -r ".data.${field} // empty" 2>/dev/null
+    else
+        # Fallback: grep for "field":value
+        echo "$json" | grep -o "\"$field\":[^,}]*" | sed 's/.*://' | tr -d '"'
+    fi
+}
+
 # Check if boolean field is true in JSON
 parse_bool() {
     local json="$1"
@@ -147,9 +160,19 @@ show_menu() {
         processing="RUNNING"
     fi
 
+    # Active model, shown as a non-selectable header row.
+    # Prefer the dedicated "model" command; older servers only have it in "status".
+    local model
+    model=$(parse_data_json "$(send_command "$socket" "model")" "model")
+    [[ -z "$model" ]] && model=$(parse_data_json "$status_json" "model")
+    [[ -z "$model" ]] && model="unknown"
+    model=${model//#/##}   # tmux format escape, model names may contain '#'
+
     response_file="$TMP/aicoder_menu_resp_${pane_numeric}.tmp"
     rm "$response_file"
     tmux display-menu -T "#[align=centre]AICoder" \
+        -- \
+        "-model: ${model}"                      "" "" \
         "Stop Processing (${processing})"        x "run-shell -b 'echo stop > ${response_file}'" \
         "Toggle YOLO (${yolo_enabled})"          y "run-shell -b 'echo yolo > ${response_file}'" \
         "Toggle Detail (${detail_enabled})"      d "run-shell -b 'echo detail > ${response_file}'" \

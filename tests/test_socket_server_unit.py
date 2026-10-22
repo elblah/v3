@@ -649,8 +649,62 @@ class TestSocketServerStatus:
         assert "yolo_enabled" in data
         assert "detail_enabled" in data
         assert "sandbox_enabled" in data
+        assert "model" in data
         assert "messages" in data
         assert data["messages"] == 2
+
+
+class TestSocketServerModel:
+    """Test model command."""
+
+    @pytest.fixture
+    def server(self):
+        """Create a server."""
+        mock_aicoder = MockAICoder()
+        mock_aicoder.message_history = MockMessageHistory()
+        return SocketServer(mock_aicoder)
+
+    def test_model_returns_active_model(self, server, monkeypatch):
+        """Test model returns the active model name."""
+        monkeypatch.setenv("OPENAI_MODEL", "test/model-a")
+        parsed = json.loads(server._cmd_model(""))
+        assert parsed["status"] == "success"
+        assert parsed["data"]["model"] == "test/model-a"
+
+    def test_model_unknown_when_unset(self, server, monkeypatch):
+        """Test model never returns an empty string."""
+        monkeypatch.delenv("OPENAI_MODEL", raising=False)
+        monkeypatch.delenv("API_MODEL", raising=False)
+        data = json.loads(server._cmd_model(""))["data"]
+        assert data["model"] == "unknown"
+
+    def test_model_includes_base_url(self, server, monkeypatch):
+        """Test base URL is reported when configured."""
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        monkeypatch.setenv("API_BASE_URL", "https://api.test/v1")
+        data = json.loads(server._cmd_model(""))["data"]
+        assert data["base_url"] == "https://api.test/v1"
+
+    def test_model_omits_unset_optional_fields(self, server, monkeypatch):
+        """Test optional fields are absent when not configured."""
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        monkeypatch.delenv("API_BASE_URL", raising=False)
+        monkeypatch.delenv("CONTEXT_SIZE", raising=False)
+        data = json.loads(server._cmd_model(""))["data"]
+        assert "base_url" not in data
+        assert "context_size" not in data
+
+    def test_model_command_via_dispatch(self, server, monkeypatch):
+        """Test 'model' is registered in the command dispatch table."""
+        monkeypatch.setenv("OPENAI_MODEL", "test/model-b")
+        data = json.loads(server._execute_command("model"))["data"]
+        assert data["model"] == "test/model-b"
+
+    def test_status_includes_model(self, server, monkeypatch):
+        """Test status carries the model so one query is enough."""
+        monkeypatch.setenv("OPENAI_MODEL", "test/model-c")
+        data = json.loads(server._cmd_status(""))["data"]
+        assert data["model"] == "test/model-c"
 
 
 class TestSocketServerStartEnvVars:
