@@ -85,7 +85,7 @@ def test_gateway_search_forwards_gobrow_search():
         )
         assert out.returncode == 0, out.stderr
         assert "Result" in out.stdout
-        assert captured["cmd"] == "gobrow search -max-tokens 8000 raspberry pi"
+        assert captured["cmd"] == "gobrow search --max-tokens 8000 raspberry pi"
     finally:
         os.unlink(sock_path)
 
@@ -100,7 +100,7 @@ def test_gateway_fetch_forwards_gobrow_fetch():
         )
         assert out.returncode == 0, out.stderr
         assert "Page title" in out.stdout
-        assert captured["cmd"] == "gobrow -max-tokens 8000 https://example.com/page"
+        assert captured["cmd"] == "gobrow --max-tokens 8000 https://example.com/page"
     finally:
         os.unlink(sock_path)
 

@@ -1,9 +1,10 @@
 r"""
-Web Search Plugin - Ultra-fast using search providers and lynx
+Web Search Plugin - Search providers plus pure-stdlib URL fetching
 
 Tools:
 - web_search: Search to web
-- get_url_content: Fetch URL using lynx -dump (plain text, not raw HTML)
+- get_url_content: Fetch a URL as readable text (lynx -dump when available,
+  otherwise a stdlib HTML->text fallback) or as raw HTML when raw=true
 
 Environment Variables:
 - WEB_SEARCH_PROVIDERS: Semicolon-separated list of search providers
@@ -12,7 +13,8 @@ Environment Variables:
   Default: None (must be configured)
 - WEB_SEARCH_SCRIPT: Optional path to a gateway script (e.g. examples/search-gateway).
   If set and resolves to an executable, web_search/get_url_content route through it
-  (dtx gobrow, markdown output). If unset/missing, native lynx logic is used.
+  (dtx gobrow, markdown output). If unset/missing, native logic is used
+  (lynx when it can run, otherwise pure-stdlib urllib + HTML->text).
   Default: None (native behavior)
 - WEB_SEARCH_URL_ALLOW: Optional allowlist for get_url_content. Newline-separated
   regexes, matched against the full URL with re.search(); a URL is fetched only if
@@ -34,7 +36,8 @@ import os
 import re
 import shutil
 import time
-from typing import Dict, Any, Tuple
+from html.parser import HTMLParser
+from typing import Dict, Any, List, Optional, Tuple
 
 from aicoder.core.config import Config
 from aicoder.utils.log import LogUtils
@@ -47,6 +50,162 @@ def _get_urllib():
         import urllib.parse
         _urllib_parse = urllib.parse
     return _urllib_parse
+
+
+# ---------------------------------------------------------------------------
+# Stdlib-only fetching / HTML-to-text helpers.
+#
+# These exist so the tools still work where no external binary can be run
+# (sandbox blocking execvp, no lynx/gorl/curl installed).
+# ---------------------------------------------------------------------------
+
+MAX_HTML_BYTES = 5 * 1024 * 1024  # 5MB
+LINK_SCHEMES = ("http://", "https://")
+
+
+class _HTMLTextExtractor(HTMLParser):
+    """Very small HTML -> plain text renderer (no deps, no layout engine)."""
+
+    # Tags that start a new line in the output
+    BLOCK_TAGS = {
+        "address", "article", "aside", "blockquote", "br", "dd", "div", "dl",
+        "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2",
+        "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol", "p",
+        "pre", "section", "table", "tbody", "td", "tfoot", "th", "thead", "title",
+        "tr", "ul",
+    }
+    # Tags whose content is never readable text
+    SKIP_TAGS = {
+        "canvas", "embed", "iframe", "noscript", "object", "script", "style",
+        "svg", "template",
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._out: List[str] = []
+        self._skip = 0
+        self._links: List[Tuple[Optional[str], int]] = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self.SKIP_TAGS:
+            self._skip += 1
+            return
+        if self._skip:
+            return
+        if tag == "a":
+            href = (dict(attrs).get("href") or "").strip()
+            self._links.append((href if href.startswith(LINK_SCHEMES) else None, len(self._out)))
+            return
+        if tag == "li":
+            self._out.append("\n- ")
+        elif tag in self.BLOCK_TAGS:
+            self._out.append("\n")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self.SKIP_TAGS:
+            self._skip = max(0, self._skip - 1)
+            return
+        if self._skip:
+            return
+        if tag == "a":
+            if self._links:
+                href, _start = self._links.pop()
+                if href:
+                    self._out.append(f" <{href}>")
+            return
+        if tag in self.BLOCK_TAGS:
+            self._out.append("\n")
+
+    def handle_data(self, data):
+        # Collapse runs of whitespace (including newlines) so wrapped source
+        # markup does not leak hard line breaks into the extracted text, but
+        # keep a single separating space where the original had any.
+        if self._skip or not data:
+            return
+        collapsed = " ".join(data.split())
+        if not collapsed:
+            if self._out and not self._out[-1].endswith((" ", "\n")):
+                self._out.append(" ")
+            return
+        if data[0].isspace() and self._out and not self._out[-1].endswith((" ", "\n")):
+            collapsed = " " + collapsed
+        if data[-1].isspace():
+            collapsed += " "
+        self._out.append(collapsed)
+
+    def get_text(self) -> str:
+        lines = []
+        for line in "".join(self._out).splitlines():
+            line = " ".join(line.split())
+            if line:
+                lines.append(line)
+        return "\n".join(lines)
+
+
+def html_to_text(html: str) -> str:
+    """Convert an HTML document to readable plain text (stdlib only)."""
+    parser = _HTMLTextExtractor()
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:
+        # Truncated/garbage markup still yields whatever was parsed so far
+        pass
+    return parser.get_text()
+
+
+def fetch_urllib(url: str, timeout: int = 30) -> Tuple[str, Optional[str]]:
+    """Fetch a URL with urllib. Returns (body_text, error_message)."""
+    import urllib.request
+
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            charset = None
+            try:
+                charset = response.headers.get_content_charset()
+            except Exception:
+                charset = None
+
+            declared = response.headers.get("Content-Length")
+            if declared:
+                try:
+                    if int(declared) > MAX_HTML_BYTES:
+                        return "", (
+                            f"Error: Response too large "
+                            f"({int(declared) // (1024 * 1024)}MB). "
+                            f"Max: {MAX_HTML_BYTES // (1024 * 1024)}MB"
+                        )
+                except ValueError:
+                    pass
+
+            chunks = []
+            total = 0
+            while True:
+                chunk = response.read(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > MAX_HTML_BYTES:
+                    return "", (
+                        f"Error: Response too large "
+                        f"(> {MAX_HTML_BYTES // (1024 * 1024)}MB)"
+                    )
+            data = b"".join(chunks)
+    except Exception as e:
+        return "", f"Error fetching URL: {e}"
+
+    for encoding in (charset, "utf-8", "latin-1"):
+        if not encoding:
+            continue
+        try:
+            return data.decode(encoding), None
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", errors="replace"), None
 
 
 def create_plugin(ctx):
@@ -124,7 +283,7 @@ def create_plugin(ctx):
 
         Returns stdout text on success, or None when the script is unavailable
         or failed (non-zero exit / exception) so the caller falls back to the
-        native lynx path. Empty stdout is treated as failure so a native retry
+        native path. Empty stdout is treated as failure so a native retry
         can run (e.g. gobrow 403 -> native may also fail, which is fine).
         """
         import subprocess
@@ -235,40 +394,57 @@ def create_plugin(ctx):
         return any(indicator in content for indicator in BLOCKING_INDICATORS)
 
     def fetch_url_text(url: str, user_agent: str = None) -> str:
-        """Fetch URL text using lynx browser with user agent"""
-        import shutil
-        if not shutil.which("lynx"):
-            return "Error: lynx browser not installed. Install with: sudo apt install lynx"
-
+        """Fetch URL as readable text: lynx when usable, else stdlib HTML->text."""
         import subprocess
-        try:
-            # Use bytes mode and decode manually for better encoding handling
-            result = safe_subprocess_run(
-                ["lynx", "-dump", "-nolist", url],
-                capture_output=True,
-                timeout=30,
-                requires_net=True,
-            )
-            # Try UTF-8 first, then latin-1, replace errors
+
+        content = None
+
+        if shutil.which("lynx"):
             try:
-                content = result.stdout.decode("utf-8", errors="replace")
-            except Exception:
-                content = result.stdout.decode("latin-1", errors="replace")
-
-            # Detect if provider is blocking the request
-            if detect_blocking(content):
-                warning = (
-                    "\n"
-                    "[!] WARNING: Search provider has blocked this request as bot traffic.\n"
-                    "    The AI cannot continue using web search until this is resolved.\n\n"
+                # Use bytes mode and decode manually for better encoding handling
+                result = safe_subprocess_run(
+                    ["lynx", "-dump", "-nolist", url],
+                    capture_output=True,
+                    timeout=30,
+                    requires_net=True,
                 )
-                content = warning + content
+                # Try UTF-8 first, then latin-1, replace errors
+                try:
+                    text = result.stdout.decode("utf-8", errors="replace")
+                except Exception:
+                    text = result.stdout.decode("latin-1", errors="replace")
+                if result.returncode == 0 and text.strip():
+                    content = text
+            except subprocess.TimeoutExpired:
+                return "Error: Request timed out after 30 seconds"
+            except Exception:
+                # exec blocked (sandbox), binary gone, seal refusal: fall through
+                content = None
 
-            return content
-        except subprocess.TimeoutExpired:
-            return "Error: Request timed out after 30 seconds"
-        except Exception as e:
-            return f"Error fetching URL: {e}"
+        engine = "lynx"
+        if content is None:
+            # Pure-stdlib fallback: fetch HTML, strip it down to text
+            engine = "stdlib"
+            html, error = fetch_urllib(url)
+            if error:
+                return error
+            content = html_to_text(html)
+            if not content.strip():
+                return "Error: Page contained no readable text"
+
+        # Detect if provider is blocking the request
+        if detect_blocking(content):
+            warning = (
+                "\n"
+                "[!] WARNING: Search provider has blocked this request as bot traffic.\n"
+                "    The AI cannot continue using web search until this is resolved.\n\n"
+            )
+            content = warning + content
+
+        if engine != "lynx" and Config.debug():
+            LogUtils.print(f"  - fetch_url_text: lynx unavailable, used {engine} fallback")
+
+        return content
 
     def fetch_url_raw(url: str) -> str:
         """Fetch raw HTML: gorl (preferred) -> curl -> urllib fallback"""
@@ -301,32 +477,8 @@ def create_plugin(ctx):
                 return f"Error fetching URL: {e}"
 
         # Last-resort pure-Python fallback (works with no external binary)
-        import urllib.request
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=30) as response:
-                # Check content-length if available
-                content_length = response.headers.get("Content-Length")
-                if content_length and int(content_length) > MAX_HTML_SIZE:
-                    return f"Error: Response too large ({int(content_length) // (1024*1024)}MB). Max: {MAX_HTML_SIZE // (1024*1024)}MB"
-
-                # Read with size limit
-                data = b""
-                while True:
-                    chunk = response.read(65536)  # 64KB chunks
-                    if not chunk:
-                        break
-                    data += chunk
-                    if len(data) > MAX_HTML_SIZE:
-                        return f"Error: Response too large (> {MAX_HTML_SIZE // (1024*1024)}MB)"
-
-                # Try to decode as UTF-8, fall back to latin-1
-                try:
-                    return data.decode("utf-8")
-                except UnicodeDecodeError:
-                    return data.decode("latin-1")
-        except Exception as e:
-            return f"Error fetching URL: {e}"
+        text, error = fetch_urllib(url)
+        return error if error else text
 
     def web_search(args: Dict[str, Any]) -> Dict[str, Any]:
         """Search to web using configured providers in order"""
@@ -514,11 +666,11 @@ def create_plugin(ctx):
             }
 
     def _raw_fetcher_label():
-        """Raw fetch attempt chain (gorl -> curl -> urllib), per binaries present."""
+        """Raw fetch attempt chain (gorl -> curl -> stdlib urllib)."""
         avail = [b for b in ("gorl", "curl") if shutil.which(b)]
         if not avail:
-            return "urllib"
-        return " -> ".join(avail) + " -> urllib"
+            return "stdlib urllib"
+        return " -> ".join(avail) + " -> stdlib urllib"
 
     # Format function for get_url_content (shows URL during approval)
     def format_get_url_content(args):
@@ -526,13 +678,13 @@ def create_plugin(ctx):
         url = args.get("url", "")
         page = args.get("page", 1)
         raw = args.get("raw", False)
-        raw_str = " (raw HTML)" if raw else " (lynx text)"
+        raw_str = " (raw HTML)" if raw else " (text)"
         if raw:
-            mode = f"native raw HTML ({_raw_fetcher_label()})"
+            mode = f"native raw HTML ({_raw_fetcher_label()}), no gateway"
         elif _search_script_path():
             mode = "gateway (WEB_SEARCH_SCRIPT)"
         else:
-            mode = "native lynx"
+            mode = "native lynx" if shutil.which("lynx") else "native stdlib (urllib -> text)"
         return f"URL: {url}\nPage: {page}{raw_str}\nMode: {mode}"
 
     # Format function for web_search (shows query + gateway mode during approval)
@@ -568,7 +720,10 @@ def create_plugin(ctx):
     ctx.register_tool(
         name="get_url_content",
         fn=get_url_content,
-        description="Fetch URL content. Default: lynx -dump (plain text). Set raw=true for raw HTML via urllib.",
+        description=(
+            "Fetch URL content as readable text (lynx -dump, or a pure-stdlib "
+            "HTML->text fallback when lynx cannot run). Set raw=true for raw HTML."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -583,7 +738,7 @@ def create_plugin(ctx):
                 },
                 "raw": {
                     "type": "boolean",
-                    "description": "Fetch raw HTML instead of lynx-processed text (default: false)",
+                    "description": "Fetch raw HTML instead of readable text (default: false)",
                     "default": False
                 }
             },
