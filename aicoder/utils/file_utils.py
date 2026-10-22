@@ -154,43 +154,52 @@ def _deny_extra_prefixes() -> tuple:
     return tuple(out)
 
 
-# Local AI-usage logs: internal tools must never read or write them. The
-# stats logger owns these files (pure Python, bypasses these tools), and the
-# AI reading them is either pointless or self-polluting (editing usage data).
-# Relative entries resolve against cwd, so every project is covered.
-_BLOCKED_LOCAL_FILES = (".aicoder/stats.log", "~/.aicoder/central_stats.log")
+# Re-entrancy guard: a plugin's on_file_access hook must not recurse back
+# into check_sandbox (it usually inspects files itself) and loop forever.
+_access_hook_depth = 0
 
 
-def _deny_local_files() -> tuple:
-    """Resolved paths of the local usage logs blocked for internal tools.
+def _plugin_access_denial(resolved: str, write: bool, context: str) -> Optional[str]:
+    """Ask plugins whether this path may be touched.
 
-    Disable with STATS_LOG_TOOLS_BLOCKED=0.
+    Plugins register `on_file_access(path, write, context)` and return a
+    denial reason (str) to block the operation, or None to stay neutral.
+    The first non-empty reason wins. Failure is fail-open on purpose: a
+    broken plugin must not lock the user out of their own files.
+
+    The hook receives the RESOLVED absolute path plus the write flag, so a
+    plugin can protect files/dirs without re-implementing path handling.
     """
-    if not env_bool("STATS_LOG_TOOLS_BLOCKED", default=True):
-        return ()
-    cwd = os.getcwd()
-    out = []
-    for raw in _BLOCKED_LOCAL_FILES:
-        p = os.path.expanduser(raw)
-        if not os.path.isabs(p):
-            p = os.path.join(cwd, p)
-        out.append(os.path.realpath(p))
-    return tuple(out)
+    global _access_hook_depth
+    if not _plugin_system or _access_hook_depth:
+        return None
+    _access_hook_depth += 1
+    try:
+        results = _plugin_system.call_hooks("on_file_access", resolved, bool(write), context)
+    except Exception:
+        return None
+    finally:
+        _access_hook_depth -= 1
+    for result in results or ():
+        if isinstance(result, str) and result.strip():
+            return result.strip()
+    return None
 
 
 def _denied_path(resolved: str) -> bool:
-    """True if resolved path sits under a denied system/sensitive prefix,
-    or is one of the blocked local usage logs."""
-    for denied in (*_deny_base_prefixes(), *_deny_extra_prefixes(), *_deny_local_files()):
+    """True if resolved path sits under a denied system/sensitive prefix."""
+    for denied in (*_deny_base_prefixes(), *_deny_extra_prefixes()):
         if resolved == denied or resolved.startswith(denied + "/"):
             return True
     return False
 
 
-def _denial_text(resolved: str) -> str:
-    """Human reason why a resolved path is rejected (usage shown to AI/user)."""
-    if resolved in _deny_local_files():
-        return f'"{resolved}" is a reserved AI usage log (blocked for AI tools)'
+def _denial_text(resolved: str, context: str = "file operation",
+                 write: bool = False) -> str:
+    """Human reason why a resolved path is rejected (shown to AI and user)."""
+    reason = _plugin_access_denial(resolved, write, context)
+    if reason:
+        return f'"{resolved}" is blocked: {reason}'
     if _denied_path(resolved):
         return f'"{resolved}" is a denied system/sensitive path'
     return f'trying to access "{resolved}" outside current directory "{os.getcwd()}"'
@@ -208,11 +217,12 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
     (on_file_sandbox_whitelist hook) — read-only, so write=True skips it.
 
     Hard-denied first, BEFORE the Config import and the sandbox-disabled
-    early-return (the denylist needs no Config): system and personal-secret
-    directories (/proc /sys /dev /etc /run / and SSH/GPG/AWS secrets under
-    $HOME) are unreachable by internal read/write tools even when the
-    sandbox is turned off or bwrap is absent. System access is intended
-    to go through run_shell_command (sealed) instead.
+    early-return: plugins can veto any path through the on_file_access hook
+    (returns a reason string), and built-in system/secrets dirs (/proc /sys
+    /dev /etc /run / and SSH/GPG/AWS secrets under $HOME) are unreachable by
+    internal read/write tools even when the sandbox is turned off or bwrap is
+    absent. System access is intended to go through run_shell_command
+    (sealed) instead.
     """
     if not path:
         return True
@@ -221,15 +231,20 @@ def check_sandbox(path: str, context: str = "file operation", print_message: boo
     # resolved against cwd so 'proc/self' isn't a bypass; '~' is expanded so
     # a home-relative spelling can't dodge the denylist.
     resolved_path = str(Path(os.path.join(os.getcwd(), os.path.expanduser(path))).resolve())
-    if _denied_path(resolved_path):
+    denial = _plugin_access_denial(resolved_path, write, context)
+    if denial or _denied_path(resolved_path):
+        reason = (
+            f'"{resolved_path}" is blocked: {denial}' if denial
+            else f'"{resolved_path}" is a denied system/sensitive path'
+        )
         if print_message:
             try:
                 from aicoder.utils.log import warn
-                warn(f'Sandbox: {context} blocked - {_denial_text(resolved_path)}')
+                warn(f'Sandbox: {context} blocked - {reason}')
             except ImportError:
                 import sys
                 print(
-                    f'[x] Sandbox: {context} blocked - {_denial_text(resolved_path)}',
+                    f'[x] Sandbox: {context} blocked - {reason}',
                     file=sys.stderr,
                 )
         return False
