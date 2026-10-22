@@ -150,13 +150,91 @@ class TestExecute:
             assert "timed out" in result["friendly"].lower()
 
     def test_ripgrep_not_found(self):
+        # A missing rg (or a sandbox blocking exec) must not kill the tool:
+        # it falls back to the pure-Python search.
         with patch.object(Config, 'sandbox_disabled', return_value=True), \
-             patch('aicoder.tools.internal.grep.subprocess.run', side_effect=FileNotFoundError("rg not found")):
+             patch('aicoder.tools.internal.grep.subprocess.run', side_effect=FileNotFoundError("rg not found")), \
+             patch('aicoder.tools.internal.grep.python_grep', return_value=(["f.py:1:hit"], None)):
             
             result = execute({"text": "test"})
             
             assert result["tool"] == "grep"
-            assert "error" in result["friendly"].lower()
+            assert "Found 1 matches" in result["friendly"]
+            assert "python fallback" in result["friendly"]
+
+    def test_execvp_blocked_falls_back(self):
+        # bash reports execvp failure for the sealed command
+        mock_result = Mock()
+        mock_result.stdout = ""
+        mock_result.returncode = 127
+        mock_result.stderr = "bash: execvp: Operation not permitted"
+
+        with patch.object(Config, 'sandbox_disabled', return_value=True), \
+             patch('aicoder.tools.internal.grep.subprocess.run', return_value=mock_result), \
+             patch('aicoder.tools.internal.grep.python_grep', return_value=([], None)):
+            
+            result = execute({"text": "test"})
+            
+            assert result["tool"] == "grep"
+            assert "No matches found" in result["friendly"]
+            assert "python fallback" in result["friendly"]
+
+    def test_fallback_bad_regex(self):
+        with patch.object(Config, 'sandbox_disabled', return_value=True), \
+             patch('aicoder.tools.internal.grep.subprocess.run', side_effect=PermissionError("denied")), \
+             patch('aicoder.tools.internal.grep.python_grep', return_value=([], "error: unclosed group")):
+            
+            result = execute({"text": "predict("})
+            
+            assert result["tool"] == "grep"
+            assert "Search failed" in result["friendly"]
+
+    def test_python_grep_walks_files(self, tmp_path):
+        from aicoder.tools.internal.grep import python_grep
+
+        (tmp_path / "a.txt").write_text("alpha\nbeta\ngamma\n")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "b.txt").write_text("needle here\n")
+        (tmp_path / "skip_git").mkdir()
+        (tmp_path / "skip_git" / "c.txt").write_text("needle ignored\n")
+        # .git directories are pruned
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "d.txt").write_text("needle in git\n")
+
+        matches, error = python_grep("needle", str(tmp_path), 10, 0)
+
+        assert error is None
+        assert any("b.txt:1:needle here" in m for m in matches)
+        assert any("c.txt:1:needle ignored" in m for m in matches)
+        assert not any("d.txt" in m for m in matches)
+
+    def test_python_grep_context_and_limit(self, tmp_path):
+        from aicoder.tools.internal.grep import python_grep
+
+        (tmp_path / "a.txt").write_text("l1\nneedle\nl3\nneedle\nl5\n")
+
+        matches, error = python_grep("needle", str(tmp_path), 10, 1)
+
+        assert error is None
+        # Matches use ':' separators, context lines use '-'
+        assert any(f"a.txt:2:needle" in m for m in matches)
+        assert any(f"a.txt-1-l1" in m for m in matches)
+        assert any(f"a.txt-3-l3" in m for m in matches)
+
+        limited, _ = python_grep("needle", str(tmp_path), 1, 0)
+        assert len(limited) == 1
+
+    def test_python_grep_skips_binary(self, tmp_path):
+        from aicoder.tools.internal.grep import python_grep
+
+        (tmp_path / "bin.dat").write_bytes(b"needle\0\0\0")
+        (tmp_path / "text.txt").write_text("needle\n")
+
+        matches, error = python_grep("needle", str(tmp_path), 10, 0)
+
+        assert error is None
+        assert all("bin.dat" not in m for m in matches)
+        assert any("text.txt" in m for m in matches)
 
     def test_command_parameters(self):
         mock_result = Mock()
