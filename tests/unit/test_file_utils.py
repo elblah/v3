@@ -626,26 +626,90 @@ class TestSandboxDenylist:
             assert check_sandbox(str(secret / "key")) is False
             assert check_sandbox(str(tmp_path / "notes.txt")) is True
 
-    def test_stats_log_blocked_for_read_and_write(self, monkeypatch, tmp_path):
-        """AI usage logs are reserved: no read, no write, regardless of the
-        sandbox flag (they live inside cwd, so containment alone allows them)."""
+    def test_plugin_hook_can_deny_any_path(self, monkeypatch, tmp_path):
+        """on_file_access: a plugin returning a reason string blocks the path,
+        even when it sits inside cwd and the sandbox flag is off."""
+        from aicoder.utils import file_utils
         from aicoder.utils.file_utils import sandbox_denial_message
-        monkeypatch.chdir(tmp_path)
-        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
-            for p in (".aicoder/stats.log", "./.aicoder/stats.log"):
-                assert check_sandbox(p, context="read_file") is False
-                assert check_sandbox(p, context="write_file", write=True) is False
-            assert "reserved AI usage log" in sandbox_denial_message(
-                ".aicoder/stats.log"
-            )
-            # neighbouring files under .aicoder stay accessible
-            assert check_sandbox(".aicoder/memory/index.md") is True
 
-    def test_stats_log_block_env_override(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("STATS_LOG_TOOLS_BLOCKED", "0")
         monkeypatch.chdir(tmp_path)
+        seen = {}
+
+        class FakeHooks:
+            def call_hooks(self, event, *args):
+                seen[event] = args
+                return ["reserved AI usage log"]
+
+        monkeypatch.setattr(file_utils, "_plugin_system", FakeHooks())
         with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
-            assert check_sandbox(".aicoder/stats.log") is True
+            assert check_sandbox(".aicoder/stats.log", context="read_file") is False
+            first = seen["on_file_access"]
+            assert check_sandbox(".aicoder/stats.log", context="write_file", write=True) is False
+        assert "reserved AI usage log" in sandbox_denial_message(".aicoder/stats.log")
+        resolved, write_flag, context = first
+        assert resolved == os.path.realpath(str(tmp_path / ".aicoder/stats.log"))
+        assert write_flag is False and context == "read_file"
+
+    def test_plugin_hook_write_flag_forwarded(self, monkeypatch, tmp_path):
+        from aicoder.utils import file_utils
+
+        monkeypatch.chdir(tmp_path)
+        flags = []
+
+        class FakeHooks:
+            def call_hooks(self, event, resolved, write, context):
+                flags.append(write)
+                return [None]
+
+        monkeypatch.setattr(file_utils, "_plugin_system", FakeHooks())
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox("notes.txt", write=True) is True
+            assert check_sandbox("notes.txt") is True
+        assert flags == [True, False]
+
+    def test_plugin_hook_fails_open(self, monkeypatch):
+        """A broken hook must not lock the AI out of its own files."""
+        from aicoder.utils import file_utils
+
+        class BrokenHooks:
+            def call_hooks(self, *a, **kw):
+                raise RuntimeError("boom")
+
+        monkeypatch.setattr(file_utils, "_plugin_system", BrokenHooks())
+        assert check_sandbox("aicoder/utils/file_utils.py") is True
+
+    def test_plugin_hook_ignores_empty_and_none(self, monkeypatch):
+        from aicoder.utils import file_utils
+
+        class Hooks:
+            def __init__(self, result):
+                self.result = result
+
+            def call_hooks(self, *a, **kw):
+                return self.result
+
+        monkeypatch.setattr(file_utils, "_plugin_system", Hooks([None, "", "   "]))
+        assert check_sandbox("aicoder/utils/file_utils.py") is True
+        monkeypatch.setattr(file_utils, "_plugin_system", None)
+        assert check_sandbox("aicoder/utils/file_utils.py") is True
+
+    def test_plugin_hook_no_recursion(self, monkeypatch, tmp_path):
+        """A hook that calls check_sandbox again must not loop forever."""
+        from aicoder.utils import file_utils
+
+        monkeypatch.chdir(tmp_path)
+        calls = []
+
+        class ReentrantHooks:
+            def call_hooks(self, event, resolved, write, context):
+                calls.append(resolved)
+                assert file_utils.check_sandbox(resolved) is True
+                return [None]
+
+        monkeypatch.setattr(file_utils, "_plugin_system", ReentrantHooks())
+        with patch('aicoder.core.config.Config.sandbox_disabled', return_value=True):
+            assert check_sandbox("notes.txt") is True
+        assert len(calls) == 1
 
     def test_deny_enforced_when_config_import_fails(self, monkeypatch, tmp_path):
         """Round-2 fix: denylist runs before the Config import, so an
