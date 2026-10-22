@@ -276,6 +276,7 @@ class SocketServer:
             "sandbox": self._cmd_sandbox,
             "debug": self._cmd_debug,
             "status": self._cmd_status,
+            "model": self._cmd_model,
             "stop": self._cmd_stop,
             "messages": self._cmd_messages,
             "inject": self._cmd_inject,
@@ -449,8 +450,27 @@ class SocketServer:
             "detail_tty_enabled": Config.detail_tty(),
             "sandbox_enabled": not Config.sandbox_disabled(),
             "debug_enabled": Config.debug(),
+            "model": Config.model(),
             "messages": len(messages),
         })
+
+    def _cmd_model(self, args: str) -> str:
+        """Get the active model (and endpoint it talks to)
+
+        Config.model() reads the environment of this process, so plugins that
+        switch models at runtime (rotation) are reflected here.
+        """
+        info: Dict[str, Any] = {"model": Config.model() or "unknown"}
+
+        base_url = Config.base_url()
+        if base_url:
+            info["base_url"] = base_url
+
+        context_size = os.environ.get("CONTEXT_SIZE", "")
+        if context_size:
+            info["context_size"] = context_size
+
+        return response(info)
 
     def _cmd_stop(self, args: str) -> str:
         """Stop current processing"""
