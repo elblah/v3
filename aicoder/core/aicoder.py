@@ -380,12 +380,72 @@ class AICoder:
                         self.add_user_input(next_prompt)
                 
                 self.session_manager.process_with_ai()
+
+                # Prompts queued while the AI was working (compaction
+                # continuation, empty-response retry, auto next prompt, ...) are
+                # normally drained by the interactive loop between turns. In
+                # piped mode the call above used to be the last one, so the
+                # session ended exactly after e.g. a compaction. Drain them here.
+                self._drain_pending_prompts()
+        except RecursionError:
+            LogUtils.error(
+                "Tool loop hit Python's recursion limit and the turn was "
+                "aborted; raise sys.setrecursionlimit() for longer loops"
+            )
         except Exception as e:
             LogUtils.error(f"Error: {e}")
 
         # Shutdown
         self.shutdown()
 
+    def _drain_pending_prompts(self, max_turns: int = 1000) -> int:
+        """Run prompts queued during an AI turn (non-interactive mode).
+
+        Mirrors what the interactive loop does between turns, so a piped
+        session does not end silently while a plugin is waiting for a
+        continuation turn. Returns the number of turns executed.
+        """
+        turns = 0
+        drained = 0
+        while self.has_next_prompt() and drained < max_turns:
+            if not self.is_running:
+                break
+            prompt = self.get_next_prompt()
+            # Counted for every consumed prompt: a command may queue another
+            # one, and the bound must not depend on API turns alone.
+            drained += 1
+            if not prompt or not prompt.strip():
+                continue
+
+            self._plugin_prompt_consumed = False
+            prompt = self.plugin_system.call_hooks_with_return(
+                "after_user_prompt", prompt
+            ) or prompt
+
+            if prompt.strip().startswith("/"):
+                result = self.command_handler.handle_command(prompt)
+                if result.should_quit:
+                    self.is_running = False
+                    break
+                if not result.run_api_call:
+                    if result.command_to_execute:
+                        self.set_next_prompt(result.command_to_execute)
+                    continue
+                if result.message:
+                    self.add_user_input(result.message)
+            elif not self._plugin_prompt_consumed:
+                self.add_user_input(prompt)
+
+            turns += 1
+            if Config.debug():
+                LogUtils.debug(f"*** continuation turn {turns} (non-interactive)")
+            self.session_manager.process_with_ai()
+
+        if self.has_next_prompt():
+            LogUtils.warn(
+                f"[!] Pending prompt left unconsumed after {turns} continuation turns"
+            )
+        return turns
     def run_socket_only(self) -> None:
         """Run in socket-only mode (no readline, only socket commands)"""
         if Config.debug():
