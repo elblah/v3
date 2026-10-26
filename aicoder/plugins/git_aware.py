@@ -51,18 +51,30 @@ def _spawn_git(args, timeout=10):
         # (flags go after subcommand, git rejects them at top level)
         base += ["diff", "--no-ext-diff", "--no-textconv"]
         args = args[1:]
+    # Coreutils timeout wraps the whole call: it puts git in its own process
+    # group and kills the GROUP, so a slow status on a big tree / cold disk
+    # cannot leave children holding our pipes open. -k 1 = SIGKILL 1s after
+    # SIGTERM for children that ignore TERM. Exit 124/137 = timed out.
+    # (subprocess timeout alone kills only the outermost pid — under the /sec
+    # bwrap seal that is the wrapper, not git.)
+    wrapped = ["timeout", "-k", "1", str(int(timeout))] + base + args
     try:
         # safe_subprocess_run routes through the /sec bwrap seal (fail-open:
         # no hook / bwrap absent -> runs argv unwrapped). Env hardening vars
         # are stripped by --clearenv inside the seal; the -c overrides above
         # (argv) carry the real defense either way.
-        return safe_subprocess_run(
-            base + args,
+        result = safe_subprocess_run(
+            wrapped,
             capture_output=True,
             text=True,
-            timeout=timeout,
+            # Backstop in case `timeout` itself is missing/fails: give it
+            # a grace second before the python-side kill.
+            timeout=timeout + 2,
             env={**os.environ, **_REPO_CONFIG_ENV},
         )
+        if result.returncode in (124, 137):
+            return None
+        return result
     except (_get_subprocess().TimeoutExpired, FileNotFoundError, _get_subprocess().SubprocessError):
         return None
 
@@ -108,7 +120,7 @@ def create_plugin(ctx):
         """Check if repo has uncommitted changes"""
         if not is_git:
             return False
-        result = _spawn_git(["status", "--porcelain"], timeout=5)
+        result = _spawn_git(["status", "--porcelain"], timeout=2)
         return result is not None and result.returncode == 0 and result.stdout.strip()
 
     def _run_git(args):
