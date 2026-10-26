@@ -117,11 +117,18 @@ def create_plugin(ctx):
         return _cached_git_branch if _cached_git_branch else None
 
     def _is_repo_dirty():
-        """Check if repo has uncommitted changes"""
+        """Check if repo has uncommitted changes.
+
+        Returns True (dirty), False (clean) or None (unknown: git failed or
+        was killed by the timeout). None must not be rendered as clean —
+        a huge tree on a cold disk is exactly when the answer matters.
+        """
         if not is_git:
             return False
         result = _spawn_git(["status", "--porcelain"], timeout=2)
-        return result is not None and result.returncode == 0 and result.stdout.strip()
+        if result is None or result.returncode != 0:
+            return None
+        return bool(result.stdout.strip())
 
     def _run_git(args):
         """Run git command with exec paths neutralized, return output"""
@@ -262,6 +269,10 @@ Create a meaningful commit message and run the appropriate git add/commit comman
             return None
 
         dirty = _is_repo_dirty()
+        if dirty is None:
+            # Timed out / git failed: unknown, not clean. Magenta 'Git?'
+            # stays distinct from dim 'Git' and bold yellow 'Git'.
+            return f"{Config.colors['brightMagenta']}Git?"
         if dirty:
             return f"{Config.colors['yellow']}{Config.colors['bold']}Git"
         return f"{Config.colors['dim']}Git"

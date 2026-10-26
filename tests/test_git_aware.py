@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from aicoder.core.config import Config
 from aicoder.plugins import git_aware
 
 
@@ -79,3 +80,48 @@ def test_spawn_git_python_timeout_returns_none(monkeypatch):
 
     monkeypatch.setattr(git_aware, "safe_subprocess_run", boom)
     assert git_aware._spawn_git(["status"], timeout=2) is None
+
+
+class _FakeCtx:
+    """Minimal plugin context: captures hooks so we can call them directly."""
+
+    def __init__(self):
+        self.hooks = {}
+
+    def register_hook(self, name, fn):
+        self.hooks[name] = fn
+
+    def register_command(self, *args, **kwargs):
+        pass
+
+
+def _bar_segment(monkeypatch, status_result):
+    """Load the plugin against a fake repo and return the bar segment."""
+    monkeypatch.setattr(git_aware, "_is_git_repo", lambda: True)
+    monkeypatch.setattr(git_aware, "_spawn_git", lambda *a, **kw: status_result)
+    monkeypatch.setattr(git_aware, "_cached_git_branch", None)
+
+    ctx = _FakeCtx()
+    git_aware.create_plugin(ctx)
+    return ctx.hooks["on_context_bar"]()
+
+
+def test_bar_clean_is_dim(monkeypatch):
+    segment = _bar_segment(monkeypatch, _completed(stdout=""))
+    assert segment == f"{Config.colors['dim']}Git"
+
+
+def test_bar_dirty_is_bold_yellow(monkeypatch):
+    segment = _bar_segment(monkeypatch, _completed(stdout=" M a.py\n"))
+    assert segment == f"{Config.colors['yellow']}{Config.colors['bold']}Git"
+
+
+def test_bar_timeout_is_magenta_unknown(monkeypatch):
+    """Timed-out git must not render as clean."""
+    segment = _bar_segment(monkeypatch, None)
+    assert segment == f"{Config.colors['brightMagenta']}Git?"
+
+
+def test_bar_failed_git_is_magenta_unknown(monkeypatch):
+    segment = _bar_segment(monkeypatch, _completed(returncode=128))
+    assert segment == f"{Config.colors['brightMagenta']}Git?"
