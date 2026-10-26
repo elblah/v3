@@ -206,10 +206,31 @@ class Config:
     # After this, only runtime state is used (env var ignored)
     # Valid values configurable via REASONING_EFFORT_VALID env var
     def _init_reasoning_effort_from_env() -> Optional[str]:
-        env_val = os.environ.get("REASONING_EFFORT", "")
+        """
+        Read REASONING_EFFORT at module load.
+
+        Positional symbols (+, -, =) are resolved here against
+        REASONING_EFFORT_VALID, so an env var behaves exactly like the
+        matching slash command. Runs during class-body execution, hence the
+        env vars are read directly instead of via class helpers.
+        """
+        env_val = os.environ.get("REASONING_EFFORT", "").strip().lower()
         if not env_val:
             return None
-        return env_val.lower()
+        if env_val in ("+", "-", "="):
+            valid_values = [
+                v.strip().lower()
+                for v in os.environ.get("REASONING_EFFORT_VALID", "").split(",")
+                if v.strip()
+            ]
+            if not valid_values:
+                return None
+            if env_val == "+":
+                return valid_values[-1]
+            if env_val == "-":
+                return valid_values[0]
+            return valid_values[(len(valid_values) - 1) // 2]
+        return env_val
 
     _reasoning_effort = _init_reasoning_effort_from_env()
 

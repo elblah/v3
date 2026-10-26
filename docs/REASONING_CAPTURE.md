@@ -58,6 +58,9 @@ THINKING=on
 
 # Set reasoning effort level (for supported models)
 REASONING_EFFORT=high  # low|medium|high|xhigh
+# Symbols + - = resolve against REASONING_EFFORT_VALID at launch
+# (REASONING_EFFORT=+ is equivalent to the /+ command)
+REASONING_EFFORT=+
 
 # Control whether to preserve reasoning across turns
 # Default: false (preserve reasoning)

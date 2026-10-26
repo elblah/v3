@@ -556,3 +556,47 @@ class TestConfigPluginsAllow:
         monkeypatch.setenv("PLUGINS_ALLOW", "")
         result = config.Config.plugins_allow()
         assert result is None  # Empty string = not set = all plugins allowed
+
+
+class TestReasoningEffortEnvInit:
+    """Tests for REASONING_EFFORT env var init (symbol resolution at launch)"""
+
+    def _init(self, monkeypatch, effort, valid=None):
+        if effort is None:
+            monkeypatch.delenv("REASONING_EFFORT", raising=False)
+        else:
+            monkeypatch.setenv("REASONING_EFFORT", effort)
+        if valid is None:
+            monkeypatch.delenv("REASONING_EFFORT_VALID", raising=False)
+        else:
+            monkeypatch.setenv("REASONING_EFFORT_VALID", valid)
+        return config.Config._init_reasoning_effort_from_env()
+
+    def test_unset_returns_none(self, monkeypatch):
+        assert self._init(monkeypatch, None) is None
+
+    def test_literal_level(self, monkeypatch):
+        assert self._init(monkeypatch, "HIGH", "low,medium,high") == "high"
+
+    def test_literal_not_in_valid_list_is_untouched(self, monkeypatch):
+        # Init is lenient: no validation, runtime handles invalid values
+        assert self._init(monkeypatch, "xhigh", "low,high") == "xhigh"
+
+    def test_plus_resolves_to_highest(self, monkeypatch):
+        assert self._init(monkeypatch, "+", "low,medium,high,xhigh") == "xhigh"
+
+    def test_minus_resolves_to_lowest(self, monkeypatch):
+        assert self._init(monkeypatch, "-", "low,medium,high,xhigh") == "low"
+
+    def test_equals_resolves_to_lower_middle(self, monkeypatch):
+        assert self._init(monkeypatch, "=", "low,medium,high,xhigh") == "medium"
+
+    def test_symbols_tolerate_whitespace_and_case(self, monkeypatch):
+        assert self._init(monkeypatch, " + ", " low , HIGH ") == "high"
+
+    def test_symbol_without_valid_list_returns_none(self, monkeypatch):
+        # Must not ship a raw "+" to the API
+        assert self._init(monkeypatch, "+") is None
+
+    def test_symbol_with_empty_valid_list_returns_none(self, monkeypatch):
+        assert self._init(monkeypatch, "+", " , ") is None
