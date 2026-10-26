@@ -17,6 +17,22 @@ class ContextBar:
     _DIM = Config.colors['dim']
     _SEP = f"{_DIM} - "
 
+    # Default bar width in characters. Percentage digits right next to the bar
+    # already carry the precise value, so the bar only needs to be a glance cue.
+    _DEFAULT_BAR_WIDTH = 6
+    _MIN_BAR_WIDTH = 3
+    _MAX_BAR_WIDTH = 20
+
+    @classmethod
+    def get_bar_width(cls) -> int:
+        """Bar width from AICODER_CONTEXT_BAR_WIDTH (clamped, default 6)."""
+        raw = os.environ.get("AICODER_CONTEXT_BAR_WIDTH", "")
+        try:
+            width = int(raw)
+        except (TypeError, ValueError):
+            return cls._DEFAULT_BAR_WIDTH
+        return max(cls._MIN_BAR_WIDTH, min(cls._MAX_BAR_WIDTH, width))
+
     def __init__(self):
         self.plugin_system = None
 
@@ -61,7 +77,7 @@ class ContextBar:
 
         # Build the base context bar (not dimmed). Label configurable via
         # AICODER_CONTEXT_BAR_LABEL (set to "" to remove the "Context:" text).
-        label = os.environ.get("AICODER_CONTEXT_BAR_LABEL", "Context: ")
+        label = os.environ.get("AICODER_CONTEXT_BAR_LABEL", "Ctx: ")
         context_bar = f"{label}{progress_bar} {percentage_str}% ({current_tokens_str}/{max_tokens_str}{yolo_suffix})"
 
         # Add time at the end if provided (dimmed)
@@ -100,9 +116,9 @@ class ContextBar:
         now = datetime.now()
         return now.strftime("%H:%M:%S")
 
-    def create_progress_bar(self, percentage: float) -> str:
+    def create_progress_bar(self, percentage: float, width: Optional[int] = None) -> str:
         """Create a colored progress bar based on percentage"""
-        bar_width = 10
+        bar_width = width if width is not None else self.get_bar_width()
 
         # Guard against invalid percentage values (Infinity, NaN, negative)
         safe_percentage = max(0, min(100, percentage or 0))
