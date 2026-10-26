@@ -238,6 +238,8 @@ Examples:
 Environment Variables:
   THINKING=<mode>                  Set default thinking mode (default|on|off)
   REASONING_EFFORT=<level>        Set default reasoning effort
+                                 (also accepts the symbols + - =, resolved
+                                 against REASONING_EFFORT_VALID at launch)
   REASONING_EFFORT_VALID=<vals>   Comma-separated valid effort levels
                                  (pre-set at launch = override; NIM plugin respects it)
   CLEAR_THINKING=<true|false>     Strip reasoning from non-tool-call messages (bandwidth optimization)
