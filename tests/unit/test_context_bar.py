@@ -27,7 +27,7 @@ class TestContextBar:
         with patch('aicoder.core.context_bar.Config.context_size', return_value=100000):
             result = self.context_bar.format_context_bar(mock_stats, None)
 
-            assert "Context:" in result
+            assert "Ctx:" in result
             assert "0%" in result
             assert "gpt-4" not in result  # model shown on the AI prefix line, not here
 
@@ -123,12 +123,16 @@ class TestProgressBar:
 
     def test_progress_bar_width(self):
         """Test progress bar has correct width."""
-        result = self.context_bar.create_progress_bar(50)
-        # Should be around 10 characters (plus color codes)
-        for color in Config.colors.values():
-            result = result.replace(color, "")
-        assert len(result) >= 8
-        assert len(result) <= 15
+        def strip_colors(text):
+            for color in Config.colors.values():
+                text = text.replace(color, "")
+            return text
+
+        result = strip_colors(self.context_bar.create_progress_bar(50))
+        # 6-char bar by default (plus color codes)
+        assert len(result) == 6
+        # Explicit width wins over the default
+        assert len(strip_colors(self.context_bar.create_progress_bar(50, width=10))) == 10
 
 class TestPrintContextBar:
     """Test printing context bar."""
@@ -147,7 +151,7 @@ class TestPrintContextBar:
             self.context_bar.print_context_bar(mock_stats, None)
 
             captured = capsys.readouterr()
-            assert "Context:" in captured.out
+            assert "Ctx:" in captured.out
 
     def test_print_context_bar_for_user(self, capsys):
         """Test printing context bar for user."""
@@ -159,7 +163,7 @@ class TestPrintContextBar:
             self.context_bar.print_context_bar_for_user(mock_stats, None)
 
             captured = capsys.readouterr()
-            assert "Context:" in captured.out
+            assert "Ctx:" in captured.out
             assert "\n" in captured.out  # Should have newline before
 
 class TestContextBarEdgeCases:
