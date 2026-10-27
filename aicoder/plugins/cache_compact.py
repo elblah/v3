@@ -9,6 +9,16 @@ One injection path: after_assistant_message_added.
   get deprioritized by the model and were ignored in practice.
 - Continuation turn after a fulfilled compaction -> guard cleared, no re-inject.
 
+Second path: before_user_prompt (auto-fire).
+- If the AI ended its turn past the threshold and nothing else queued a prompt,
+  the pending request is converted into an IMMEDIATE automatic turn
+  (set_next_prompt) instead of waiting for the user to come back. The hot
+  provider cache is what makes this cheap: 10 minutes later it is gone.
+- Bounded: CACHE_COMPACT_AUTOFIRE_MAX attempts per cycle; a compaction resets
+  the counter. After that the history nudge path is used as before.
+- After an auto-fired compaction no continuation prompt is set: the session
+  goes back to waiting for the user.
+
 User command:
 - /ccr - request a compaction summary now: injects the forced instruction as a
   user message regardless of how full the context is; the AI must comply next turn.
@@ -16,6 +26,7 @@ User command:
 Env:
 - CACHE_COMPACT_THRESHOLD   trigger % of context size (default 65, 0 = disabled)
 - CACHE_COMPACT_KEEP_PERCENT  keep N% of recent context after [SUMMARY] (default 15)
+- CACHE_COMPACT_AUTOFIRE_MAX  immediate compaction turns per cycle (default 2, 0 = off)
 - CACHE_COMPACT_DEBUG=1     verbose log: injection events
 """
 
@@ -63,6 +74,17 @@ def _force_compact_instruction(remind_count: int) -> str:
         f"EMERGENCY — DEMAND #{remind_count}: you did NOT comply. "
         "YOU MUST COMPACT NOW. This is not optional.\n\n" + _INSTRUCTION_BODY
     )
+
+
+NUDGE_MARKER = "[NUDGE:COMPACTION]"
+
+
+def _autofire_instruction(remind_count: int) -> str:
+    """Immediate-turn variant: same demand, carried as a next_prompt.
+
+    The trailing marker keeps the message recognisable as a plugin-injected
+    compaction request (recent-window exclusion + clear_nudges)."""
+    return _force_compact_instruction(remind_count) + "\n\n" + NUDGE_MARKER
 
 
 # Manual route (/ccr): same demand, but sourced from the user, not the threshold.
@@ -186,6 +208,28 @@ def _select_recent_by_percent(messages, keep_percent, max_tokens):
     return result
 
 
+def _finish_compaction(app, state):
+    """Post-compaction state + continuation prompt.
+
+    An auto-fired compaction (see before_user_prompt hook) gets NO continuation
+    prompt: the session goes back to waiting for the user instead of burning a
+    turn on "resume your task" right after a summary."""
+    if not state.get("auto_active", False):
+        app.set_next_prompt(
+            "<system-reminder>\n"
+            "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
+            "from a previous context window — you wrote it, not the user. "
+            "The compaction request has been fulfilled — do NOT compact again. "
+            "This is an automatic continuation prompt, not a user message. "
+            "Resume your task from where you left off.\n"
+            "</system-reminder>"
+        )
+    state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
+    state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
+    state["auto_fires"] = 0  # fresh auto-fire budget
+    state["auto_active"] = False
+
+
 def _compact(messages, app, state, keep_percent=0, from_reasoning=False):
     """Replace history with [system, summary, ...recent], reset state."""
     system_msg = messages[0] if messages[0].get("role") == "system" else None
@@ -214,17 +258,7 @@ def _compact(messages, app, state, keep_percent=0, from_reasoning=False):
     app.message_history.set_messages(new_msgs)
     app.message_history.prune_old_summaries()
     app.message_history.increment_compaction_count()
-    app.set_next_prompt(
-        "<system-reminder>\n"
-        "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
-        "from a previous context window — you wrote it, not the user. "
-        "The compaction request has been fulfilled — do NOT compact again. "
-        "This is an automatic continuation prompt, not a user message. "
-        "Resume your task from where you left off.\n"
-        "</system-reminder>"
-    )
-    state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
-    state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
+    _finish_compaction(app, state)
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     source = " (from reasoning)" if from_reasoning else ""
@@ -270,17 +304,7 @@ def _compact_keep_assistant(
     app.message_history.set_messages(new_msgs)
     app.message_history.prune_old_summaries()
     app.message_history.increment_compaction_count()
-    app.set_next_prompt(
-        "<system-reminder>\n"
-        "SYSTEM: Context was compacted. The [SUMMARY] above is YOUR OWN summary "
-        "from a previous context window — you wrote it, not the user. "
-        "The compaction request has been fulfilled — do NOT compact again. "
-        "This is an automatic continuation prompt, not a user message. "
-        "Resume your task from where you left off.\n"
-        "</system-reminder>"
-    )
-    state["cont_prompt"] = True  # continuation prompt pending — guard re-compaction
-    state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
+    _finish_compaction(app, state)
     c = Config.colors
     keep_info = f", kept {len(recent)} recent" if recent else ""
     source = " (from reasoning)" if from_reasoning else ""
@@ -297,9 +321,18 @@ def create_plugin(ctx):
     cfg = {
         "threshold": int(os.environ.get("CACHE_COMPACT_THRESHOLD", "65")),
         "keep_percent": int(os.environ.get("CACHE_COMPACT_KEEP_PERCENT", "15")),
+        "autofire_max": int(os.environ.get("CACHE_COMPACT_AUTOFIRE_MAX", "2")),
     }
 
-    state = {"cont_prompt": False, "remind_count": 0}
+    # auto_fires: immediate turns already fired in this compaction cycle
+    # auto_active: the pending compaction turn was fired by us (no continuation)
+    state = {"cont_prompt": False, "remind_count": 0,
+             "auto_fires": 0, "auto_active": False}
+
+    def _context_pct():
+        current = app.stats.current_prompt_size or 0
+        max_size = Config.context_size()
+        return (current / max_size * 100) if max_size else 0
 
     def _on_after_compaction():
         """Any compaction (compact_strategy, core auto-compact, /compact)
@@ -310,6 +343,43 @@ def create_plugin(ctx):
         clear_nudges(app, "COMPACTION")
         state["cont_prompt"] = True
         state["remind_count"] = 0  # compaction fulfilled — fresh escalation cycle
+        state["auto_fires"] = 0  # fresh auto-fire budget
+        state["auto_active"] = False
+
+    def _on_before_user_prompt():
+        """Fired right after an AI turn, before the session blocks for input.
+
+        If the AI ended past the threshold, convert the pending history nudge
+        into an IMMEDIATE automatic turn. Waiting for the user to come back
+        (minutes later) means the provider cache has expired, so the same
+        compaction is paid at full context price instead of the cached one.
+        Bounded by autofire_max so an AI that ignores the demand cannot spin.
+        """
+        if cfg["threshold"] <= 0 or cfg["autofire_max"] <= 0:
+            return
+        # Never clobber a prompt another plugin already queued.
+        if getattr(app, "has_next_prompt", lambda: False)():
+            return
+        if state["auto_fires"] >= cfg["autofire_max"]:
+            return
+        if _context_pct() < cfg["threshold"]:
+            return
+        clear_nudges(app, "COMPACTION")
+        msgs = app.message_history.get_messages()
+        if not msgs or msgs[-1].get("role") != "assistant":
+            return  # no completed AI turn to follow
+        state["auto_fires"] += 1
+        state["remind_count"] += 1
+        state["cont_prompt"] = False  # new compaction cycle — reset loop guard
+        state["auto_active"] = True
+        app.set_next_prompt(_autofire_instruction(state["remind_count"]))
+        if os.environ.get("CACHE_COMPACT_DEBUG"):
+            c = Config.colors
+            LogUtils.print(
+                f"{c['bold']}{c['cyan']}[cache_compact] {_context_pct():.0f}% context "
+                f"-> compaction fired now, hot cache "
+                f"(demand #{state['remind_count']}){c['reset']}"
+            )
 
     def _on_system_prompt_append():
         if cfg["threshold"] > 0:
@@ -437,6 +507,7 @@ def create_plugin(ctx):
         # be refused as re-compaction junk — the guard is the caller's intent now.
         state["cont_prompt"] = False
         state["remind_count"] = 0  # /ccr starts a fresh cycle
+        state["auto_active"] = False  # explicit request -> normal continuation
         return (
             f"{c['bold']}[ccr] compaction requested{c['reset']} "
             f"({pct:.0f}% of context) — the AI must reply with [COMPACT_SUMMARY] "
@@ -452,11 +523,13 @@ def create_plugin(ctx):
             )
             if enabled:
                 print(
-                    f"  threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  mode: force  cmd: /ccr"
+                    f"  threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  "
+                    f"autofire: {cfg['autofire_max']}  mode: force  cmd: /ccr"
                 )
 
     ctx.register_hook("on_info", _on_info)
     ctx.register_hook("after_compaction", _on_after_compaction)
+    ctx.register_hook("before_user_prompt", _on_before_user_prompt)
     ctx.register_hook("on_system_prompt_append", _on_system_prompt_append)
     ctx.register_hook("on_empty_assistant_message", _on_empty_assistant_message)
     ctx.register_hook("after_assistant_message_added", _on_assistant_message_added)
@@ -474,5 +547,6 @@ def create_plugin(ctx):
         )
         if enabled:
             LogUtils.print(
-                f"  - threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  mode: force"
+                f"  - threshold: {cfg['threshold']}%  keep: {cfg['keep_percent']}%  "
+                f"autofire: {cfg['autofire_max']}  mode: force"
             )

@@ -56,15 +56,19 @@ class MockApp:
     def set_next_prompt(self, prompt):
         self.next_prompt = prompt
 
+    def has_next_prompt(self):
+        return self.next_prompt is not None
+
 
 @pytest.fixture
 def make_ps():
     """Factory: fresh PluginSystem with cache_compact loaded."""
     from aicoder.core.config import Config  # noqa: F401 — freeze env at import
 
-    def _make(threshold="65"):
+    def _make(threshold="65", autofire_max="2"):
         os.environ["CACHE_COMPACT_THRESHOLD"] = threshold
         os.environ.setdefault("CACHE_COMPACT_KEEP_PERCENT", "15")
+        os.environ["CACHE_COMPACT_AUTOFIRE_MAX"] = autofire_max
         os.environ["CONTEXT_SIZE"] = "128000"  # isolate from dev env (100000)
 
         from aicoder.core.plugin_system import PluginSystem
@@ -426,3 +430,99 @@ def test_ccr_refused_when_disabled(make_ps):
     out = _ccr(ps)
     assert "disabled" in out
     assert _reminders(ps) == []
+
+
+# --- before_user_prompt auto-fire (hot-cache compaction turn) -----------------
+
+
+def _prompt_available(ps):
+    """Fire the before_user_prompt hook (loop top, right after an AI turn)."""
+    ps.ps.call_hooks("before_user_prompt")
+
+
+def test_autofire_past_threshold_fires_immediately(ps):
+    """AI ended over the threshold -> compaction turn is queued NOW, not on the
+    next user message (which would happen long after the cache went cold)."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    assert len(_reminders(ps)) == 1  # history nudge injected by the turn hook
+
+    _prompt_available(ps)
+
+    assert ps.app.next_prompt is not None
+    assert "COMPLY NOW" in ps.app.next_prompt
+    assert ps.app.next_prompt.rstrip().endswith("[NUDGE:COMPACTION]")
+    # history copy removed: exactly one request in flight
+    assert _reminders(ps) == []
+
+
+def test_autofire_below_threshold_no_fire(ps):
+    """Below threshold nothing is queued."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 40))
+    _prompt_available(ps)
+    assert ps.app.next_prompt is None
+
+
+def test_autofire_respects_queued_prompt(ps):
+    """A prompt another plugin already queued is never clobbered."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    ps.app.set_next_prompt("other plugin prompt")
+    _prompt_available(ps)
+    assert ps.app.next_prompt == "other plugin prompt"
+
+
+def test_autofire_is_bounded(ps):
+    """An AI that ignores the demand cannot spin: budget per cycle is limited."""
+    _seed(ps)
+    _assistant_turn(ps, "reply 1", _pct(ps, 78))
+    _prompt_available(ps)
+    assert ps.app.next_prompt is not None
+
+    # AI ignores demand -> new nudge in history
+    ps.app.next_prompt = None
+    _assistant_turn(ps, "reply 2", _pct(ps, 78))
+    _prompt_available(ps)
+    assert ps.app.next_prompt is not None  # second and last auto-fire
+
+    # Third time: budget exhausted, falls back to the history nudge path.
+    ps.app.next_prompt = None
+    _assistant_turn(ps, "reply 3", _pct(ps, 78))
+    _prompt_available(ps)
+    assert ps.app.next_prompt is None
+    assert len(_reminders(ps)) == 1
+
+
+def test_autofire_no_continuation_after_compaction(ps):
+    """Auto-fired compaction returns to waiting for the user: no 'resume your
+    task' continuation turn is burned right after the summary."""
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    _prompt_available(ps)
+    assert ps.app.next_prompt is not None
+
+    ps.app.next_prompt = None  # loop consumed the queued request
+    _assistant_turn(ps, "[COMPACT_SUMMARY] summary of everything", _pct(ps, 78))
+
+    assert ps.app.message_history.compaction_count == 1
+    assert ps.app.next_prompt is None
+
+
+def test_autofire_continues_after_manual_compaction_cycle(ps):
+    """A normal (non auto-fired) compaction still queues the continuation prompt."""
+    _seed(ps)
+    _assistant_turn(ps, "[COMPACT_SUMMARY] summary", _pct(ps, 78))
+    assert ps.app.message_history.compaction_count == 1
+    assert ps.app.next_prompt is not None
+    assert "Context was compacted" in ps.app.next_prompt
+
+
+def test_autofire_disabled(make_ps):
+    """CACHE_COMPACT_AUTOFIRE_MAX=0: old behaviour, request waits for the user."""
+    ps = make_ps(autofire_max="0")
+    _seed(ps)
+    _assistant_turn(ps, "plain reply", _pct(ps, 78))
+    _prompt_available(ps)
+    assert ps.app.next_prompt is None
+    assert len(_reminders(ps)) == 1
