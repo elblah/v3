@@ -23,6 +23,10 @@ if TYPE_CHECKING:
 
 PRUNED_TOOL_MESSAGE = "[Old tool result content cleared due to memory compaction]"
 
+# Placeholder output inserted when a tool call lost its result (interrupted run).
+# Kept in one place so normalization can tell it apart from a real result.
+CANCELLED_TOOL_OUTPUT = "TOOL CALL WAS CANCELLED BY THE USER"
+
 # Minimum size for tool result to be considered for pruning
 # Tool results smaller than this are protected from pruning
 PRUNE_PROTECTION_THRESHOLD = 256  # bytes
@@ -38,6 +42,10 @@ class MessageHistory:
         self.initial_system_prompt: Optional[Dict[str, Any]] = None
         self.is_compacting = False
         self._plugin_system = None
+        # Plugin messages (e.g. an image injected by the vision tool) that
+        # arrived while a tool chain was still open. They are appended only
+        # after the tool results, so the chain stays API-valid.
+        self._deferred_user_messages: List[Dict[str, Any]] = []
 
     def set_plugin_system(self, plugin_system) -> None:
         """Set plugin system for hooks"""
@@ -106,8 +114,84 @@ class MessageHistory:
         self.initial_system_prompt = self.messages[0] if self.messages and self.messages[0].get("role") == "system" else None
         self.estimate_context()
 
-    def add_user_message(self, content: str) -> None:
-        """Add a user message (string text or pre-formatted multimodal dict)"""
+    def add_user_message(self, content) -> None:
+        """Add a user message (string text or pre-formatted multimodal dict)
+
+        While a tool chain is open (last message is an assistant tool_calls
+        message or one of its results) the message is DEFERRED: appending it
+        there would split the tool_call/function_call_output pair, which the
+        provider rejects. It is flushed right after the tool results.
+        """
+        if self.has_open_tool_chain():
+            self.defer_user_message(content)
+            return
+        self._append_user_message(content)
+
+    def has_open_tool_chain(self) -> bool:
+        """True when the last message still awaits tool results.
+
+        Tool calls need exactly one output each, immediately after the call
+        item, so a user message must not be appended in that window.
+
+        The role alone is not enough: a COMPLETE chain also ends with a tool
+        message whenever the turn stopped without an assistant reply
+        (interrupted run, guidance mode, a plugin that ends processing).
+        Deferring a real user message there would drop it from the next
+        request. So walk back to the assistant that owns those outputs and
+        compare ids -- open only if a call is still unanswered.
+        """
+        if not self.messages:
+            return False
+
+        last = self.messages[-1]
+        if last.get("role") == "assistant":
+            return bool(last.get("tool_calls"))
+        if last.get("role") != "tool":
+            return False
+
+        answered = set()
+        for message in reversed(self.messages):
+            role = message.get("role")
+            if role == "tool":
+                call_id = message.get("tool_call_id")
+                if call_id:
+                    answered.add(call_id)
+                continue
+            if role != "assistant":
+                # User/system inside the segment: normalization repairs this
+                # shape, keep looking for the owning call.
+                continue
+            wanted = {
+                tc.get("id")
+                for tc in (message.get("tool_calls") or [])
+                if isinstance(tc, dict) and tc.get("id")
+            }
+            if not wanted:
+                # Lone assistant message: the trailing outputs are orphans,
+                # normalize_tool_pairs() drops them. Not an open chain.
+                return False
+            return bool(wanted - answered)
+        return False
+
+    def defer_user_message(self, content) -> None:
+        """Queue a user/plugin message until the open tool chain closes."""
+        message = content if isinstance(content, dict) else {"role": "user", "content": content}
+        self._deferred_user_messages.append(message)
+
+    def flush_deferred_user_messages(self) -> int:
+        """Append queued plugin/user messages after the tool results.
+
+        Returns the number of messages appended.
+        """
+        if not self._deferred_user_messages:
+            return 0
+        pending, self._deferred_user_messages = self._deferred_user_messages, []
+        for message in pending:
+            self._append_user_message(message)
+        return len(pending)
+
+    def _append_user_message(self, content) -> None:
+        """Append a user message to history (no deferral check)."""
         # Support multimodal messages from plugins (e.g., vision plugin)
         if isinstance(content, dict):
             message = content
@@ -158,6 +242,9 @@ class MessageHistory:
 
     def add_assistant_message(self, message: Dict[str, Any]) -> None:
         """Add an assistant message"""
+        # Safety net: if a chain ended without tool results (error path), the
+        # deferred messages must not be lost and must not land after this turn.
+        self.flush_deferred_user_messages()
         assistant_message = {"role": "assistant", "content": message.get("content"), "tool_calls": message.get("tool_calls")}
 
         # Preserve reasoning field
@@ -249,7 +336,11 @@ class MessageHistory:
             # Call plugin hooks for each tool message
             if self._plugin_system:
                 self._plugin_system.call_hooks("after_tool_results_added", tool_message)
-        
+
+        # Chain is closed now: release messages that arrived mid-chain (e.g. the
+        # image injected by the vision tool). They land after the outputs.
+        self.flush_deferred_user_messages()
+
         # Update context size estimate
         self.estimate_context()
 
@@ -280,6 +371,136 @@ class MessageHistory:
         
         # No matching call found
         return -1
+
+    def _tool_pairs_need_repair(self) -> bool:
+        """Cheap read-only check: would normalize_tool_pairs() change anything?
+
+        True when a tool call has no output, has two outputs, has an output that
+        does not belong to it, or when a non-tool message sits in the middle of
+        an open chain (the shape that breaks the provider on reload).
+        """
+        pending: set = set()
+        answered: set = set()
+
+        for msg in self.messages:
+            role = msg.get("role")
+
+            if role == "assistant":
+                pending, answered = set(), set()
+                for tc in (msg.get("tool_calls") or []):
+                    if isinstance(tc, dict) and tc.get("id"):
+                        pending.add(tc["id"])
+                continue
+
+            if role == "tool":
+                call_id = msg.get("tool_call_id")
+                if not pending:
+                    return True  # orphan output
+                if call_id not in pending or call_id in answered:
+                    return True  # unknown id or duplicate
+                answered.add(call_id)
+                pending.discard(call_id)
+                continue
+
+            # Any other role (user/plugin/system) while calls are unanswered
+            # means the chain was split and its output is further down.
+            if pending:
+                return True
+
+        return False
+
+    def normalize_tool_pairs(self) -> int:
+        """Rewrite history so every tool chain is provider-valid.
+
+        Rules enforced for each assistant message carrying tool_calls:
+          * each call_id gets EXACTLY one output -- duplicates are collapsed
+            (the real result wins over the CANCELLED placeholder);
+          * the outputs sit immediately after the call, in call order, even if
+            a user/plugin message was recorded in between;
+          * orphan outputs (no matching call) are dropped.
+
+        Runs on load and before a request is built, so a session that was
+        saved in a bad order heals instead of poisoning every request.
+
+        Returns:
+            Number of messages moved/removed (0 = history was already valid).
+        """
+        # Fast path: one O(n) read-only scan, no list rebuild. This runs before
+        # every request, so the common (valid) case must stay allocation-free.
+        if not self._tool_pairs_need_repair():
+            return 0
+
+        messages = self.messages
+        result: List[Dict[str, Any]] = []
+        changes = 0
+        i = 0
+        total = len(messages)
+
+        while i < total:
+            msg = messages[i]
+
+            if msg.get("role") == "tool":
+                # Orphan: no preceding assistant tool_calls to pair with.
+                changes += 1
+                i += 1
+                continue
+
+            if msg.get("role") != "assistant" or not msg.get("tool_calls"):
+                result.append(msg)
+                i += 1
+                continue
+
+            result.append(msg)
+            call_ids = [tc.get("id") for tc in msg["tool_calls"] if isinstance(tc, dict)]
+            wanted = set(call_ids)
+
+            # Collect the segment that belongs to this assistant turn: everything
+            # up to the next assistant message (user messages included, since a
+            # plugin may have recorded one mid-chain).
+            outputs: Dict[str, List[Dict[str, Any]]] = {}
+            others: List[Dict[str, Any]] = []
+            j = i + 1
+            while j < total and messages[j].get("role") != "assistant":
+                candidate = messages[j]
+                if candidate.get("role") == "tool":
+                    cid = candidate.get("tool_call_id")
+                    if cid in wanted:
+                        outputs.setdefault(cid, []).append(candidate)
+                    else:
+                        changes += 1  # orphan output inside the segment
+                    j += 1
+                    continue
+                others.append(candidate)
+                j += 1
+
+            # Emit exactly one output per call, right after the call.
+            for cid in call_ids:
+                found = outputs.get(cid) or []
+                if not found:
+                    continue
+                keep = found[0]
+                for candidate in found:
+                    if str(candidate.get("content")) != CANCELLED_TOOL_OUTPUT:
+                        keep = candidate
+                        break
+                result.append(keep)
+                changes += len(found) - 1
+
+            # Keep the rest of the segment (user/plugin messages) in order.
+            result.extend(others)
+            i = j
+
+        if result != messages:
+            changes += 1
+            self.messages = result
+            from .token_estimator import clear_cache, cache_message
+            clear_cache()
+            for stored in self.messages:
+                cache_message(stored)
+            LogUtils.warn(f"[!] Normalized message history: {changes} tool message(s) moved or dropped")
+            self.estimate_context()
+
+        return changes
 
     def remove_orphan_tool_results(self) -> int:
         """Remove tool results that have no matching parent tool call.
@@ -381,7 +602,11 @@ class MessageHistory:
         
         # Clean up any orphan tool results (e.g., from compaction)
         self.remove_orphan_tool_results()
-        
+
+        # Heal chains saved in a bad order (e.g. a plugin message recorded
+        # between a tool call and its output) before anything else sees them.
+        self.normalize_tool_pairs()
+
         self.estimate_context()
         
         # Call plugin hooks for serious operations like compaction, load, /m edits
