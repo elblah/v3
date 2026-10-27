@@ -34,3 +34,12 @@ def write_file(path: str, messages: List[Dict[str, Any]]) -> None:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
     except Exception as e:
         raise Exception(f"Error writing JSONL file {path}: {e}")
+
+
+def append_file(path: str, message: Dict[str, Any]) -> None:
+    """Append a single message to a JSONL file"""
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(message, ensure_ascii=False) + "\n")
+    except Exception as e:
+        raise Exception(f"Error appending to JSONL file {path}: {e}")

@@ -150,30 +150,39 @@ def create_plugin(ctx):
         except Exception as e:
             LogUtils.error(f"[!] Failed to save current state to {session_file}: {e}")
     
+    def _write_all(chat_messages):
+        """Rewrite the whole session file from live memory (source of truth)."""
+        if is_jsonl:
+            from aicoder.utils.jsonl_utils import write_file as write_jsonl
+            write_jsonl(session_file, chat_messages)
+        else:
+            from aicoder.utils.json_utils import write_file as write_json
+            write_json(session_file, chat_messages)
+
     def save_message_to_session(message):
-        """Save a single message to session file (append mode for JSONL)"""
-        # Save only chat messages — matches /save behavior
-        
+        """Persist a message, keeping the FILE order equal to the MEMORY order.
+
+        Appending blindly is unsafe: message history may insert a message in
+        the middle of the list (tool results are placed right after their
+        tool_calls, deferred plugin messages are released after the chain).
+        A blind append then writes a different order than memory, and on reload
+        the runtime sees a tool call followed by a user message, assumes the
+        result was lost and injects a second output for the same call_id —
+        which the provider rejects forever ("Duplicate function_call_output").
+
+        So: append only when the message really is the last one in memory;
+        otherwise rewrite the file from the (already correctly ordered) memory.
+        """
         try:
-            if is_jsonl:
-                from aicoder.utils.jsonl_utils import write_file as write_jsonl
-                
-                # For JSONL, we need to append to existing file
-                # Read current messages, append new one, write all back
-                if session_path.exists():
-                    from aicoder.utils.jsonl_utils import read_file as read_jsonl
-                    existing_messages = read_jsonl(session_file)
+            chat_messages = ctx.app.message_history.get_chat_messages()
+            if chat_messages and chat_messages[-1] is message:
+                if is_jsonl:
+                    from aicoder.utils.jsonl_utils import append_file as append_jsonl
+                    append_jsonl(session_file, message)
                 else:
-                    existing_messages = []
-                
-                existing_messages.append(message)
-                write_jsonl(session_file, existing_messages)
+                    _write_all(chat_messages)
             else:
-                # JSON format - write all chat messages (backward compatibility)
-                from aicoder.utils.json_utils import write_file as write_json
-                chat_messages = ctx.app.message_history.get_chat_messages()
-                write_json(session_file, chat_messages)
-                
+                _write_all(chat_messages)
         except Exception as e:
             LogUtils.error(f"[!] Failed to save message to {session_file}: {e}")
     

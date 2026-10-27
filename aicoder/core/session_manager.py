@@ -330,47 +330,55 @@ class SessionManager:
 
     def _ensure_tool_calls_have_responses(self) -> None:
         """Ensure all tool calls have corresponding tool responses.
-        
+
         This fixes corrupted message history when tool execution is interrupted
         (e.g., user presses Ctrl+C or sends 'stop' via socket). Without this check,
         incomplete tool call/response pairs can cause models to stop responding.
+
+        Ordering and duplicates are repaired first: a call_id that already has an
+        output anywhere in its turn must never get a second one, otherwise every
+        request fails with "Duplicate function_call_output for call_id".
         """
+        from aicoder.core.message_history import CANCELLED_TOOL_OUTPUT
+
+        self.message_history.normalize_tool_pairs()
+
         messages = self.message_history.messages
         i = 0
-        
+
         while i < len(messages):
             msg = messages[i]
-            
+
             # Look for assistant messages with tool_calls
             if msg.get("role") == "assistant" and msg.get("tool_calls"):
-                tool_call_ids = {tc.get("id") for tc in msg["tool_calls"]}
-                
-                # Collect tool_call_ids that have responses
+                tool_call_ids = {tc.get("id") for tc in msg["tool_calls"] if isinstance(tc, dict)}
+
+                # Collect the ids answered anywhere in this turn (a user/plugin
+                # message may sit between a call and its output -- keep looking).
                 response_ids = set()
                 j = i + 1
-                while j < len(messages):
-                    msg_j = messages[j]
-                    
-                    # Stop when we hit another assistant or user message
-                    if msg_j.get("role") in ("user", "assistant"):
-                        break
-                    
-                    # Check for tool response
-                    tool_id = msg_j.get("tool_call_id")
-                    if tool_id:
+                while j < len(messages) and messages[j].get("role") != "assistant":
+                    tool_id = messages[j].get("tool_call_id")
+                    if messages[j].get("role") == "tool" and tool_id:
                         response_ids.add(tool_id)
-                    
                     j += 1
-                
-                # Add missing responses
+
+                # Add a placeholder only for calls with no output at all.
                 missing_ids = tool_call_ids - response_ids
-                for tool_id in missing_ids:
-                    # Insert right after the assistant message
-                    self.message_history.messages.insert(i + 1, {
+                for offset, tool_id in enumerate(sorted(missing_ids)):
+                    self.message_history.messages.insert(i + 1 + offset, {
                         "role": "tool",
                         "tool_call_id": tool_id,
-                        "content": "TOOL CALL WAS CANCELLED BY THE USER",
+                        "content": CANCELLED_TOOL_OUTPUT,
                     })
-                    i += 1  # Account for inserted message
-            
+                i += len(missing_ids)  # Account for inserted messages
+
             i += 1
+
+        # Chain is closed for every call now (real output or placeholder
+        # above), so anything queued mid-chain is safe to append -- and must
+        # be appended BEFORE the request is built, or the model never sees
+        # it. Keep this last: the placeholders have to come first.
+        flushed = self.message_history.flush_deferred_user_messages()
+        if flushed:
+            LogUtils.debug(f"[*] Released {flushed} deferred message(s) before request")
