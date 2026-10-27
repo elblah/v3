@@ -59,20 +59,67 @@ def _estimate_weighted_tokens(text: str) -> int:
     return max(0, round(token_estimate))
 
 
+# Fixed cost of one injected image, in tokens. Providers bill vision by pixel
+# tiles (a 768px image is ~1.1k tokens), never by base64 length. Counting the
+# data URI as text inflated one phone screenshot to ~24k tokens, which pushed
+# every round past the compaction trigger and made the image vanish from
+# history (the tool call then got the "cancelled by the user" placeholder).
+IMAGE_PART_TOKENS = 1600
+
+_IMAGE_PART_TYPES = {"image_url", "image", "input_audio"}
+
+
+def _strip_image_payloads(msg: Any) -> tuple:
+    """Return (message_with_image_payloads_removed, image_part_count)."""
+    if not isinstance(msg, dict):
+        return msg, 0
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return msg, 0
+    stripped = []
+    images = 0
+    for item in content:
+        if isinstance(item, dict) and item.get("type") in _IMAGE_PART_TYPES:
+            images += 1
+            kind = item.get("type")
+            placeholder: Dict[str, Any] = {"type": kind}
+            if kind == "image_url":
+                placeholder["image_url"] = {"url": "<image>"}
+            elif kind == "image":
+                placeholder["source"] = {"type": "base64", "data": "<image>"}
+            else:
+                placeholder["input_audio"] = {"data": "<audio>"}
+            stripped.append(placeholder)
+        else:
+            stripped.append(item)
+    if not images:
+        return msg, 0
+    clone = dict(msg)
+    clone["content"] = stripped
+    return clone, images
+
+
+def message_tokens(msg: Dict[str, Any]) -> int:
+    """Estimate tokens for one message.
+
+    Image parts cost a fixed amount instead of their base64 length, so a vision
+    message never eats the context budget.
+    """
+    stripped, images = _strip_image_payloads(msg)
+    tokens = _estimate_weighted_tokens(
+        json.dumps(stripped, sort_keys=True, separators=(",", ":"))
+    )
+    return tokens + images * IMAGE_PART_TOKENS
+
+
 def cache_message(msg: Dict[str, Any]) -> None:
     """Cache FULL JSON message tokens IMMEDIATELY on creation
     Cache-once strategy - compute once, lookup forever
     """
     msg_id = id(msg)
-    
-    # Serialize ENTIRE message (TSV approach)
-    json_str = json.dumps(msg, sort_keys=True, separators=(',', ':'))
-    
-    # Weighted estimation (TSV approach)
-    tokens = _estimate_weighted_tokens(json_str)
-    
+
     # Always update the cache, even if message was already cached
-    _message_cache[msg_id] = tokens
+    _message_cache[msg_id] = message_tokens(msg)
 
 
 def estimate_messages(messages: List[Dict[str, Any]]) -> int:
@@ -91,10 +138,7 @@ def estimate_messages(messages: List[Dict[str, Any]]) -> int:
     for msg in messages:
         msg_id = id(msg)
         if msg_id not in _message_cache:
-            # Cache the message if not already cached
-            json_str = json.dumps(msg, sort_keys=True, separators=(',', ':'))
-            tokens = _estimate_weighted_tokens(json_str)
-            _message_cache[msg_id] = tokens
+            _message_cache[msg_id] = message_tokens(msg)
         total += _message_cache[msg_id]
     
     return total + _tools_tokens
