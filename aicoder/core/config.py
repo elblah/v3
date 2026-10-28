@@ -1060,6 +1060,16 @@ class Config:
         """
         return os.environ.get("AICODER_SHELL_PREPEND_CMD", "").strip()
 
+    @staticmethod
+    def no_exec() -> bool:
+        """
+        True when this process cannot spawn external commands at all
+        (AICODER_NO_EXEC=1, e.g. inside a jail with an unshared PID namespace
+        where even bwrap cannot start).
+        Tools must then use their in-process (pure-Python) implementations.
+        """
+        return env_bool("AICODER_NO_EXEC")
+
     # Default directories to ignore when listing files
     DEFAULT_IGNORE_DIRS = [
         '.git',

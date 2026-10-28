@@ -66,8 +66,31 @@ def _is_exec_failure(stderr: str) -> bool:
         "cannot execute",
         "failed to execute",
         "command not found",
+        # bwrap/seal refusing to start (e.g. unshared PID namespace):
+        # "bwrap: Can't read /proc/sys/kernel/overflowuid"
+        "bwrap:",
+        "namespace",
     )
     return any(marker in lowered for marker in markers)
+
+
+# Latched once the external engine has failed for exec reasons: retrying it on
+# every call is pointless for the rest of this process lifetime.
+_no_exec_reason: Optional[str] = None
+
+
+def _latch_no_exec(reason: str) -> None:
+    """Remember that the external engine cannot be spawned in this process."""
+    global _no_exec_reason
+    if _no_exec_reason is None:
+        _no_exec_reason = reason
+
+
+def _external_engine_blocked() -> Optional[str]:
+    """Return a reason string when the external engine must be skipped."""
+    if Config.no_exec():
+        return "AICODER_NO_EXEC is set"
+    return _no_exec_reason
 
 
 def python_grep(
@@ -210,28 +233,33 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         # rg/bash missing), fall back to the pure-Python walker below.
         matches = []
         engine = "ripgrep"
-        fallback_reason = None
+        # Non-None -> skip the subprocess entirely (AICODER_NO_EXEC, or latched
+        # from an earlier exec failure in this process).
+        fallback_reason = _external_engine_blocked()
         result = None
 
-        try:
-            quoted = " ".join(shlex.quote(c) for c in cmd)
-            sealed_command, argv = resolve_command(quoted)
-            result = subprocess.run(
-                argv if argv is not None else ["bash", "-c", sealed_command],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            raise
-        except OSError as exc:
-            fallback_reason = f"{type(exc).__name__}: {exc}"
-            result = None
+        if fallback_reason is None:
+            try:
+                quoted = " ".join(shlex.quote(c) for c in cmd)
+                sealed_command, argv = resolve_command(quoted)
+                result = subprocess.run(
+                    argv if argv is not None else ["bash", "-c", sealed_command],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except subprocess.TimeoutExpired:
+                raise
+            except OSError as exc:
+                fallback_reason = f"{type(exc).__name__}: {exc}"
+                _latch_no_exec(fallback_reason)
+                result = None
 
         if result is not None:
             stderr = (result.stderr or "").strip()
             if result.returncode != 0 and stderr and _is_exec_failure(stderr):
                 fallback_reason = stderr.splitlines()[-1]
+                _latch_no_exec(fallback_reason)
                 result = None
 
         if result is None:
@@ -269,7 +297,8 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             friendly = f"🔍 Found {len(matches)} matches for '{text}'"
 
         if engine == "python-fallback":
-            friendly += " [python fallback]"
+            # Keep the user-facing line identical to the external-engine one;
+            # the engine detail belongs in the expandable text.
             detail_lines = [
                 f"Search completed: {friendly}",
                 f"Engine: pure-Python fallback (external search unavailable: {fallback_reason})",
