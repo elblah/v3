@@ -9,6 +9,15 @@ from aicoder.tools.internal.grep import validateArguments, formatArguments, exec
 from aicoder.core.config import Config
 
 
+@pytest.fixture(autouse=True)
+def _reset_exec_latch(monkeypatch):
+    """Each test starts with a clean exec-failure latch and no NO_EXEC marker."""
+    from aicoder.tools.internal import grep as grep_mod
+
+    monkeypatch.setattr(grep_mod, "_no_exec_reason", None, raising=False)
+    monkeypatch.delenv("AICODER_NO_EXEC", raising=False)
+
+
 class TestValidateArguments:
     """Test argument validation"""
 
@@ -160,7 +169,8 @@ class TestExecute:
             
             assert result["tool"] == "grep"
             assert "Found 1 matches" in result["friendly"]
-            assert "python fallback" in result["friendly"]
+            assert "python fallback" not in result["friendly"]
+            assert "pure-Python fallback" in result["detailed"]
 
     def test_execvp_blocked_falls_back(self):
         # bash reports execvp failure for the sealed command
@@ -177,7 +187,51 @@ class TestExecute:
             
             assert result["tool"] == "grep"
             assert "No matches found" in result["friendly"]
-            assert "python fallback" in result["friendly"]
+            assert "pure-Python fallback" in result["detailed"]
+
+    def test_bwrap_failure_falls_back_and_latches(self):
+        # Nested bwrap cannot start (unshared PID namespace) -> the message is
+        # an exec failure, so the tool must use the Python engine and remember it.
+        mock_result = Mock()
+        mock_result.stdout = ""
+        mock_result.returncode = 1
+        mock_result.stderr = "bwrap: Can't read /proc/sys/kernel/overflowuid"
+
+        with patch.object(Config, 'sandbox_disabled', return_value=True), \
+             patch('aicoder.tools.internal.grep.subprocess.run', return_value=mock_result) as run, \
+             patch('aicoder.tools.internal.grep.python_grep', return_value=(["f.py:1:hit"], None)):
+            first = execute({"text": "test"})
+
+            assert "Found 1 matches" in first["friendly"]
+            assert "bwrap:" in first["detailed"]
+            assert run.call_count == 1
+
+            # Second call: engine already latched, no subprocess at all
+            with patch('aicoder.tools.internal.grep.resolve_command') as resolve:
+                second = execute({"text": "test"})
+            assert "Found 1 matches" in second["friendly"]
+            assert run.call_count == 1
+            resolve.assert_not_called()
+
+    def test_no_exec_env_skips_subprocess(self):
+        with patch.object(Config, 'sandbox_disabled', return_value=True), \
+             patch.dict('os.environ', {"AICODER_NO_EXEC": "1"}), \
+             patch('aicoder.tools.internal.grep.subprocess.run') as run, \
+             patch('aicoder.tools.internal.grep.python_grep', return_value=(["a.py:2:hit"], None)):
+            result = execute({"text": "needle", "path": "."})
+
+            assert "Found 1 matches" in result["friendly"]
+            assert "[python fallback]" not in result["friendly"]
+            assert "AICODER_NO_EXEC is set" in result["detailed"]
+            run.assert_not_called()
+
+    def test_is_exec_failure_markers(self):
+        from aicoder.tools.internal.grep import _is_exec_failure
+
+        assert _is_exec_failure("bwrap: Can't read /proc/sys/kernel/overflowuid")
+        assert _is_exec_failure("bwrap: No permissions to create new namespace")
+        assert _is_exec_failure("bash: execvp: Operation not permitted")
+        assert not _is_exec_failure("regex parse error: unclosed group")
 
     def test_fallback_bad_regex(self):
         with patch.object(Config, 'sandbox_disabled', return_value=True), \
