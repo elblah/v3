@@ -18,6 +18,8 @@
 # bind -n M-3 command-prompt -p "ACommand:" "set-buffer -b aicoder-cmd \"%1\" \; run-shell -b '$AICODER_MENU_BIN command-raw'"
 # bind -n M-x run-shell -b "$AICODER_MENU_BIN stop"
 # bind -n M-4 run-shell -b "$AICODER_MENU_BIN stop"
+# No-prompt variant (abort immediately, no y/N):
+# bind -n M-X run-shell -b "$AICODER_MENU_BIN stop-force"
 # bind -n M-k run-shell -b "$AICODER_MENU_BIN kill"
 # bind -n M-g run-shell -b "$AICODER_MENU_BIN debug"
 # bind -n M-q run-shell -b "$AICODER_MENU_BIN quit"
@@ -174,6 +176,7 @@ show_menu() {
         -- \
         "-model: ${model}"                      "" "" \
         "Stop Processing (${processing})"        x "run-shell -b 'echo stop > ${response_file}'" \
+        "Stop Force (no prompt)"                 X "run-shell -b 'echo stop-force > ${response_file}'" \
         "Toggle YOLO (${yolo_enabled})"          y "run-shell -b 'echo yolo > ${response_file}'" \
         "Toggle Detail (${detail_enabled})"      d "run-shell -b 'echo detail > ${response_file}'" \
         "Toggle Detail-TTY (${detail_tty_enabled})" t "run-shell -b 'echo dt > ${response_file}'" \
@@ -436,8 +439,10 @@ fi
 
 # Execute action if choice was made
 if [ -n "$CHOICE" ]; then
-    # Confirm destructive actions
-    if [[ "$CHOICE" == "stop"* || "$CHOICE" == "kill"* || "$CHOICE" == "clear"* ]]; then
+    # Confirm destructive actions. `stop-force` is the explicit no-prompt
+    # variant meant for single-keystroke bindings (e.g. M-x).
+    if [[ "$CHOICE" != "stop-force"* ]] && \
+       [[ "$CHOICE" == "stop"* || "$CHOICE" == "kill"* || "$CHOICE" == "clear"* ]]; then
         label="stop"
         [[ "$CHOICE" == "kill"* ]] && label="kill"
         [[ "$CHOICE" == "clear"* ]] && label="clear"
