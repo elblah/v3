@@ -55,6 +55,9 @@ class AICoder:
         # Set when a plugin already injected this prompt into history as a
         # multimodal message; the raw prompt must not be re-added after it.
         self._plugin_prompt_consumed = False
+        # Set after Ctrl+C so an interrupted compaction is not restarted at
+        # once. Must exist before any mode runs, piped mode included.
+        self._skip_auto_compact_once = False
         self.tool_manager = ToolManager(self.stats)
         self.streaming_client = ApiClient(self.stats, self.tool_manager)
         self.context_bar = ContextBar()
@@ -231,10 +234,7 @@ class AICoder:
             try:
                 # Auto-compaction check (skipped once right after Ctrl+C so an
                 # interrupted compaction is not immediately restarted)
-                if self._skip_auto_compact_once:
-                    self._skip_auto_compact_once = False
-                elif self.message_history.should_auto_compact():
-                    self.perform_auto_compaction()
+                self._maybe_auto_compact()
 
                 # Get user input
                 if not self._skip_hooks_once:
@@ -379,6 +379,7 @@ class AICoder:
                     if next_prompt:
                         self.add_user_input(next_prompt)
                 
+                self._maybe_auto_compact()
                 self.session_manager.process_with_ai()
 
                 # Prompts queued while the AI was working (compaction
@@ -407,9 +408,28 @@ class AICoder:
         """
         turns = 0
         drained = 0
-        while self.has_next_prompt() and drained < max_turns:
+        while drained < max_turns:
             if not self.is_running:
                 break
+
+            # Pre-prompt hooks only when nothing is queued: feeders such as
+            # cache_compact skip themselves when a prompt already exists, and
+            # in piped mode these hooks otherwise never ran between turns, so
+            # the whole 65-95% compaction tier was dead.
+            if not self.has_next_prompt():
+                self.call_notify_hook("on_before_user_prompt")
+                self.plugin_system.call_hooks("before_user_prompt")
+
+            if not self.has_next_prompt():
+                break
+
+            # Turn-boundary auto-compaction, as in the interactive loop, and
+            # only when another turn will really run (after the hooks had a
+            # chance to queue one). Piped mode had no check between turns;
+            # only the emergency path inside _prepare_for_processing (over
+            # 100% of the window) ever fired.
+            self._maybe_auto_compact()
+
             prompt = self.get_next_prompt()
             # Counted for every consumed prompt: a command may queue another
             # one, and the bound must not depend on API turns alone.
@@ -528,6 +548,21 @@ class AICoder:
     def perform_auto_compaction(self) -> None:
         """Perform auto-compaction (delegates to session_manager)"""
         self.session_manager._perform_auto_compaction()
+
+    def _maybe_auto_compact(self) -> None:
+        """Turn-boundary auto-compaction check, shared by every run mode.
+
+        Interactive mode always had this at the top of its loop. Piped mode
+        did not, so a long piped session only ever hit the emergency path in
+        _prepare_for_processing (over 100% of the context window, one brutal
+        round) and could otherwise grow until the provider rejected every
+        request.
+        """
+        if self._skip_auto_compact_once:
+            self._skip_auto_compact_once = False
+            return
+        if self.message_history.should_auto_compact():
+            self.perform_auto_compaction()
 
     def call_notify_hook(self, hook_name: str) -> None:
         """Call notification hook"""
