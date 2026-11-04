@@ -14,12 +14,15 @@ Usage:
     python ai_usage.py help                                  # Show this usage
     LOCAL=1 ALL=1 python ai_usage.py ...                     # All cached dirs (ignore cwd)
     LOCAL=1 python ai_usage.py ...                           # Per-project stats.log mode
+    STATS_FILE=.aicoder/stats.log python ai_usage.py ...     # Use exactly this log
 
 Notes:
     - Cache persists indefinitely. Run 'update' to scan all dirs below PWD.
     - Default period is 24h (rolling).
     - Stats are loaded from central log (~/.aicoder/central_stats.log) by default.
     - LOCAL=1 uses per-project .aicoder/stats.log instead.
+    - STATS_FILE=<path> reads only that file (or <dir>/.aicoder/stats.log);
+      no cache, no cwd filter, no central log.
     - SESSION_DELTA=1 adds per-session avg context growth per request section.
     - TZ=+8 sets timezone offset (useful for matching provider dashboards).
 
@@ -498,6 +501,7 @@ def main():
         print("  ai_usage.py update         # Scan all dirs below, update cache")
         print("  ai_usage.py clear-cache    # Delete cache")
         print("  LOCAL=1 ALL=1 ai_usage.py ...  # All cached dirs (ignore cwd filter)")
+        print("  STATS_FILE=<path> ai_usage.py ...  # Read exactly that stats.log")
         print("  SESSION_DELTA=1 ai_usage.py ...  # Add per-session avg context growth/req")
         print("  BUDGET=100 ai_usage.py ...       # Project per-model usage a $100 budget buys")
         sys.exit(0)
@@ -558,7 +562,21 @@ def main():
         label = period
 
     # Find and parse stats files
-    if os.environ.get("LOCAL"):
+    # STATS_FILE=<path> uses exactly that file (or <dir>/.aicoder/stats.log),
+    # bypassing the cache, the cwd filter and the central log.
+    stats_file_env = (os.environ.get("STATS_FILE") or "").strip()
+    if stats_file_env:
+        target = Path(stats_file_env).expanduser()
+        if target.is_dir():
+            target = target / ".aicoder" / "stats.log"
+        if not target.exists():
+            print(f"STATS_FILE not found: {target}")
+            sys.exit(0)
+        entries = parse_stats(target, start, end)
+        if not entries:
+            print(f"No requests found for: {label}")
+            sys.exit(0)
+    elif os.environ.get("LOCAL"):
         files = find_stats_files()
         if not files:
             print("No .aicoder/stats.log files found.")
