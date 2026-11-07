@@ -232,12 +232,25 @@ def create_plugin(ctx):
         """Format a datetime as 'absolute (relative)'"""
         return f"{format_absolute_time(dt)} ({format_relative_time(dt)})"
 
+    def job_name_for_pid(pid: Any) -> str:
+        """Friendly name of a running or finished job ('' if unknown)."""
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            return ""
+        with _jobs_lock:
+            job = jobs.get(pid_int)
+            if job is not None:
+                return job.get("name", "")
+        record = find_completed_job(pid_int)
+        return record["name"] if record else ""
+
     def format_bg_jobs_args(args: Dict[str, Any]) -> str:
         """Format arguments for bg_jobs tool approval"""
         lines = []
         action = args.get("action", "")
         lines.append(f"Action: {action}")
-        
+
         if action == "run":
             name = args.get("name", "")
             command = args.get("command", "")
@@ -245,14 +258,15 @@ def create_plugin(ctx):
             lines.append(f"Command: {command}")
             if args.get("notify", True) is False:
                 lines.append("Notify: off")
-        elif action == "kill":
+        elif action in ("kill", "wait"):
             pid = args.get("pid", "")
+            name = job_name_for_pid(pid)
+            if name:
+                lines.append(f"Name: {name}")
             lines.append(f"PID: {pid}")
-        elif action == "wait":
-            lines.append(f"PID: {args.get('pid', '')}")
-            if args.get("timeout") is not None:
+            if action == "wait" and args.get("timeout") is not None:
                 lines.append(f"Timeout: {args['timeout']}s")
-        
+
         return "\n".join(lines)
 
     def find_completed_job(pid: int) -> Optional[Dict[str, Any]]:
