@@ -370,9 +370,16 @@ class AICoder:
             current_message_count = len(self.message_history.get_messages())
             has_new_messages = current_message_count > initial_message_count
             has_next_prompt = self.has_next_prompt()
+            # A turn that was killed in the middle of a tool call leaves the
+            # history with an open chain, so every prompt added above was
+            # DEFERRED instead of appended and the count never moved. Without
+            # this the run ends here: process exit 0, no request, no output --
+            # the project answers nothing on every following turn. The repair
+            # inside process_with_ai() closes the chain and releases the queue.
+            has_deferred_prompt = self.message_history.has_deferred_user_messages()
 
             # Process with AI only if new messages were added OR next_prompt is set
-            if has_new_messages or has_next_prompt:
+            if has_new_messages or has_next_prompt or has_deferred_prompt:
                 # If next_prompt is set, get it and add to history (like interactive mode does)
                 if has_next_prompt:
                     next_prompt = self.get_next_prompt()

@@ -173,6 +173,10 @@ class MessageHistory:
             return bool(wanted - answered)
         return False
 
+    def has_deferred_user_messages(self) -> bool:
+        """True when a user/plugin message is queued behind an open tool chain."""
+        return bool(self._deferred_user_messages)
+
     def defer_user_message(self, content) -> None:
         """Queue a user/plugin message until the open tool chain closes."""
         message = content if isinstance(content, dict) else {"role": "user", "content": content}
