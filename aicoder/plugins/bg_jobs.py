@@ -9,6 +9,8 @@ Features:
 - List running jobs
 - Wait (blocking, with required timeout) for a job to finish
 - Kill individual jobs or all jobs
+- Every action (run/wait/kill/kill_all/history) also reports the jobs still
+  running, so one call shows both the action outcome and the full job set
 - Auto-cleanup on AI Coder exit
 - Process group management to prevent orphans
 """
@@ -207,6 +209,38 @@ def create_plugin(ctx):
             days = seconds // 86400
             return f"{days}d {format_duration(seconds % 86400)}"
 
+    def running_jobs_block() -> str:
+        """Multi-line snapshot of the jobs still running ('' when none).
+
+        Appended to every bg_jobs tool result so one call answers both "what
+        did my action do" and "what else is running". A build the AI forgot
+        about shows up right where it would otherwise launch a duplicate.
+        """
+        cleanup_dead_jobs()
+        with _jobs_lock:
+            snapshot = list(jobs.items())
+        if not snapshot:
+            return ""
+        lines = []
+        for idx, (pid, job) in enumerate(snapshot, 1):
+            uptime = int((datetime.now() - job["started_at"]).total_seconds())
+            lines.append(
+                f"{idx}) {job['name']:<20} (pid: {pid}) — running {format_duration(uptime)}"
+            )
+        return f"\n\nRunning now ({len(snapshot)}):\n" + "\n".join(lines)
+
+    def running_count_hint() -> str:
+        """Short ' — N running' suffix for the friendly line (always present)."""
+        with _jobs_lock:
+            count = len(jobs)
+        return f" — {count} running" if count else " — none running"
+
+    def with_running_status(result: Dict[str, Any]) -> Dict[str, Any]:
+        """Append the running-jobs snapshot to an existing tool result."""
+        result["friendly"] = result["friendly"] + running_count_hint()
+        result["detailed"] = result["detailed"] + running_jobs_block()
+        return result
+
     def format_relative_time(dt: datetime) -> str:
         """Format a datetime as relative time (e.g., '2 minutes ago')"""
         delta = datetime.now() - dt
@@ -333,8 +367,11 @@ def create_plugin(ctx):
             pid = start_background_job(name, command, notify=notify)
             return {
                 "tool": "bg_jobs",
-                "friendly": f"Started background job: {name} (pid: {pid})",
-                "detailed": f"Background job started\nName: {name}\nPID: {pid}\nCommand: {command}"
+                "friendly": f"Started background job: {name} (pid: {pid}){running_count_hint()}",
+                "detailed": (
+                    f"Background job started\nName: {name}\nPID: {pid}\nCommand: {command}"
+                    + running_jobs_block()
+                )
             }
 
         elif action == "list":
@@ -422,7 +459,7 @@ def create_plugin(ctx):
                         "friendly": f"Error: No background job with pid: {pid}",
                         "detailed": f"pid {pid} is not running and not in job history"
                     }
-                return finished_job_result(record)
+                return with_running_status(finished_job_result(record))
 
             process = job["process"]
             deadline = time.monotonic() + timeout
@@ -430,7 +467,7 @@ def create_plugin(ctx):
                 while process.poll() is None:
                     if time.monotonic() >= deadline:
                         uptime = int((datetime.now() - job["started_at"]).total_seconds())
-                        return {
+                        return with_running_status({
                             "tool": "bg_jobs",
                             "friendly": (
                                 f"Job {job['name']} (pid {pid}) still running after "
@@ -445,7 +482,7 @@ def create_plugin(ctx):
                                 "The job was NOT killed. You can wait again with a longer "
                                 "timeout, keep working, or kill it."
                             ),
-                        }
+                        })
                     time.sleep(0.2)
             except KeyboardInterrupt:
                 # Ctrl+C aborts only the wait; the job has its own process group
@@ -457,15 +494,15 @@ def create_plugin(ctx):
             record = find_completed_job(pid)
             if record is None:
                 # Defensive: record missing should not happen
-                return {
+                return with_running_status({
                     "tool": "bg_jobs",
                     "friendly": f"Job {job['name']} (pid {pid}) exited (exit code: {process.returncode})",
                     "detailed": (
                         f"Background job finished\nName: {job['name']}\n"
                         f"PID: {pid}\nExit code: {process.returncode}"
                     )
-                }
-            return finished_job_result(record)
+                })
+            return with_running_status(finished_job_result(record))
 
         elif action == "kill":
             pid = args.get("pid")
@@ -499,11 +536,11 @@ def create_plugin(ctx):
                     }
                 job_name = jobs[pid]["name"]
             if kill_job(pid):
-                return {
+                return with_running_status({
                     "tool": "bg_jobs",
                     "friendly": f"Killed background job: {job_name} (pid: {pid})",
                     "detailed": f"Successfully killed background job\nName: {job_name}\nPID: {pid}"
-                }
+                })
             else:
                 return {
                     "tool": "bg_jobs",
@@ -516,30 +553,30 @@ def create_plugin(ctx):
             cleanup_dead_jobs()
 
             killed = kill_all_jobs()
-            return {
+            return with_running_status({
                 "tool": "bg_jobs",
                 "friendly": f"Killed {killed} background job(s)",
                 "detailed": f"Successfully killed {killed} background job(s)"
-            }
+            })
 
         elif action == "history":
             if not completed_jobs:
-                return {
+                return with_running_status({
                     "tool": "bg_jobs",
                     "friendly": "No completed jobs in history",
                     "detailed": "No background jobs have finished yet"
-                }
+                })
 
             lines = []
             for i, j in enumerate(completed_jobs, 1):
                 d = format_duration(j["duration_seconds"])
                 lines.append(f"{i}) {j['name']:<20} (pid: {j['pid']}) — took {d}")
 
-            return {
+            return with_running_status({
                 "tool": "bg_jobs",
                 "friendly": f"Found {len(completed_jobs)} completed job(s)",
                 "detailed": f"Completed Jobs ({len(completed_jobs)}):\n\n" + "\n".join(lines)
-            }
+            })
 
         else:
             return {

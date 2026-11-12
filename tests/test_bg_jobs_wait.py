@@ -186,7 +186,9 @@ class WaitRunningJobTests(unittest.TestCase):
         listing = ctx.tools["bg_jobs"]({"action": "list"})
         self.assertIn("survivor", listing["friendly"] + listing["detailed"])
         history = ctx.tools["bg_jobs"]({"action": "history"})
-        self.assertNotIn(f"pid: {pid}", history["detailed"])
+        # History section only — the trailing "Running now" snapshot added
+        # later lists live jobs on purpose.
+        self.assertNotIn(f"pid: {pid}", history["detailed"].split("Running now")[0])
 
         kill(ctx, pid)
 
