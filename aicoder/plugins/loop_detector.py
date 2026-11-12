@@ -9,9 +9,14 @@ live stream instead and asks the core to abort the response.
 
 Detection is deliberately simple. Per channel the text is buffered and checked
 every CHECK_EVERY_CHARS characters against a rolling WINDOW_WORDS-word history;
-if the last NEEDLE_WORDS words occur MIN_REPEATS times inside that window, the
-channel is looping. Cost is O(window) per check, a few checks per second — no
-n-gram tables, no rescans of the response so far.
+if the tail of the window is one run of at most NEEDLE_WORDS words repeated
+back-to-back MIN_REPEATS times, the channel is looping. Cost is O(window) per
+check, a few checks per second — no n-gram tables, no rescans of the response
+so far.
+
+The repetitions must be contiguous. Counting a needle that merely occurs
+MIN_REPEATS times anywhere in the window aborts legitimate structured output
+(SVG shapes, CSS rules, JSON rows), which is repetition by design.
 
 The plugin prints the abort notice itself; the core only honors the request
 and returns the prompt.
@@ -28,8 +33,8 @@ from aicoder.utils.bool_utils import TRUTHY, FALSY, env_bool
 from aicoder.utils.log import LogUtils
 
 WINDOW_WORDS = 200        # rolling history kept per channel
-NEEDLE_WORDS = 30         # size of the fragment that has to repeat
-MIN_REPEATS = 3           # occurrences of the needle inside the window to trip
+NEEDLE_WORDS = 30         # longest repeating run that is still searched for
+MIN_REPEATS = 3           # contiguous copies of the run needed to trip
 CHECK_EVERY_CHARS = 200   # buffered characters per check
 MAX_PENDING_CHARS = 1600  # cap for one whitespace-free run (base64 blobs etc.)
 
@@ -39,11 +44,28 @@ _SEPARATORS = str.maketrans({c: " " for c in '{}[]":,'})
 
 
 def _repeats(words) -> bool:
-    """True when the tail of `words` occurs MIN_REPEATS times in the window."""
-    if len(words) < NEEDLE_WORDS * MIN_REPEATS:
-        return False
-    needle = " ".join(words[-NEEDLE_WORDS:])
-    return " ".join(words).count(needle) >= MIN_REPEATS
+    """True when the tail of `words` is one run repeated back-to-back MIN_REPEATS times.
+
+    Contiguous repetition only. Counting occurrences anywhere in the window
+    aborts legitimate structured output: an SVG with three similar shapes, a
+    CSS sheet, a JSON dataset or a list of test cases all contain the same run
+    three times inside 200 words, and a whole turn died on them. A model that
+    is genuinely stuck emits the fragment again immediately, so requiring the
+    repeats to be adjacent keeps the detection and drops the false positives.
+
+    The repeating run may be shorter than NEEDLE_WORDS: a stuck model usually
+    loops on a short phrase, and comparing one fixed NEEDLE_WORDS block against
+    the previous one only matches periods that are multiples of it (a 13-word
+    loop shifted by 30 never compares equal). So every period is tried, the
+    shortest first, and a period whose last MIN_REPEATS copies agree wins.
+    """
+    for period in range(1, NEEDLE_WORDS + 1):
+        span = period * MIN_REPEATS
+        if len(words) < span:
+            return False
+        if words[-period:] * MIN_REPEATS == words[-span:]:
+            return True
+    return False
 
 
 def _detector_state() -> tuple[bool, str]:
@@ -109,6 +131,10 @@ def create_plugin(ctx):
                     f"\n{c['bold']}{c['yellow']}[loop-detector]{c['reset']}"
                     f" Loop detected on channel '{channel}'... aborting"
                 )
+                LogUtils.print(
+                    "[loop-detector] repeated fragment: "
+                    + " ".join(words[-NEEDLE_WORDS:])[:120]
+                )
                 return True  # loop found — core aborts the stream
         pending[channel] = buf
         return False
@@ -128,8 +154,8 @@ def create_plugin(ctx):
         _refresh()
         return (
             f"Loop detector: {'enabled' if enabled else 'disabled'} ({reason})\n"
-            f"- trips when the last {NEEDLE_WORDS} words repeat {MIN_REPEATS}x "
-            f"inside a {WINDOW_WORDS}-word window\n"
+            f"- trips when a run of 1-{NEEDLE_WORDS} words repeats "
+            f"back-to-back {MIN_REPEATS}x inside a {WINDOW_WORDS}-word window\n"
             f"- /loop-detector on|off - override for this session\n"
             f"- AICODER_LOOP_DETECTOR=0 in the environment - persistent off\n"
         )
