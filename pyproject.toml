@@ -45,4 +45,4 @@ include = ["aicoder*"]
 py-modules = ["main"]
 
 [tool.setuptools.package-data]
-aicoder = ["**/*.md", "**/*.txt"]
+aicoder = ["**/*.md", "**/*.txt", "**/*.html"]
