@@ -695,13 +695,17 @@ def create_plugin(ctx) -> Dict[str, Any]:
         "execute": read_image_tool,
         "description": ("Read and analyze an image. Uses VISION_SCRIPT gateway if configured, "
                         "otherwise injects the raw image for native vision models. Always pass a "
-                        "'query' describing exactly what you want to know or do with the image."),
+                        "'query' describing exactly what you want to know or do with the image. "
+                        "Prefer absolute paths. Avoid /tmp for files written by processes outside "
+                        "this sandbox: host /tmp is not the sandbox /tmp, so those files may be "
+                        "invisible here — keep such images in the working directory."),
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Path to the image file"
+                    "description": ("Path to the image file. Absolute preferred (no cwd "
+                                    "ambiguity); must be readable from inside the sandbox.")
                 },
                 "query": {
                     "type": "string",
