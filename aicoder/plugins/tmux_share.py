@@ -12,8 +12,11 @@ pid/kill switch is needed.
 Commands:
     /tmux-share [start] [--port N] [--user U] [--password P | --genpass [N]]
            [--bind ADDR] [--pane %N] [--interval S] [--idle-interval S]
-           [--max-auth-fails N] [--webroot PATH] [--force]
+           [--max-auth-fails N] [--webroot PATH] [--force] [--noauth]
     /tmux-share stop | status | restart | log [N] | help
+
+A password is mandatory: without --password/--genpass the server refuses to
+start, unless --noauth is given explicitly.
 
 The password is kept in memory only. It is never written to the state file,
 never passed through argv or the environment, and never logged.
@@ -84,9 +87,11 @@ Options:
   --port N              listen port                  (default 8080)
   --bind ADDR           listen address               (default 127.0.0.1)
   --pane %N             tmux pane to share           (default $TMUX_PANE)
-  --user U --password P protect the page with basic auth
+  --user U --password P protect the page with basic auth (default: required)
   --genpass [N]         generate a random password (default 24 chars),
                         user defaults to "share"; shown once, never logged
+  --noauth              share WITHOUT authentication (explicit opt-in:
+                        anyone reaching the port can type into the pane)
   --interval S          poll interval with viewers   (default 0.2)
   --idle-interval S     poll interval with no viewers (default 1.0, 0 = off)
   --max-auth-fails N    bad logins (all clients) before the server STOPS
@@ -211,9 +216,13 @@ class ShareServer:
     def __init__(self, pane, port=8080, bind="127.0.0.1", interval=0.2,
                  idle_interval=1.0, user=None, password=None,
                  max_auth_fails=DEFAULT_MAX_AUTH_FAILS, max_auth_fails_per_ip=0,
-                 webroot="", log_path=None, log_lines=1000, on_auth_fail=None):
+                 webroot="", log_path=None, log_lines=1000, on_auth_fail=None,
+                 allow_noauth=False):
         if bool(user) != bool(password):
             raise ShareError("need both user and password, or neither")
+        if not (user and password) and not allow_noauth:
+            raise ShareError("refusing to serve without authentication: "
+                             "pass user and password (allow_noauth to override)")
         self.pane = pane
         self.port = int(port)
         self.bind = bind or "127.0.0.1"
@@ -877,6 +886,9 @@ def _parse_args(args_str):
         if tok == "--force":
             opts["force"] = True
             continue
+        if tok == "--noauth":
+            opts["noauth"] = True
+            continue
         if tok == "--genpass":
             n = DEFAULT_GENPASS_LEN
             if i < len(toks) and toks[i].isdigit():
@@ -932,6 +944,9 @@ def _parse_args(args_str):
         raise _ArgsError("bad --pane (expected %N, e.g. %0): " + str(opts["pane"]))
     if "genpass" in opts and "password" in opts:
         raise _ArgsError("use either --password or --genpass, not both")
+    if opts.get("noauth") and ("password" in opts or "genpass" in opts
+                               or "user" in opts):
+        raise _ArgsError("use either --noauth or credentials, not both")
 
     return sub, opts, rest
 
@@ -945,6 +960,7 @@ def create_plugin(ctx):
         "server": None,      # ShareServer instance (in-process)
         "password": None,    # kept in memory only
         "user": None,
+        "noauth": False,     # explicit --noauth of the running server
         "config": {},        # last used config, reused by `restart`
         "closed": False,
     }
@@ -966,6 +982,7 @@ def create_plugin(ctx):
             "pane": cfg["pane"],
             "user": cfg.get("user"),
             "auth": bool(cfg.get("user")),
+            "noauth": bool(cfg.get("noauth")),
             "interval": cfg["interval"],
             "idle_interval": cfg["idle_interval"],
             "max_auth_fails": cfg["max_auth_fails"],
@@ -1030,6 +1047,8 @@ def create_plugin(ctx):
                 "(aicoder must run inside tmux, or pass --pane %N)")
 
         # Credentials: flags win, otherwise reuse the in-memory pair.
+        if opts.get("noauth"):
+            cfg["user"] = None      # explicit opt-out beats remembered creds
         password = opts.get("password")
         if password is None and cfg["user"] and state["password"] \
                 and cfg["user"] == state["user"]:
@@ -1044,6 +1063,17 @@ def create_plugin(ctx):
         if bool(cfg["user"]) != bool(password):
             raise _ArgsError("authentication needs both --user and "
                              "--password (or --genpass)")
+        # No credentials is a hard error unless the user asks for it: --noauth
+        # ("allow noauth") or the same choice remembered from the last start.
+        if not (cfg["user"] and password):
+            cfg["noauth"] = bool(opts.get("noauth")
+                                 or prev.get("noauth"))
+            if not cfg["noauth"]:
+                raise _ArgsError(
+                    "no password: pass --password P (or --genpass [N]) to "
+                    "protect the page, or --noauth to share without it")
+        else:
+            cfg["noauth"] = False
         cfg["password"] = password
         return cfg
 
@@ -1120,6 +1150,7 @@ def create_plugin(ctx):
             webroot=cfg["webroot"],
             log_path=str(_log_path()),
             on_auth_fail=_notify_auth_fail,
+            allow_noauth=bool(cfg.get("noauth")),
         )
         try:
             srv.start()
@@ -1133,6 +1164,7 @@ def create_plugin(ctx):
             state["config"] = {k: v for k, v in cfg.items() if k != "password"}
             state["user"] = cfg["user"]
             state["password"] = cfg.get("password")
+            state["noauth"] = bool(cfg.get("noauth"))
 
         warn_msg = _write_state_file(cfg, srv)
 
@@ -1146,8 +1178,9 @@ def create_plugin(ctx):
                 lines.append("  password: %s  (shown once, not logged)"
                              % (cfg["password"],))
         else:
-            lines.append("  auth: OFF - anyone who can reach the port "
-                         "can type into the pane")
+            lines.append("  auth: OFF (--noauth) - anyone who can reach the "
+                         "port can type into the pane")
+            srv.log("WARNING: serving without authentication (--noauth)")
             if cfg["bind"] not in LOOPBACK_NAMES:
                 lines.append("  WARNING: bound to %s without credentials"
                              % (cfg["bind"],))
@@ -1172,9 +1205,11 @@ def create_plugin(ctx):
                 if not keep_auth:
                     state["password"] = None
                     state["user"] = None
+                    state["noauth"] = False
                     if state["config"]:
                         # keep port/pane/intervals, forget the identity
                         state["config"].pop("user", None)
+                        state["config"].pop("noauth", None)
             _remove_state_file()
         return "stopped sharing on port %d" % srv.port
 
