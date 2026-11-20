@@ -90,7 +90,9 @@ Options:
   --interval S          poll interval with viewers   (default 0.2)
   --idle-interval S     poll interval with no viewers (default 1.0, 0 = off)
   --max-auth-fails N    bad logins (all clients) before the server STOPS
-                        itself (default 5, 0 = never stop)
+                        itself (default 5, 0 = never stop); requests that
+                        carry no user/password are refused and logged but
+                        never counted
   --max-auth-fails-per-ip N
                         optional per-IP lockout: bad logins from one address
                         before it is blocked (default 0 = off); blocks
@@ -340,6 +342,25 @@ class ShareServer:
                 return          # unknown ip, or still inside an active block
             self._fails_by_ip.pop(ip, None)
 
+    @staticmethod
+    def _creds_filled(headers):
+        """True when the client actually sent a user and/or a password.
+
+        Both fields empty (no Authorization header, an unparsable one, or a
+        bare ":") means the request is only knocking on the door: it is
+        refused and logged, but never counted as a bad login.
+        """
+        raw = (headers.get("Authorization") or "").strip()
+        if raw[:6].lower() != "basic ":
+            return False
+        try:
+            decoded = base64.b64decode(
+                raw[6:].strip(), validate=True).decode("utf-8", "replace")
+        except Exception:
+            return False
+        user, _, password = decoded.partition(":")
+        return bool(user.strip() or password.strip())
+
     def _note_auth_failure(self, ip):
         now = time.time()
         shutdown = False
@@ -375,11 +396,24 @@ class ShareServer:
         if self.on_auth_fail is not None:
             try:
                 self.on_auth_fail({"ip": ip, "total": total, "count": count,
+                                   "counted": True,
                                    "strikes": strikes, "blocked": int(blocked),
                                    "blocked_until": blocked_until,
                                    "limit": self.max_auth_fails,
                                    "limit_per_ip": self.max_auth_fails_per_ip,
                                    "stopped": shutdown})
+            except Exception:
+                pass
+
+    def _note_auth_probe(self, ip, path):
+        """Refused for lack of credentials: log it, do not count it."""
+        self.log("refused %s from %s (no credentials, not counted)" % (path, ip))
+        if self.on_auth_fail is not None:
+            try:
+                self.on_auth_fail({"ip": ip, "path": path, "counted": False,
+                                   "total": self.auth_fails,
+                                   "limit": self.max_auth_fails,
+                                   "limit_per_ip": self.max_auth_fails_per_ip})
             except Exception:
                 pass
 
@@ -436,8 +470,10 @@ class ShareServer:
 
             def deny(self):
                 ip = share._ip(self)
-                if share._auth_header:
+                if share._auth_header and share._creds_filled(self.headers):
                     share._note_auth_failure(ip)
+                else:
+                    share._note_auth_probe(ip, self.path)
                 self.send_response(429 if share._ip_blocked(ip) else 401)
                 self.send_header("WWW-Authenticate", 'Basic realm="tmux-share"')
                 self.send_header("Content-Length", "0")
@@ -1026,6 +1062,13 @@ def create_plugin(ctx):
     def _notify_auth_fail(info):
         """Bad password seen by the share server -> loud on-screen line."""
         tag = "%s%s[tmux-share]%s" % (colors["bold"], colors["red"], colors["reset"])
+        if not info.get("counted", True):
+            # no user/password supplied: refused and logged, counter untouched
+            LogUtils.print("%s %srequest without credentials from %s for %s "
+                           "refused (not counted)%s"
+                           % (tag, colors["red"], info.get("ip"),
+                              info.get("path") or "/", colors["reset"]))
+            return
         parts = ["bad password #%d from %s" % (info.get("total", 0), info.get("ip"))]
         limit = info.get("limit") or 0
         if limit:
