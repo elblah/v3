@@ -107,6 +107,9 @@ class SessionManager:
             self.stream_processor.accumulate_tool_call  # process_chunk_callback
         )
 
+        # Expose the provider's finish_reason to plugins (over, etc.)
+        self.app.last_finish_reason = result.get("finish_reason") or ""
+
         # Handle error case by adding to message history
         if result.get("error"):
             self.message_history.add_assistant_message(

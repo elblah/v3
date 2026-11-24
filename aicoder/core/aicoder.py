@@ -58,6 +58,10 @@ class AICoder:
         # Set after Ctrl+C so an interrupted compaction is not restarted at
         # once. Must exist before any mode runs, piped mode included.
         self._skip_auto_compact_once = False
+        # Last API finish_reason ('stop', 'length', 'tool_calls', ...).
+        # Set per streamed response; read by plugins (e.g. over) to tell a
+        # clean stop from a token-budget truncation.
+        self.last_finish_reason = ""
         self.tool_manager = ToolManager(self.stats)
         self.streaming_client = ApiClient(self.stats, self.tool_manager)
         self.context_bar = ContextBar()

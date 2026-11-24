@@ -17,6 +17,24 @@ from aicoder.utils.http_utils import fetch, Response
 from aicoder.utils.file_utils import rotate_debug_log, debug_filename
 
 
+# Anthropic stop_reason -> chat-completions finish_reason (what
+# stream_processor.py and plugins read). "length" is the only one that
+# signals truncation.
+_STOP_REASON_MAP = {
+    "end_turn": "stop",
+    "stop_sequence": "stop",
+    "max_tokens": "length",
+    "tool_use": "tool_calls",
+    "pause_turn": "stop",
+    "refusal": "content_filter",
+}
+
+
+def _map_stop_reason(stop_reason: str) -> str:
+    """Normalize Anthropic stop_reason to a chat-completions finish_reason."""
+    return _STOP_REASON_MAP.get(stop_reason or "", "stop")
+
+
 class AnthropicClient:
     """Handles API requests via Anthropic-compatible endpoint"""
 
@@ -513,7 +531,7 @@ class AnthropicClient:
                     "reasoning_content": accumulated_reasoning,
                     "thinking_signature": self._thinking_signature,
                 },
-                "finish_reason": "stop",
+                "finish_reason": _map_stop_reason(stop_reason),
                 "index": 0
             }],
             "accumulated_tool_calls": accumulated_tool_calls,
@@ -589,7 +607,9 @@ class AnthropicClient:
                     "reasoning_content": accumulated_reasoning,
                     "thinking_signature": thinking_signature,
                     "tool_calls": tool_calls_list
-                }
+                },
+                "finish_reason": _map_stop_reason(data.get("stop_reason")),
+                "index": 0
             }],
             "done": True
         }

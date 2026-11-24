@@ -133,7 +133,11 @@ class OverCommand:
         if args[0] == "status":
             status = "enabled" if OverService.is_enabled() else "disabled"
             count = OverService.get_retry_count()
-            return f"[OVER] protocol: {status}, retries so far: {count}"
+            finish = getattr(self.app, "last_finish_reason", "") or "unknown"
+            return (
+                f"[OVER] protocol: {status}, retries so far: {count}, "
+                f"last finish_reason: {finish}"
+            )
 
         return f"Unknown subcommand: {args[0]}. Use 'on', 'off', or 'status'."
 
@@ -207,7 +211,14 @@ class OverCommand:
             OverService.reset_retry()
             return None
 
-        LogUtils.warn(f"[over] Response missing [OVER] tag (retry #{count})")
+        # finish_reason tells a clean stop ('stop') from a token-budget
+        # truncation ('length'). Only logged on a missing tag: a present tag
+        # means the model chose to end, so its stop reason says nothing new.
+        finish_reason = getattr(self.app, "last_finish_reason", "") or "unknown"
+        LogUtils.warn(
+            f"[over] Response missing [OVER] tag (retry #{count}) "
+            f"finish_reason={finish_reason}"
+        )
         return _continue_prompt(count)
 
 

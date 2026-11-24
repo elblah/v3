@@ -336,6 +336,7 @@ class ResponsesClient:
         reasoning_items = []  # encrypted reasoning items for next-turn replay
         message_usage = None
         api_error = None
+        final_finish_reason = "stop"
 
         # Read incrementally and process per event
         event_data = ""
@@ -449,6 +450,12 @@ class ResponsesClient:
                             elif dtype == "response.completed":
                                 resp = data.get("response") or {}
                                 message_usage = resp.get("usage")
+                                # Truncation surfaces as status=incomplete with
+                                # incomplete_details.reason=max_output_tokens.
+                                if resp.get("status") == "incomplete":
+                                    details = resp.get("incomplete_details") or {}
+                                    if details.get("reason") == "max_output_tokens":
+                                        final_finish_reason = "length"
 
                             elif dtype == "response.failed":
                                 resp = data.get("response") or {}
@@ -473,14 +480,15 @@ class ResponsesClient:
 
         # Final yield - content already streamed via deltas, so don't include
         # it to avoid double-printing.
-        final_delta = {
-            "finish_reason": "stop",
-            "index": 0
-        }
+        final_delta = {}
         if reasoning_items:
             final_delta["reasoning_items"] = reasoning_items
         yield {
-            "choices": [{"delta": final_delta}],
+            "choices": [{
+                "delta": final_delta,
+                "finish_reason": final_finish_reason,
+                "index": 0
+            }],
             "accumulated_tool_calls": accumulated_tool_calls,
             "done": True
         }

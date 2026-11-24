@@ -85,6 +85,7 @@ class StreamProcessor:
         reasoning_detected = False
         reasoning_printed = False
         detected_model = None
+        finish_reason = None
         self.stream_aborted = False
 
         # Debug: show thinking configuration at start of stream
@@ -124,6 +125,7 @@ class StreamProcessor:
                         "reasoning_content": accumulated_reasoning,
                         "reasoning_field": reasoning_field_name,
                         "accumulated_tool_calls": accumulated_tool_calls,
+                        "finish_reason": finish_reason,
                     }
 
                 # Update token stats if present
@@ -218,9 +220,10 @@ class StreamProcessor:
                     if self.stream_aborted:
                         break
 
-                # Finish reason
-                if choice.get("finish_reason") == "tool_calls":
-                    pass
+                # Finish reason — last non-empty value wins (some proxies send
+                # it once, some repeat it; the meaningful one arrives last).
+                if choice.get("finish_reason"):
+                    finish_reason = choice["finish_reason"]
 
             self._spin_stop()
 
@@ -231,6 +234,7 @@ class StreamProcessor:
                     "reasoning_content": accumulated_reasoning,
                     "reasoning_field": reasoning_field_name,
                     "accumulated_tool_calls": accumulated_tool_calls,
+                    "finish_reason": finish_reason,
                 }
 
             # Reasoning not yet printed (e.g. tool-call-only turn, reasoning after
@@ -268,6 +272,7 @@ class StreamProcessor:
             "thinking_signature": thinking_signature,
             "reasoning_items": reasoning_items,
             "accumulated_tool_calls": accumulated_tool_calls,
+            "finish_reason": finish_reason,
         }
 
     def accumulate_tool_call(
