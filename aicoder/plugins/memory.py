@@ -30,8 +30,12 @@ MEMORY_DIR = os.path.abspath(os.environ.get("AICODER_MEMORY_DIR", ".aicoder/memo
 AUTOLOAD_FILE = os.path.join(MEMORY_DIR, "autoload.md")
 INDEX_FILE = os.path.join(MEMORY_DIR, "index.md")
 MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048"))
-# Max topic files listed in the system prompt (sorted by NN- band); rest are counted, not named
-LIST_LIMIT = int(os.environ.get("AICODER_MEMORY_LIST_LIMIT", "25"))
+# Topic files named in the system prompt (sorted by NN- band). Names are cheap
+# (~7 tokens each); a *partial* listing is expensive: the AI reads the visible
+# nearest-sounding name and answers from the wrong note, because the right one
+# sits one sort position past the cut. So list every name up to a high cap and
+# only count the remainder.
+LIST_LIMIT = int(os.environ.get("AICODER_MEMORY_LIST_LIMIT", "120"))
 LIMIT_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_limit")
 NUDGE_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_nudge")
 # Nudge when the topic-file count exceeds this (0 = disabled). Advertises that
@@ -481,16 +485,22 @@ def create_plugin(ctx):
             "- `autoload.md` (< " + str(MAX_AUTOLOAD_BYTES) + " bytes) — injected into every session's system prompt. "
             "Every byte costs tokens. Write terse bullets. Pointers beat inlining (`see api-notes.md`).\n"
             "- `index.md` — main working memory.\n"
-            "- Topic files: `NN-name.md` — NN is an IMPORTANCE BAND, NOT unique, NOT sequential "
-            "(many files may share it; tie-break alphabetical). Lower band = listed first = survives the listing cut.\n"
+            "- Band + prefix rule: `NN-` is an IMPORTANCE BAND, NOT unique, NOT sequential "
+            "(many files may share it; tie-break alphabetical). Lower band = listed first = survives the cut.\n"
             "- Always prefix new files with `NN-`: unprefixed `.md` files sort after every band and are "
-            "always beyond the cut.\n"
+            "first beyond the cut.\n"
             "- `99-*.md` = TRANSIENT (scratch, todos, unsure notes): auto-archived to `.archive/` after "
             + str(TRANSIENT_TTL_DAYS) + " days without edits. Promote: rename below 99 when it matters.\n"
-            "- Only the top " + str(LIST_LIMIT) + " topic files are listed; the rest are counted, not named "
-            "(inspect with `list_directory` on `" + MEMORY_DIR + "`). "
+            "- Every topic filename is listed below (up to " + str(LIST_LIMIT) + "); "
             "`.archive/` holds keep-without-cost files (never listed, and dot dirs are skipped by "
             "`list_directory` too).\n"
+            "- Asked to read/recall a specific topic: pick the listed filename whose NAME matches, "
+            "not the nearest-sounding one. If no name matches, search before answering — "
+            "`ls " + MEMORY_DIR + " | grep -i -E '<words>'` (filenames first; content grep last, "
+            "a memory dir is self-similar: every note mentions every topic). "
+            "Never claim a note is missing unsearched.\n"
+            "- More than " + str(LIST_LIMIT) + " files means the tail is only counted, not named: "
+            "consolidate before the right note hides behind the cut.\n"
             "- Stale but still true: `mv` it into `.archive/` instead of deleting — cheaper than losing it. "
             "Delete only notes that were wrong. Never archive anything that still earns its `NN-` band.\n"
             "- Prune stale entries — they waste every future session.\n"
