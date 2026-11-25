@@ -382,8 +382,11 @@ def create_plugin(ctx):
         except FileNotFoundError:
             return []
 
-    def _count_nudge_message() -> str | None:
-        """Build the file-count nudge text, or None when under threshold/throttled."""
+    def _count_nudge_message() -> tuple[str, str] | None:
+        """Build the file-count nudge text and its one-line screen summary.
+
+        Returns (message, summary) or None when under threshold/throttled.
+        """
         files = list_memory_files()
         total = len(files)
         if MAX_FILES_NUDGE <= 0 or total <= MAX_FILES_NUDGE:
@@ -405,13 +408,16 @@ def create_plugin(ctx):
             )
         else:
             hidden_txt = f"all of them still fit under the {LIST_LIMIT}-file prompt cut"
+        summary = f"{total} files, threshold {MAX_FILES_NUDGE}"
+        if hidden:
+            summary += f", {len(hidden)} past the {LIST_LIMIT}-file cut"
         return (
             f"Memory housekeeping: `{MEMORY_DIR}` holds {total} topic files "
             f"(threshold {MAX_FILES_NUDGE}); {hidden_txt}. Extra files cost no tokens, "
             "but the listing is a fixed budget. Consolidate related notes into fewer, "
             "richer files and prune stale ones now — see them with `list_directory`. "
             f"`.archive/` (dot dir) is free: `mv` stale-but-still-true notes there instead of deleting."
-        )
+        ), summary
 
     def on_autoload_write(path, _content):
         """Queue autoload.md for size check after tool results"""
@@ -447,12 +453,13 @@ def create_plugin(ctx):
         # tool chain closed; add_user_message would defer anyway)
         if _pending_count_check:
             _pending_count_check = False
-            count_msg = _count_nudge_message()
-            if count_msg:
+            nudge = _count_nudge_message()
+            if nudge:
+                count_msg, summary = nudge
                 _last_count_nudge = time.time()
                 from aicoder.utils.log import LogUtils
                 if sys.stdout.isatty():
-                    LogUtils.dim(f"[memory] file-count nudge fired")
+                    LogUtils.dim(f"[memory] file-count nudge: {summary}")
                 if ctx.app and ctx.app.message_history:
                     ctx.app.message_history.add_user_message(count_msg)
 
