@@ -9,7 +9,7 @@ Creates `<MEMORY_DIR>/` structure (configurable via AICODER_MEMORY_DIR, defaults
 The AI uses write_file/edit_file tools to manage memory naturally.
 No special API calls or background processes needed.
 
-Transient band: `99-*.md` = scratch/temp/unsure notes, auto-archived to `archive/`
+Transient band: `99-*.md` = scratch/temp/unsure notes, auto-archived to `.archive/`
 after TRANSIENT_TTL_DAYS (default 7) without edits. Promotion = rename below 99.
 Editing refreshes the clock. No wipe hooks needed.
 """
@@ -34,6 +34,9 @@ MAX_AUTOLOAD_BYTES = int(os.environ.get("AICODER_MEMORY_AUTOLOAD_LIMIT", "2048")
 LIST_LIMIT = int(os.environ.get("AICODER_MEMORY_LIST_LIMIT", "25"))
 LIMIT_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_limit")
 NUDGE_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_nudge")
+# Nudge when the topic-file count exceeds this (0 = disabled). Advertises that
+# extra files cost no tokens but are invisible past LIST_LIMIT.
+MAX_FILES_NUDGE_FILE = os.path.join(os.path.dirname(MEMORY_DIR), "memory_max_files")
 
 
 def _parse_size(value: str) -> int:
@@ -85,14 +88,43 @@ _project_nudge = _load_project_nudge()
 if _project_nudge is not None:
     NUDGE_ENABLED = _project_nudge
 
+# File-count nudge — fire once per session when topic files exceed this count.
+# Overridable per project (/memory max-files-nudge <N|off>) or via env; 0 = off.
+MAX_FILES_NUDGE = int(os.environ.get("AICODER_MEMORY_MAX_FILES_NUDGE", "60"))
+# Minimum seconds between two file-count nudges (default 10 min).
+MAX_FILES_NUDGE_SECONDS = int(os.environ.get("AICODER_MEMORY_MAX_FILES_NUDGE_SECONDS", "600"))
+
+
+def _load_project_max_files() -> int | None:
+    """Load per-project file-count nudge threshold ('0'/'off' disables)."""
+    try:
+        if os.path.isfile(MAX_FILES_NUDGE_FILE):
+            with open(MAX_FILES_NUDGE_FILE) as f:
+                val = f.read().strip().lower()
+            if val in ("off", "none", "no"):
+                return 0
+            if val:
+                return int(val)
+    except (ValueError, OSError, IOError):
+        pass
+    return None
+
+
+_project_max_files = _load_project_max_files()
+if _project_max_files is not None:
+    MAX_FILES_NUDGE = _project_max_files
+
 # Auto-approve write_file/edit_file targeting the memory dir (skip approval prompt)
 AUTO_APPROVE_MEMORY = env_bool("AICODER_MEMORY_AUTO_APPROVE", default=True)
 # Hide memory-dir write previews entirely (default: show one-line summary instead of diff)
 PREVIEW_HIDE = env_bool("AICODER_MEMORY_PREVIEW_HIDE", default=False)
 
-# Transient band: 99-*.md files auto-archive to archive/ after TTL days without edits (promotion = rename below 99)
+# Transient band: 99-*.md files auto-archive to .archive/ after TTL days without edits (promotion = rename below 99)
 TRANSIENT_BAND = 99
 TRANSIENT_TTL_DAYS = int(os.environ.get("AICODER_MEMORY_TRANSIENT_TTL_DAYS", "7"))
+# Dot-prefixed on purpose: list_directory never descends into dot dirs, so
+# archived notes cost nothing and never leak into tool output.
+ARCHIVE_DIR_NAME = ".archive"
 
 
 def _band_of(fname: str) -> int | None:
@@ -117,11 +149,47 @@ def _transient_days_left(fname: str, memory_dir: str = MEMORY_DIR) -> int | None
     return max(0, math.ceil(TRANSIENT_TTL_DAYS - age_days))
 
 
+def _migrate_legacy_archive(memory_dir: str = MEMORY_DIR) -> bool:
+    """Move a legacy visible `archive/` into the dot-prefixed `.archive/`.
+
+    The old name was recursed by list_directory (every file inside showed up in
+    tool output). Dot dirs are skipped there, so archived notes become truly
+    invisible. Returns True when something was moved.
+    """
+    legacy = os.path.join(memory_dir, "archive")
+    if not os.path.isdir(legacy):
+        return False
+    target = os.path.join(memory_dir, ARCHIVE_DIR_NAME)
+    moved = False
+    try:
+        os.makedirs(target, exist_ok=True)
+        for name in os.listdir(legacy):
+            src = os.path.join(legacy, name)
+            if not os.path.isfile(src):
+                continue
+            dst = os.path.join(target, name)
+            if os.path.exists(dst):
+                dst = os.path.join(target, f"legacy-{name}")
+            try:
+                os.rename(src, dst)
+                moved = True
+            except OSError:
+                pass
+        try:
+            os.rmdir(legacy)  # only succeeds when fully drained
+        except OSError:
+            pass
+    except OSError:
+        pass
+    return moved
+
+
 def _archive_expired(memory_dir: str = MEMORY_DIR) -> list[str]:
-    """Move 99- transient files past TTL (no edits in TRANSIENT_TTL_DAYS days) to archive/."""
+    """Move 99- transient files past TTL (no edits in TRANSIENT_TTL_DAYS days) to .archive/."""
     now = time.time()
     archived = []
-    archive_dir = os.path.join(memory_dir, "archive")
+    _migrate_legacy_archive(memory_dir)
+    archive_dir = os.path.join(memory_dir, ARCHIVE_DIR_NAME)
     try:
         for fname in os.listdir(memory_dir):
             if not _is_transient(fname):
@@ -151,6 +219,10 @@ def create_plugin(ctx):
     # Nudge tracking
     _last_memory_write: float = 0.0
     _substantial_response: bool = False
+    # File-count nudge state: pending check after a memory write; fires at most
+    # once per MAX_FILES_NUDGE_SECONDS (default 10 min)
+    _pending_count_check: bool = False
+    _last_count_nudge: float = 0.0
 
     def _is_memory_path(path: str) -> bool:
         """Check if a file path is inside the memory directory."""
@@ -198,11 +270,13 @@ def create_plugin(ctx):
         }
 
     def _on_after_file_write(path: str, _content: str):
-        """Track writes to memory directory + autoload size check."""
-        nonlocal _last_memory_write, _substantial_response
+        """Track writes to memory directory + autoload size/count checks."""
+        nonlocal _last_memory_write, _substantial_response, _pending_count_check
         if _is_memory_path(path):
             _last_memory_write = time.time()
             _substantial_response = False
+            if MAX_FILES_NUDGE > 0 and str(path).endswith(".md"):
+                _pending_count_check = True
         on_autoload_write(path, _content)
 
     def _on_after_assistant_message(message) -> None:
@@ -308,13 +382,45 @@ def create_plugin(ctx):
         except FileNotFoundError:
             return []
 
+    def _count_nudge_message() -> str | None:
+        """Build the file-count nudge text, or None when under threshold/throttled."""
+        files = list_memory_files()
+        total = len(files)
+        if MAX_FILES_NUDGE <= 0 or total <= MAX_FILES_NUDGE:
+            return None
+        if _last_count_nudge > 0 and (time.time() - _last_count_nudge) < MAX_FILES_NUDGE_SECONDS:
+            return None
+        # Band breakdown of what sits beyond the prompt listing cut
+        hidden = files[LIST_LIMIT:]
+        bands: dict[str, int] = {}
+        for fname in hidden:
+            band = _band_of(fname)
+            key = f"{band:02d}-" if band is not None else "none"
+            bands[key] = bands.get(key, 0) + 1
+        breakdown = ", ".join(f"{k}:{v}" for k, v in sorted(bands.items()))
+        if hidden:
+            hidden_txt = (
+                f"{len(hidden)} are past the {LIST_LIMIT}-file prompt cut and "
+                f"invisible to you in the system prompt (bands hidden — {breakdown})"
+            )
+        else:
+            hidden_txt = f"all of them still fit under the {LIST_LIMIT}-file prompt cut"
+        return (
+            f"Memory housekeeping: `{MEMORY_DIR}` holds {total} topic files "
+            f"(threshold {MAX_FILES_NUDGE}); {hidden_txt}. Extra files cost no tokens, "
+            "but the listing is a fixed budget. Consolidate related notes into fewer, "
+            "richer files and prune stale ones now — see them with `list_directory`. "
+            f"`.archive/` (dot dir) is free: `mv` stale-but-still-true notes there instead of deleting."
+        )
+
     def on_autoload_write(path, _content):
         """Queue autoload.md for size check after tool results"""
         if path and path.endswith("autoload.md"):
             _pending_check.append(path)
 
     def on_tool_results(_tool_results):
-        """Check autoload.md size after tool results"""
+        """Check autoload.md size and memory file count after tool results"""
+        nonlocal _pending_count_check, _last_count_nudge
         while _pending_check:
             filepath = _pending_check.pop(0)
             try:
@@ -337,6 +443,19 @@ def create_plugin(ctx):
                 if ctx.app and ctx.app.message_history:
                     ctx.app.message_history.add_user_message(msg)
 
+        # File-count nudge: deferred-safe (after_tool_results fires with the
+        # tool chain closed; add_user_message would defer anyway)
+        if _pending_count_check:
+            _pending_count_check = False
+            count_msg = _count_nudge_message()
+            if count_msg:
+                _last_count_nudge = time.time()
+                from aicoder.utils.log import LogUtils
+                if sys.stdout.isatty():
+                    LogUtils.dim(f"[memory] file-count nudge fired")
+                if ctx.app and ctx.app.message_history:
+                    ctx.app.message_history.add_user_message(count_msg)
+
     def on_system_prompt_append():
         """Inject memory info and autoload.md into system prompt"""
         _auto_init()
@@ -357,11 +476,16 @@ def create_plugin(ctx):
             "- `index.md` — main working memory.\n"
             "- Topic files: `NN-name.md` — NN is an IMPORTANCE BAND, NOT unique, NOT sequential "
             "(many files may share it; tie-break alphabetical). Lower band = listed first = survives the listing cut.\n"
-            "- `99-*.md` = TRANSIENT (scratch, todos, unsure notes): auto-archived to `archive/` after "
+            "- Always prefix new files with `NN-`: unprefixed `.md` files sort after every band and are "
+            "always beyond the cut.\n"
+            "- `99-*.md` = TRANSIENT (scratch, todos, unsure notes): auto-archived to `.archive/` after "
             + str(TRANSIENT_TTL_DAYS) + " days without edits. Promote: rename below 99 when it matters.\n"
             "- Only the top " + str(LIST_LIMIT) + " topic files are listed; the rest are counted, not named "
             "(inspect with `list_directory` on `" + MEMORY_DIR + "`). "
-            "`archive/` holds keep-without-cost files (never listed).\n"
+            "`.archive/` holds keep-without-cost files (never listed, and dot dirs are skipped by "
+            "`list_directory` too).\n"
+            "- Stale but still true: `mv` it into `.archive/` instead of deleting — cheaper than losing it. "
+            "Delete only notes that were wrong. Never archive anything that still earns its `NN-` band.\n"
             "- Prune stale entries — they waste every future session.\n"
             "\n"
             "Write autonomously when you learn something worth persisting. "
@@ -381,7 +505,9 @@ def create_plugin(ctx):
             hidden = len(files) - LIST_LIMIT
             if hidden > 0:
                 section += (f"- …and {hidden} more files in `{MEMORY_DIR}` "
-                            f"(lower priority — inspect with `list_directory` on `{MEMORY_DIR}`).\n")
+                            "(same-or-later band; the cut is alphabetical, so these are "
+                            "NOT junk — inspect with `list_directory` on "
+                            f"`{MEMORY_DIR}`).\n")
 
         if autoload:
             section += "\n### autoload.md\n" + autoload
@@ -390,7 +516,7 @@ def create_plugin(ctx):
 
     def handle_command(args_str: str):
         """Handle /memory command"""
-        global MAX_AUTOLOAD_BYTES, NUDGE_ENABLED
+        global MAX_AUTOLOAD_BYTES, NUDGE_ENABLED, MAX_FILES_NUDGE
         from aicoder.utils.log import LogUtils
 
         parts = args_str.split()
@@ -449,9 +575,12 @@ def create_plugin(ctx):
                 suffix = f" (transient, {dl}d left)" if dl is not None else ""
                 LogUtils.print(f"  {fname:<30} {size:>7} bytes{suffix}")
             LogUtils.dim(f"{'─' * 42}")
-            LogUtils.print(f"  Transient TTL: {TRANSIENT_TTL_DAYS}d (99-*.md -> archive/)")
+            LogUtils.print(f"  Transient TTL: {TRANSIENT_TTL_DAYS}d (99-*.md -> {ARCHIVE_DIR_NAME}/)")
             nudge_state = "on" if NUDGE_ENABLED else "off"
             LogUtils.print(f"  Nudge: {nudge_state} (chars>{NUDGE_CHARS}, stale>{NUDGE_SECONDS}s)")
+            files_nudge = "off" if MAX_FILES_NUDGE <= 0 else f">{MAX_FILES_NUDGE} files"
+            LogUtils.print(f"  File-count nudge: {files_nudge} "
+                           f"(throttle {MAX_FILES_NUDGE_SECONDS}s, AICODER_MEMORY_MAX_FILES_NUDGE[_SECONDS])")
             aa_state = "on" if AUTO_APPROVE_MEMORY else "off"
             LogUtils.print(f"  Auto-approve memory writes: {aa_state} (AICODER_MEMORY_AUTO_APPROVE)")
             pv_state = "hidden" if PREVIEW_HIDE else "summary"
@@ -583,6 +712,36 @@ def create_plugin(ctx):
             except OSError as e:
                 LogUtils.error(f"[memory] Nudge set for this session, but could not persist: {e}")
 
+        elif subcmd == "max-files-nudge":
+            if len(parts) < 2:
+                src = "project file" if os.path.isfile(MAX_FILES_NUDGE_FILE) else "env/default"
+                state = "off" if MAX_FILES_NUDGE <= 0 else f"{MAX_FILES_NUDGE} files"
+                LogUtils.info(f"[memory] File-count nudge: {state} ({src}), "
+                              f"throttle {MAX_FILES_NUDGE_SECONDS}s")
+                return
+            raw = parts[1].strip().lower()
+            if raw in ("off", "none", "no", "0"):
+                new_max = 0
+            else:
+                try:
+                    new_max = int(raw)
+                except ValueError:
+                    LogUtils.error(f"[memory] Invalid count: {parts[1]} (use a number or 'off')")
+                    return
+                if new_max < 1:
+                    LogUtils.error(f"[memory] Count must be >= 1 (or 'off'), got {parts[1]}")
+                    return
+            try:
+                os.makedirs(os.path.dirname(MAX_FILES_NUDGE_FILE), exist_ok=True)
+                with open(MAX_FILES_NUDGE_FILE, "w") as f:
+                    f.write("off" if new_max == 0 else str(new_max))
+                MAX_FILES_NUDGE = new_max
+                state = "disabled" if new_max == 0 else f"set to {new_max} files"
+                LogUtils.success(f"[memory] File-count nudge {state} for this project "
+                                 f"({MAX_FILES_NUDGE_FILE})")
+            except OSError as e:
+                LogUtils.error(f"[memory] Nudge set for this session, but could not persist: {e}")
+
         elif subcmd == "limit":
             if len(parts) < 2:
                 LogUtils.info(f"[memory] Current limit: {MAX_AUTOLOAD_BYTES} bytes")
@@ -607,6 +766,7 @@ def create_plugin(ctx):
             LogUtils.dim("  /memory export <path>  - Export memory to archive (.tar.gz)")
             LogUtils.dim("  /memory import <file>  - Import memory from archive (replaces files)")
             LogUtils.dim("  /memory nudge [on|off] - Toggle memory-write nudges (persisted per project)")
+            LogUtils.dim("  /memory max-files-nudge [<N>|off] - Nudge when topic files exceed N (default 60, 10-min throttle)")
             LogUtils.dim("  /memory limit <size>   - Set per-project autoload size (e.g. 10k, 2m)")
             LogUtils.dim("  /memory rm-all         - Delete all memory (requires confirmation)")
             LogUtils.dim("  /memory status         - Show memory status and file sizes")
@@ -623,6 +783,11 @@ def create_plugin(ctx):
         from aicoder.utils.log import LogUtils
         if sys.stdout.isatty():
             LogUtils.info(f"[memory] Project nudge: {'on' if NUDGE_ENABLED else 'off'} ({NUDGE_FILE})")
+    if _project_max_files is not None:
+        from aicoder.utils.log import LogUtils
+        if sys.stdout.isatty():
+            state = "off" if MAX_FILES_NUDGE <= 0 else f"{MAX_FILES_NUDGE} files"
+            LogUtils.info(f"[memory] Project file-count nudge: {state} ({MAX_FILES_NUDGE_FILE})")
 
     # Register hooks
     ctx.register_hook("after_file_write", _on_after_file_write)
