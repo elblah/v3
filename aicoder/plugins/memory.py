@@ -493,7 +493,7 @@ def create_plugin(ctx):
             + str(TRANSIENT_TTL_DAYS) + " days without edits. Promote: rename below 99 when it matters.\n"
             "- Every topic filename is listed below (up to " + str(LIST_LIMIT) + "); "
             "`.archive/` holds keep-without-cost files (never listed, and dot dirs are skipped by "
-            "`list_directory` too).\n"
+            "`list_directory` too; recover one with `ls " + MEMORY_DIR + "/.archive`).\n"
             "- Asked to read/recall a specific topic: pick the listed filename whose NAME matches, "
             "not the nearest-sounding one. If no name matches, search before answering — "
             "`ls " + MEMORY_DIR + " | grep -i -E '<words>'` (filenames first; content grep last, "
