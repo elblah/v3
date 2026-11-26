@@ -46,6 +46,24 @@ Commands like `i <name>` accept args on the same line (e.g., `i subagents` at sk
 - Environment-based configuration
 - Streaming responses with retry logic
 - File operation sandbox for security
+- **Zero telemetry** — not even opt-in (see below)
+
+## Privacy: Zero Telemetry
+
+AI Coder never sends usage data, crashes, analytics, or diagnostics anywhere — not to
+the developers, not to third parties.
+
+- **No telemetry of any kind**: no analytics SDK, no crash reporting, no usage pings.
+- **No opt-in either**: there is no telemetry setting to enable. It does not exist in the code.
+- **No background network traffic**: the only outbound connections are the API requests
+  you configure yourself (`API_BASE_URL`) plus any URL you explicitly ask the assistant
+  to fetch.
+- **No accounts, no license checks, no update beacons.**
+- **Your sessions are local files**: transcripts, debug logs and the auto-saved
+  session are written to `.aicoder/` inside the directory you run AI Coder from
+  (e.g. `.aicoder/last-session.json`), and user-wide plugins/skills/snippets live in
+  `~/.config/aicoder-v3/`. All plain files, readable and deletable by you. Nothing
+  leaves the machine except your own API calls.
 
 ## Optional Performance Boost
 
