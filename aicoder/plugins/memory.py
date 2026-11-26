@@ -416,11 +416,13 @@ def create_plugin(ctx):
         if hidden:
             summary += f", {len(hidden)} past the {LIST_LIMIT}-file cut"
         return (
-            f"Memory housekeeping: `{MEMORY_DIR}` holds {total} topic files "
-            f"(threshold {MAX_FILES_NUDGE}); {hidden_txt}. Extra files cost no tokens, "
-            "but the listing is a fixed budget. Consolidate related notes into fewer, "
-            "richer files and prune stale ones now — see them with `list_directory`. "
-            f"`.archive/` (dot dir) is free: `mv` stale-but-still-true notes there instead of deleting."
+            f"Housekeeping suggestion from the memory plugin (automated, NOT the user). "
+            f"`{MEMORY_DIR}` holds {total} topic files (threshold {MAX_FILES_NUDGE}); {hidden_txt}. "
+            "Extra files cost no tokens, but the listing is a fixed budget. When the user's "
+            "actual task allows, consolidate related notes into fewer, richer files and move "
+            "stale-but-still-true ones into `.archive/` (dot dir, free) instead of deleting. "
+            "Do not abandon or derail the user's current task for this; ignore it if busy. "
+            "See the files with `list_directory`."
         ), summary
 
     def on_autoload_write(path, _content):
@@ -450,8 +452,9 @@ def create_plugin(ctx):
                 from aicoder.utils.log import LogUtils
                 if sys.stdout.isatty():
                     LogUtils.warn(f"[memory] {msg}")
+                from aicoder.core.nudges import add_nudge
                 if ctx.app and ctx.app.message_history:
-                    ctx.app.message_history.add_user_message(msg)
+                    add_nudge(ctx.app, "MEMORY_AUTOLOAD", msg)
 
         # File-count nudge: deferred-safe (after_tool_results fires with the
         # tool chain closed; add_user_message would defer anyway)
@@ -464,8 +467,9 @@ def create_plugin(ctx):
                 from aicoder.utils.log import LogUtils
                 if sys.stdout.isatty():
                     LogUtils.dim(f"[memory] file-count nudge: {summary}")
+                from aicoder.core.nudges import add_nudge
                 if ctx.app and ctx.app.message_history:
-                    ctx.app.message_history.add_user_message(count_msg)
+                    add_nudge(ctx.app, "MEMORY_FILES", count_msg)
 
     def on_system_prompt_append():
         """Inject memory info and autoload.md into system prompt"""
